@@ -1,0 +1,38 @@
+---
+description: Sicherheit, DSGVO und Stripe/CitrineOS für BC Charge
+alwaysApply: true
+---
+
+# BC Charge – Security & Privacy
+
+## Secrets
+
+- `STRIPE_SECRET_KEY`, `BC_STRIPE_API_KEY`, Hasura-Admin-Secret **nie** als `VITE_*` oder in Git.
+- `.env` nur lokal; bei Leak Keys in Stripe rotieren.
+
+## Stripe-BFF (`server/`)
+
+- Jede mutierende Route: `X-BC-API-Key` + `X-BC-User-Id`, `assertCustomerBelongsToUser` vor Stripe-Calls.
+- Kein `cors({ origin: true })`; Allowlist über `BC_CORS_ORIGINS`.
+- `amountCents` nur nach serverseitiger Tarif-/Session-Validierung (Produktion); Dev-Max 250 €.
+- Rate-Limits beibehalmen; Webhooks für Produktion planen.
+
+## Frontend
+
+- Keine `dangerouslySetInnerHTML`; User-Input escapen lassen (React default).
+- Auth/PII nicht nur in `localStorage` für Produktion.
+- Passwörter: `src/utils/password.ts` (PBKDF2), nicht eigene schwache Hashes.
+- Geolocation nur nach Einwilligung (`GeoConsentBanner`).
+- Demo-Login nur `import.meta.env.DEV`.
+
+## CitrineOS / Hasura
+
+- `VITE_CITRINEOS_HASURA_ADMIN_SECRET` in Produktion verbieten; GraphQL über BFF mit JWT/RLS.
+
+## Neue Features prüfen
+
+- IDOR (fremde `customerId`/`userId`)?
+- Client-vertrauende Beträge/Session-Status?
+- DSGVO: Einwilligung, Löschung, Zweckbindung dokumentiert?
+
+Siehe `SECURITY.md` im Projektroot.
