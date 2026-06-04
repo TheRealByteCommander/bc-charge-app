@@ -73,6 +73,13 @@ Kopieren Sie `.env.example` nach `.env` und passen Sie URLs an.
 
 Ohne laufendes CitrineOS bleiben die **Demo-Stationen** und die **lokale Ladesimulation** aktiv. Konto und BC Points werden im Browser (localStorage) gehalten.
 
+## Produkt-Roadmap (Marktführer-Ziel)
+
+Vollständiges Backlog und Phasen: **[docs/PRODUCT_ROADMAP.md](docs/PRODUCT_ROADMAP.md)**  
+In der App: **Profil → Produkt-Roadmap** oder `/roadmap`.
+
+**MVP in dieser Version (PWA):** erweiterte Filter, PlugScore & Community-Meldungen, Reiseplaner (Basis), OCPI/Roaming-Übersicht, DE/EN, Offline-Cache, Gast-Zugang (Karte/Stationen ohne Login).
+
 ## Stripe-Zahlungen
 
 - **Frontend:** Stripe Payment Element (`@stripe/react-stripe-js`)

@@ -1,0 +1,19 @@
+{
+  "name": "BC Charge",
+  "short_name": "BC Charge",
+  "description": "Laden mit Stil – Karte, Roaming, Reiseplanung und Zahlung",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#06080c",
+  "theme_color": "#06080c",
+  "orientation": "portrait-primary",
+  "lang": "de",
+  "icons": [
+    {
+      "src": "/bc-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

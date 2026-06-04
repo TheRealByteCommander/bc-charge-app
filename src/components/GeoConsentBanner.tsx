@@ -1,30 +1,33 @@
 import { MapPin } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import {
+  getGeoConsent,
+  setGeoConsentDenied,
+  setGeoConsentGranted,
+} from '../utils/geoConsent';
 import { useAppStore } from '../store/appStore';
-
-const CONSENT_KEY = 'bc_geo_consent';
-
-export function getGeoConsent(): 'granted' | 'denied' | null {
-  const v = localStorage.getItem(CONSENT_KEY);
-  if (v === '1') return 'granted';
-  if (v === '0') return 'denied';
-  return null;
-}
 
 export function GeoConsentBanner() {
   const [visible, setVisible] = useState(() => getGeoConsent() === null);
   const requestLocation = useAppStore((s) => s.requestUserLocation);
 
+  useEffect(() => {
+    const onStorage = () => setVisible(getGeoConsent() === null);
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
+
   if (!visible) return null;
 
   const deny = () => {
-    localStorage.setItem(CONSENT_KEY, '0');
+    setGeoConsentDenied();
+    useAppStore.getState().setUserLocation(null);
     setVisible(false);
   };
 
   const allow = () => {
-    localStorage.setItem(CONSENT_KEY, '1');
+    setGeoConsentGranted();
     setVisible(false);
     requestLocation();
   };
@@ -36,8 +39,8 @@ export function GeoConsentBanner() {
         <div>
           <p className="font-medium text-bc-text">Standort für „In der Nähe“</p>
           <p className="mt-1 text-sm text-bc-muted">
-            Wir nutzen Ihren ungefähren Standort nur zur Entfernungsanzeige auf dem Gerät. Details in
-            der{' '}
+            Nur mit Ihrer Einwilligung nutzen wir den Gerätestandort für Entfernungen – nicht für
+            Werbe-Tracking. Details in der{' '}
             <Link to="/datenschutz" className="text-bc-accent underline">
               Datenschutzerklärung
             </Link>

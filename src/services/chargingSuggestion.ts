@@ -8,26 +8,35 @@ export interface ChargeSuggestion {
   station: Station;
   connector: Connector;
   distanceKm: number | null;
+  /** true = Anschluss laut Status frei */
+  connectorAvailable: boolean;
 }
 
 function connectorFitsVehicle(c: Connector, vehicle: Vehicle): boolean {
-  if (c.status !== 'available') return false;
   if (vehicle.preferredConnector === 'CCS' && c.type !== 'CCS') return false;
   if (vehicle.preferredConnector === 'Type2' && c.type === 'CHAdeMO') return false;
   if (c.powerKw < vehicle.maxDcKw * 0.15 && c.type === 'CCS') return false;
   return true;
 }
 
-function bestAvailableConnector(station: Station, vehicle?: Vehicle | null): Connector | null {
-  const available = station.connectors.filter((c) => {
-    if (c.status !== 'available') return false;
+function pickConnector(
+  station: Station,
+  vehicle?: Vehicle | null,
+  preferAvailable = true
+): { connector: Connector; available: boolean } | null {
+  const usable = station.connectors.filter((c) => {
+    if (c.status === 'offline') return false;
     return vehicle ? connectorFitsVehicle(c, vehicle) : true;
   });
-  if (!available.length) return null;
-  return available.reduce((a, b) => (a.powerKw >= b.powerKw ? a : b));
+  if (!usable.length) return null;
+
+  const available = usable.filter((c) => c.status === 'available');
+  const pool = preferAvailable && available.length > 0 ? available : usable;
+  const connector = pool.reduce((a, b) => (a.powerKw >= b.powerKw ? a : b));
+  return { connector, available: connector.status === 'available' };
 }
 
-/** Bis zu `limit` nächste Stationen mit freiem (passendem) Anschluss, sortiert nach Entfernung. */
+/** Bis zu `limit` nächste Stationen mit passendem Anschluss; bevorzugt freie, sonst nächste belegte. */
 export function pickNearestAvailableStations(
   params: {
     vehicle?: Vehicle | null;
@@ -36,26 +45,44 @@ export function pickNearestAvailableStations(
   limit = MAX_NEARBY_STATION_SUGGESTIONS
 ): ChargeSuggestion[] {
   const { vehicle, userLocation } = params;
-  const candidates: (ChargeSuggestion & { sortKey: number })[] = [];
+  const withFree: (ChargeSuggestion & { sortKey: number })[] = [];
+  const fallback: (ChargeSuggestion & { sortKey: number })[] = [];
 
   for (const station of getStations()) {
-    const connector = bestAvailableConnector(station, vehicle);
-    if (!connector) continue;
-
     const distanceKm = userLocation
       ? Math.round(haversineKm(userLocation.lat, userLocation.lng, station.lat, station.lng) * 10) / 10
       : null;
+    const sortKey = distanceKm ?? Number.POSITIVE_INFINITY;
 
-    candidates.push({
-      station,
-      connector,
-      distanceKm,
-      sortKey: distanceKm ?? Number.POSITIVE_INFINITY,
-    });
+    const freePick = pickConnector(station, vehicle, true);
+    if (freePick?.available) {
+      withFree.push({
+        station,
+        connector: freePick.connector,
+        distanceKm,
+        connectorAvailable: true,
+        sortKey,
+      });
+      continue;
+    }
+
+    const anyPick = pickConnector(station, vehicle, false);
+    if (anyPick) {
+      fallback.push({
+        station,
+        connector: anyPick.connector,
+        distanceKm,
+        connectorAvailable: anyPick.available,
+        sortKey,
+      });
+    }
   }
 
-  candidates.sort((a, b) => a.sortKey - b.sortKey);
-  return candidates.slice(0, limit).map(({ sortKey: _sortKey, ...suggestion }) => suggestion);
+  withFree.sort((a, b) => a.sortKey - b.sortKey);
+  fallback.sort((a, b) => a.sortKey - b.sortKey);
+
+  const merged = [...withFree, ...fallback.filter((f) => !withFree.some((w) => w.station.id === f.station.id))];
+  return merged.slice(0, limit).map(({ sortKey: _sortKey, ...suggestion }) => suggestion);
 }
 
 /** Nächste freie Station (Kompatibilität). */

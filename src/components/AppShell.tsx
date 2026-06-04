@@ -3,7 +3,8 @@ import { useEffect } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { useAppStore } from '../store/appStore';
 import { BottomNav } from './BottomNav';
-import { GeoConsentBanner, getGeoConsent } from './GeoConsentBanner';
+import { getGeoConsent } from '../utils/geoConsent';
+import { GeoConsentBanner } from './GeoConsentBanner';
 
 const hideNav = ['/onboarding', '/anmelden', '/registrieren', '/laden'];
 
@@ -35,7 +36,15 @@ export function AppShell() {
 
   return (
     <div className="mx-auto flex min-h-dvh max-w-lg flex-col bg-bc-gradient bg-hero-mesh">
-      <Outlet />
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[100] focus:rounded-xl focus:bg-bc-accent focus:px-4 focus:py-2 focus:text-bc-ink focus:outline-none"
+      >
+        Zum Inhalt springen
+      </a>
+      <main id="main-content" className="flex min-h-0 flex-1 flex-col outline-none">
+        <Outlet />
+      </main>
       <GeoConsentBanner />
       {showNav && <BottomNav />}
       <AnimatePresence>

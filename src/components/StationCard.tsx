@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom';
 import { getAvailableCount } from '../data/stations';
 import { useAppStore } from '../store/appStore';
 import type { Station } from '../types';
+import { computePlugScore } from '../services/community';
 import { formatCurrency } from '../utils/format';
 import { minKnownPricePerKwh } from '../utils/pricing';
 
@@ -15,12 +16,11 @@ export function StationCard({ station, index = 0 }: { station: Station; index?: 
     [userLocation, station.id, station.lat, station.lng]
   );
   const user = useAppStore((s) => s.user);
-  const stationDataSource = useAppStore((s) => s.stationDataSource);
   const toggleFavorite = useAppStore((s) => s.toggleFavorite);
   const available = getAvailableCount(station);
   const minPrice = minKnownPricePerKwh(station.connectors);
-  const livePrices = stationDataSource === 'citrineos';
   const isFav = user?.favoriteStationIds.includes(station.id);
+  const plugScore = computePlugScore(station.id, station.rating, station.reviewCount);
 
   return (
     <motion.div
@@ -63,18 +63,15 @@ export function StationCard({ station, index = 0 }: { station: Station; index?: 
               <Zap className="h-3.5 w-3.5" />
               {available} frei
             </span>
-            {minPrice != null ? (
+            {minPrice != null && (
               <span className="text-xs text-bc-muted">
-                {livePrices ? 'aktuell ' : 'ab '}
-                {formatCurrency(minPrice)}/kWh
+                ab {formatCurrency(minPrice)}/kWh
               </span>
-            ) : livePrices ? (
-              <span className="text-xs text-bc-warn">Tarif folgt</span>
-            ) : null}
+            )}
             {distance != null && <span className="text-xs text-bc-muted">{distance} km</span>}
-            <span className="inline-flex items-center gap-0.5 text-xs text-bc-muted">
+            <span className="inline-flex items-center gap-0.5 text-xs text-bc-muted" title="PlugScore">
               <Star className="h-3 w-3 fill-bc-warn text-bc-warn" />
-              {station.rating} ({station.reviewCount})
+              {plugScore} PlugScore
             </span>
           </div>
         </div>

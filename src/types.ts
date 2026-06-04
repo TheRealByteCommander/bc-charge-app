@@ -1,3 +1,5 @@
+import type { GamificationState } from './types/gamification';
+
 export type ConnectorType = 'CCS' | 'Type2' | 'CHAdeMO';
 export type ConnectorStatus = 'available' | 'occupied' | 'offline' | 'reserved';
 
@@ -83,8 +85,15 @@ export interface UserProfile {
   favoriteStationIds: string[];
   notifications: NotificationPrefs;
   chargingPlan: ChargingPlanPrefs;
+  gamification: GamificationState;
   /** Stripe Customer-ID (cus_…) */
   stripeCustomerId?: string;
+  /** Zeitpunkt der Einwilligung in Datenschutzerklärung (ISO) */
+  privacyConsentAt?: string;
+  /** Zeitpunkt der AGB-Zustimmung (ISO) */
+  termsAcceptedAt?: string;
+  /** Marketing-Einwilligung (ISO), nur wenn erteilt */
+  marketingConsentAt?: string | null;
 }
 
 export type LoyaltyTier = 'bronze' | 'silver' | 'gold' | 'platinum';

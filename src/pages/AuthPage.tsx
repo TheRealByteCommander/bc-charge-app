@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Logo } from '../components/Logo';
+import { LegalFooterLinks } from '../components/LegalPageLayout';
 import { useAppStore } from '../store/appStore';
 
 export function LoginPage() {
@@ -66,6 +67,7 @@ export function LoginPage() {
           Registrieren
         </Link>
       </p>
+      <LegalFooterLinks className="mt-8" />
     </div>
   );
 }
@@ -78,23 +80,35 @@ export function RegisterPage() {
     phone: '',
     password: '',
   });
+  const [acceptPrivacy, setAcceptPrivacy] = useState(false);
+  const [acceptTerms, setAcceptTerms] = useState(false);
+  const [marketingOptIn, setMarketingOptIn] = useState(false);
   const [error, setError] = useState('');
   const register = useAppStore((s) => s.register);
   const navigate = useNavigate();
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!acceptPrivacy || !acceptTerms) {
+      setError('Bitte Datenschutzerklärung und Nutzungsbedingungen bestätigen.');
+      return;
+    }
     if (form.password.length < 6) {
       setError('Passwort mindestens 6 Zeichen.');
       return;
     }
-    const res = await register(form);
+    const res = await register({
+      ...form,
+      acceptPrivacy,
+      acceptTerms,
+      marketingOptIn,
+    });
     if (res.ok) navigate('/', { replace: true });
     else setError(res.error ?? 'Registrierung fehlgeschlagen');
   };
 
   return (
-    <div className="flex min-h-dvh flex-col px-6 py-10">
+    <div className="flex min-h-dvh flex-col px-6 py-10 pb-12">
       <Logo />
       <h1 className="mt-10 font-display text-2xl font-bold">Konto erstellen</h1>
       <p className="mt-2 text-bc-muted">Starten Sie mit 250 Willkommens-BC-Points.</p>
@@ -134,11 +148,59 @@ export function RegisterPage() {
         <input
           type="password"
           className="input-field"
-          placeholder="Passwort"
+          placeholder="Passwort (min. 6 Zeichen)"
           required
           value={form.password}
           onChange={(e) => setForm({ ...form, password: e.target.value })}
         />
+
+        <div className="space-y-3 rounded-xl border border-bc-border bg-bc-elevated p-3 text-sm">
+          <label className="flex cursor-pointer items-start gap-3">
+            <input
+              type="checkbox"
+              checked={acceptPrivacy}
+              onChange={(e) => setAcceptPrivacy(e.target.checked)}
+              className="mt-0.5 accent-bc-accent"
+              required
+            />
+            <span className="text-bc-muted">
+              Ich habe die{' '}
+              <Link to="/datenschutz" className="text-bc-accent underline" target="_blank">
+                Datenschutzerklärung
+              </Link>{' '}
+              gelesen. <span className="text-bc-danger">*</span>
+            </span>
+          </label>
+          <label className="flex cursor-pointer items-start gap-3">
+            <input
+              type="checkbox"
+              checked={acceptTerms}
+              onChange={(e) => setAcceptTerms(e.target.checked)}
+              className="mt-0.5 accent-bc-accent"
+              required
+            />
+            <span className="text-bc-muted">
+              Ich akzeptiere die{' '}
+              <Link to="/nutzungsbedingungen" className="text-bc-accent underline" target="_blank">
+                Nutzungsbedingungen
+              </Link>
+              . <span className="text-bc-danger">*</span>
+            </span>
+          </label>
+          <label className="flex cursor-pointer items-start gap-3">
+            <input
+              type="checkbox"
+              checked={marketingOptIn}
+              onChange={(e) => setMarketingOptIn(e.target.checked)}
+              className="mt-0.5 accent-bc-accent"
+            />
+            <span className="text-bc-muted">
+              Ich möchte optional Werbe-Hinweise zu Aktionen per App-Benachrichtigung erhalten
+              (jederzeit widerrufbar).
+            </span>
+          </label>
+        </div>
+
         {error && <p className="text-sm text-bc-danger">{error}</p>}
         <button type="submit" className="btn-primary w-full">
           Registrieren
@@ -150,6 +212,7 @@ export function RegisterPage() {
           Anmelden
         </Link>
       </p>
+      <LegalFooterLinks className="mt-8" />
     </div>
   );
 }

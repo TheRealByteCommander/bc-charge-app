@@ -1,27 +1,19 @@
 import { ChevronDown, ChevronRight, MapPin, Navigation } from 'lucide-react';
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { defaultChargingPlan, shouldShowChargeSuggestion, snoozeSuggestions } from '../data/chargingPlan';
+import { normalizeChargingPlan, shouldShowChargeSuggestion } from '../data/chargingPlan';
 import {
   MAX_NEARBY_STATION_SUGGESTIONS,
   pickNearestAvailableStations,
   type ChargeSuggestion,
 } from '../services/chargingSuggestion';
+import { useAccessibility } from '../context/AccessibilityContext';
 import { useAppStore } from '../store/appStore';
 import type { ChargingPlanPrefs } from '../types';
 import { formatConnectorPriceSummary } from '../utils/pricing';
 
 function formatDistanceKm(km: number | null): string {
   return km != null ? `${km} km` : 'Entfernung unbekannt';
-}
-
-function suggestionSubtitle(suggestions: ChargeSuggestion[]): string {
-  if (suggestions.length === 0) return 'Wir schlagen verfügbare Stationen in Ihrer Nähe vor';
-  return suggestions
-    .map((s) =>
-      s.distanceKm != null ? `${s.station.name} · ${s.distanceKm} km` : s.station.name
-    )
-    .join(' · ');
 }
 
 function SuggestionRow({
@@ -34,12 +26,15 @@ function SuggestionRow({
   showOpenButton?: boolean;
 }) {
   return (
-    <div
-      className={
-        index > 0 ? 'mt-3 border-t border-bc-accent/20 pt-3' : ''
-      }
-    >
-      <p className="font-medium text-bc-text">{suggestion.station.name}</p>
+    <div className={index > 0 ? 'mt-3 border-t border-bc-accent/20 pt-3' : ''}>
+      <div className="flex items-start justify-between gap-2">
+        <p className="font-medium text-bc-text">{suggestion.station.name}</p>
+        {!suggestion.connectorAvailable && (
+          <span className="shrink-0 rounded-md bg-bc-warn/15 px-2 py-0.5 text-[10px] font-medium text-bc-warn">
+            Belegt
+          </span>
+        )}
+      </div>
       <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-bc-muted">
         <span className="inline-flex items-center gap-1 font-medium text-bc-text">
           <MapPin className="h-3.5 w-3.5 text-bc-accent" />
@@ -62,25 +57,33 @@ function SuggestionRow({
   );
 }
 
-export function ChargingPlannerCard({ variant = 'home' }: { variant?: 'home' | 'page' }) {
+export function ChargingPlannerCard() {
   const user = useAppStore((s) => s.user);
   const activeSession = useAppStore((s) => s.activeSession);
   const userLocation = useAppStore((s) => s.userLocation);
+  const stationDataSource = useAppStore((s) => s.stationDataSource);
   const updateProfile = useAppStore((s) => s.updateProfile);
 
-  const prefs = user?.chargingPlan ?? defaultChargingPlan();
+  const { prefs: a11y } = useAccessibility();
+  const prefs = normalizeChargingPlan(user?.chargingPlan);
   const vehicle = user?.vehicles[0];
-  const expanded = variant === 'page' ? true : prefs.expandedOnHome;
+  const expanded = a11y.simpleMode || prefs.expandedOnHome;
 
   const patchPlan = (patch: Partial<ChargingPlanPrefs>) => {
-    if (!user) return;
-    updateProfile({ chargingPlan: { ...prefs, ...patch } });
+    const current = useAppStore.getState().user;
+    if (!current) return;
+    const base = normalizeChargingPlan(current.chargingPlan);
+    let next: ChargingPlanPrefs = { ...base, ...patch };
+    if (patch.enabled === true) {
+      next = { ...next, snoozedUntil: null };
+    }
+    updateProfile({ chargingPlan: next });
   };
 
   const suggestions = useMemo(() => {
     if (!user) return [];
     return pickNearestAvailableStations({ vehicle, userLocation }, MAX_NEARBY_STATION_SUGGESTIONS);
-  }, [user, vehicle, userLocation]);
+  }, [user, vehicle, userLocation, stationDataSource]);
 
   const showSuggestion = shouldShowChargeSuggestion(prefs, { activeSession: Boolean(activeSession) });
   const hasSuggestions = suggestions.length > 0;
@@ -89,12 +92,8 @@ export function ChargingPlannerCard({ variant = 'home' }: { variant?: 'home' | '
 
   const toggleExpanded = () => patchPlan({ expandedOnHome: !prefs.expandedOnHome });
 
-  const header = (
-    <button
-      type="button"
-      onClick={variant === 'home' ? toggleExpanded : undefined}
-      className={`flex w-full items-center gap-3 text-left ${variant === 'home' ? '' : 'pointer-events-none'}`}
-    >
+  const headerContent = (
+    <>
       <div
         className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
           showSuggestion && hasSuggestions ? 'bg-bc-accent/20 text-bc-accent' : 'bg-bc-surface text-bc-muted'
@@ -104,26 +103,33 @@ export function ChargingPlannerCard({ variant = 'home' }: { variant?: 'home' | '
       </div>
       <div className="min-w-0 flex-1">
         <p className="font-display font-semibold text-bc-text">Nächste freie Stationen</p>
-        <p className="text-xs text-bc-muted line-clamp-2">
-          {showSuggestion && hasSuggestions
-            ? suggestionSubtitle(suggestions)
-            : `Bis zu ${MAX_NEARBY_STATION_SUGGESTIONS} verfügbare Stationen in Ihrer Nähe`}
-        </p>
+        {(!showSuggestion || !hasSuggestions) && (
+          <p className="text-xs text-bc-muted">
+            Bis zu {MAX_NEARBY_STATION_SUGGESTIONS} Stationen in Ihrer Nähe
+          </p>
+        )}
       </div>
-      {variant === 'home' &&
+      {!a11y.simpleMode &&
         (expanded ? (
-          <ChevronDown className="h-5 w-5 shrink-0 text-bc-muted" />
+          <ChevronDown className="h-5 w-5 shrink-0 text-bc-muted" aria-hidden />
         ) : (
-          <ChevronRight className="h-5 w-5 shrink-0 text-bc-muted" />
+          <ChevronRight className="h-5 w-5 shrink-0 text-bc-muted" aria-hidden />
         ))}
+    </>
+  );
+
+  const header = a11y.simpleMode ? (
+    <div className="flex w-full items-center gap-3">{headerContent}</div>
+  ) : (
+    <button type="button" onClick={toggleExpanded} className="flex w-full items-center gap-3 text-left">
+      {headerContent}
     </button>
   );
 
-  const body = (
+  const settingsBody = expanded && !a11y.simpleMode ? (
     <div className="mt-4 space-y-4 border-t border-bc-border pt-4">
       <p className="text-sm text-bc-muted leading-relaxed">
-        Wir zeigen bis zu {MAX_NEARBY_STATION_SUGGESTIONS} BC-Charge-Stationen mit freiem Anschluss –
-        sortiert nach Entfernung, passend zu Ihrem Fahrzeugprofil falls hinterlegt.
+        Bis zu {MAX_NEARBY_STATION_SUGGESTIONS} Stationen – zuerst mit freiem Anschluss, sortiert nach Entfernung.
       </p>
 
       {!vehicle && (
@@ -132,7 +138,7 @@ export function ChargingPlannerCard({ variant = 'home' }: { variant?: 'home' | '
           <Link to="/fahrzeuge" className="font-medium text-bc-accent underline">
             Fahrzeuge
           </Link>{' '}
-          Anschluss und Leistung hinterlegen, damit nur passende Stecker vorgeschlagen werden.
+          Anschluss hinterlegen für passendere Vorschläge.
         </p>
       )}
 
@@ -146,32 +152,38 @@ export function ChargingPlannerCard({ variant = 'home' }: { variant?: 'home' | '
         Stationsempfehlung auf der Startseite
       </label>
     </div>
-  );
+  ) : null;
 
-  const suggestionBlock =
+  const suggestionList =
     showSuggestion && hasSuggestions ? (
-      <div className="mt-4 rounded-xl border border-bc-accent/35 bg-bc-accent/10 p-4">
+      <div
+        className={`rounded-xl border border-bc-accent/35 bg-bc-accent/10 p-4 ${expanded ? 'mt-4' : 'mt-3'}`}
+      >
         <p className="text-xs font-semibold uppercase tracking-wider text-bc-accent">
-          In der Nähe · frei ({suggestions.length})
+          {suggestions.some((s) => s.connectorAvailable)
+            ? `In der Nähe · frei (${suggestions.length})`
+            : `In der Nähe (${suggestions.length})`}
         </p>
         {suggestions.map((s, i) => (
-          <SuggestionRow key={s.station.id} suggestion={s} index={i} showOpenButton />
+          <SuggestionRow
+            key={s.station.id}
+            suggestion={s}
+            index={i}
+            showOpenButton={expanded || a11y.simpleMode}
+          />
         ))}
-        <button
-          type="button"
-          className="btn-secondary mt-3 w-full py-2.5 text-sm"
-          onClick={() => patchPlan({ snoozedUntil: snoozeSuggestions(24) })}
-          title="24 Stunden kein Hinweis auf der Startseite"
-        >
-          Später
-        </button>
       </div>
     ) : showSuggestion && !hasSuggestions ? (
-      <p className="mt-4 text-sm text-bc-muted">Aktuell keine freie passende Station gefunden.</p>
+      <p className={`text-sm text-bc-muted ${expanded ? 'mt-4' : 'mt-3'}`}>
+        Aktuell keine passende Station gefunden.{' '}
+        <Link to="/stationen" className="text-bc-accent">
+          Alle Stationen
+        </Link>
+      </p>
     ) : null;
 
-  const compactHints =
-    !expanded && variant === 'home' && showSuggestion && hasSuggestions ? (
+  const compactLinks =
+    showSuggestion && hasSuggestions && !expanded ? (
       <div className="mt-3 space-y-2">
         {suggestions.map((s) => (
           <Link
@@ -182,6 +194,9 @@ export function ChargingPlannerCard({ variant = 'home' }: { variant?: 'home' | '
             <span className="min-w-0 truncate">
               <span className="font-medium text-bc-accent">{s.station.name}</span>
               <span className="text-bc-muted"> · {formatDistanceKm(s.distanceKm)}</span>
+              {!s.connectorAvailable && (
+                <span className="text-bc-warn"> · belegt</span>
+              )}
             </span>
             <ChevronRight className="h-4 w-4 shrink-0 text-bc-accent" />
           </Link>
@@ -189,31 +204,15 @@ export function ChargingPlannerCard({ variant = 'home' }: { variant?: 'home' | '
       </div>
     ) : null;
 
-  if (variant === 'page') {
-    return (
-      <div className="rounded-2xl border border-bc-border bg-bc-elevated p-4">
-        {header}
-        {body}
-        {suggestionBlock}
-      </div>
-    );
-  }
-
   return (
     <section
-      className={`mt-6 rounded-2xl border bg-bc-elevated p-4 transition-colors ${
+      className={`rounded-2xl border bg-bc-elevated p-4 transition-colors ${
         showSuggestion && hasSuggestions ? 'border-bc-accent/40' : 'border-bc-border'
       }`}
     >
       {header}
-      {expanded && body}
-      {compactHints}
-      {expanded && suggestionBlock}
-      {expanded && variant === 'home' && (
-        <Link to="/ladeplanung" className="mt-3 block text-center text-xs text-bc-accent">
-          Einstellungen
-        </Link>
-      )}
+      {settingsBody}
+      {a11y.simpleMode || expanded ? suggestionList : compactLinks ?? suggestionList}
     </section>
   );
 }

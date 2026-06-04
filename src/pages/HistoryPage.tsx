@@ -47,7 +47,7 @@ export function HistoryPage() {
                 <span>{sess.connectorType}</span>
                 <span className="text-bc-accent">+{sess.pointsEarned} Points</span>
                 {sess.paymentStatus === 'paid' && (
-                  <span className="text-bc-accent">Stripe bezahlt</span>
+                  <span className="text-bc-accent">Bezahlt</span>
                 )}
                 {sess.paymentStatus === 'failed' && (
                   <span className="text-bc-danger">Zahlung fehlgeschlagen</span>

@@ -10,9 +10,13 @@ export function normalizeChargingPlan(prefs?: Partial<ChargingPlanPrefs> | null)
   const base = defaultChargingPlan();
   if (!prefs) return base;
   return {
-    enabled: prefs.enabled ?? base.enabled,
-    snoozedUntil: prefs.snoozedUntil ?? base.snoozedUntil,
-    expandedOnHome: prefs.expandedOnHome ?? base.expandedOnHome,
+    enabled: typeof prefs.enabled === 'boolean' ? prefs.enabled : base.enabled,
+    snoozedUntil:
+      prefs.snoozedUntil === null || typeof prefs.snoozedUntil === 'string'
+        ? prefs.snoozedUntil
+        : base.snoozedUntil,
+    expandedOnHome:
+      typeof prefs.expandedOnHome === 'boolean' ? prefs.expandedOnHome : base.expandedOnHome,
   };
 }
 
@@ -28,8 +32,4 @@ export function shouldShowChargeSuggestion(
   if (!prefs.enabled || opts.activeSession) return false;
   if (isSuggestionSnoozed(prefs)) return false;
   return true;
-}
-
-export function snoozeSuggestions(hours = 24): string {
-  return new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
 }

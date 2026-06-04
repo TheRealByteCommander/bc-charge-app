@@ -11,10 +11,13 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { CommunityReportForm } from '../components/CommunityReportForm';
+import { ConnectorPrice } from '../components/ConnectorPrice';
+import { GuestBanner } from '../components/GuestBanner';
 import { getAvailableCount, getStationById } from '../data/stations';
+import { computePlugScore } from '../services/community';
 import { useAppStore } from '../store/appStore';
 import type { Connector } from '../types';
-import { ConnectorPrice } from '../components/ConnectorPrice';
 
 const statusLabel: Record<string, string> = {
   available: 'Verfügbar',
@@ -59,6 +62,10 @@ export function StationDetailPage() {
 
   const dist = distance(station);
   const isFav = user?.favoriteStationIds.includes(station.id);
+  const stationDataSource = useAppStore((s) => s.stationDataSource);
+  const plugScore = computePlugScore(station.id, station.rating, station.reviewCount);
+  const showGreenBadge = stationDataSource !== 'citrineos' ? station.greenEnergy : false;
+  const showAccessibleBadge = stationDataSource !== 'citrineos' ? station.accessible : false;
 
   const beginCharge = async () => {
     if (!user) {
@@ -100,6 +107,7 @@ export function StationDetailPage() {
 
   return (
     <div className="page-shell pb-36">
+      <GuestBanner />
       <button
         type="button"
         onClick={() => navigate(-1)}
@@ -128,17 +136,17 @@ export function StationDetailPage() {
 
       <div className="mt-4 flex flex-wrap gap-2">
         <span className="rounded-lg bg-bc-elevated px-2 py-1 text-xs">
-          <Star className="inline h-3 w-3 fill-bc-warn text-bc-warn" /> {station.rating} ({station.reviewCount})
+          <Star className="inline h-3 w-3 fill-bc-warn text-bc-warn" /> PlugScore {plugScore}
         </span>
         <span className="rounded-lg bg-bc-elevated px-2 py-1 text-xs text-bc-muted">
           <Clock className="inline h-3 w-3" /> {station.openingHours}
         </span>
-        {station.greenEnergy && (
+        {showGreenBadge && (
           <span className="rounded-lg bg-bc-accent/15 px-2 py-1 text-xs text-bc-accent">
             <Leaf className="inline h-3 w-3" /> Ökostrom
           </span>
         )}
-        {station.accessible && (
+        {showAccessibleBadge && (
           <span className="rounded-lg bg-bc-elevated px-2 py-1 text-xs text-bc-muted">
             <Accessibility className="inline h-3 w-3" /> Barrierefrei
           </span>
@@ -241,6 +249,8 @@ export function StationDetailPage() {
           </div>
         </>
       )}
+
+      <CommunityReportForm stationId={station.id} />
     </div>
   );
 }

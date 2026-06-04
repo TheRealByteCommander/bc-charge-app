@@ -1,5 +1,6 @@
 import { Mail, MapPin, Phone } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { LegalFooterLinks } from '../components/LegalPageLayout';
 import { companyInfo } from '../data/company';
 
 export function SupportPage() {
@@ -60,7 +61,11 @@ export function SupportPage() {
           },
           {
             q: 'Welche Zahlungsarten werden akzeptiert?',
-            a: 'Kredit-/Debitkarte und SEPA-Lastschrift – hinterlegt unter Zahlung im Profil (über Stripe).',
+            a: 'Kredit-/Debitkarte und SEPA-Lastschrift – unter Profil → Zahlung hinterlegen.',
+          },
+          {
+            q: 'Größere Schrift oder einfachere Bedienung?',
+            a: 'Unter Profil → Barrierefreiheit (oder /barrierefreiheit): Schriftgröße, hoher Kontrast und einfache Ansicht einstellbar.',
           },
           {
             q: 'Was bedeutet Ökostrom am Standort?',
@@ -82,6 +87,8 @@ export function SupportPage() {
       >
         Website bc-charge.com
       </a>
+
+      <LegalFooterLinks className="mt-8 border-t border-bc-border pt-6" />
     </div>
   );
 }

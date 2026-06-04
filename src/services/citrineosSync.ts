@@ -10,7 +10,8 @@ import {
 } from '../api/citrineos';
 import { applyTariffCatalogToStations, buildTariffCatalog } from '../api/citrineos/tariffPricing';
 import { citrineosConfig } from '../config/citrineos';
-import { getStationDataSource, setStationsFromCitrineos } from '../data/stations';
+import { getStationDataSource, getStations, setStationsFromCitrineos } from '../data/stations';
+import { saveStationsOfflineCache } from '../utils/offlineCache';
 import type { ChargingSession, Station } from '../types';
 import { parseConnectorRef } from '../api/citrineos/mappers';
 
@@ -35,6 +36,7 @@ export async function syncStationsFromCitrineos(): Promise<{
     mapped = applyTariffCatalogToStations(mapped, catalog);
     if (mapped.length > 0) {
       setStationsFromCitrineos(mapped);
+      saveStationsOfflineCache(getStations(), 'citrineos');
       return {
         ok: true,
         count: mapped.length,

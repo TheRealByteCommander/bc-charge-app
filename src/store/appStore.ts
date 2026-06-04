@@ -3,6 +3,19 @@ import { getStationById, getStationDataSource, getStations } from '../data/stati
 import type { StationDataSource } from '../data/stationRegistry';
 import { defaultChargingPlan, normalizeChargingPlan } from '../data/chargingPlan';
 import { computeTier, tierThresholds } from '../data/rewards';
+import {
+  claimChallengeReward,
+  defaultGamification,
+  formatGamificationToast,
+  getWeekKey,
+  normalizeGamification,
+  processReportGamification,
+  processSessionGamification,
+  syncPendingChallenges,
+} from '../services/gamification';
+import { defaultStationFilters, type StationFilterState } from '../types/filters';
+import { applyStationFilters, searchStations } from '../utils/stationFilters';
+import { saveStationsOfflineCache } from '../utils/offlineCache';
 import { haversineKm } from '../utils/geo';
 import {
   pollCitrineosSession,
@@ -29,6 +42,8 @@ import type {
 } from '../types';
 import { hashPassword, upgradePasswordHashIfLegacy, verifyPassword } from '../utils/password';
 import { generateId, generateMembershipId } from '../utils/format';
+import { getGeoConsent } from '../utils/geoConsent';
+import { downloadUserDataExport, purgeUserLocalData } from '../utils/privacy';
 import {
   getCurrentUserId,
   isOnboardingDone,
@@ -51,8 +66,7 @@ interface AppState {
   redeemedRewardIds: string[];
   userLocation: { lat: number; lng: number } | null;
   searchQuery: string;
-  filterAvailableOnly: boolean;
-  filterConnector: 'all' | 'CCS' | 'Type2';
+  stationFilters: StationFilterState;
   toast: string | null;
   citrineosConnected: boolean;
   citrineosSyncError: string | null;
@@ -70,8 +84,8 @@ interface AppState {
   setUserLocation: (loc: { lat: number; lng: number } | null) => void;
   requestUserLocation: () => void;
   setSearchQuery: (q: string) => void;
-  setFilterAvailableOnly: (v: boolean) => void;
-  setFilterConnector: (v: 'all' | 'CCS' | 'Type2') => void;
+  setStationFilters: (patch: Partial<StationFilterState>) => void;
+  resetStationFilters: () => void;
 
   register: (data: {
     email: string;
@@ -79,8 +93,12 @@ interface AppState {
     firstName: string;
     lastName: string;
     phone: string;
+    acceptPrivacy: boolean;
+    acceptTerms: boolean;
+    marketingOptIn?: boolean;
   }) => Promise<{ ok: boolean; error?: string }>;
   login: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
+  exportUserData: () => void;
   deleteAccount: () => void;
   logout: () => void;
   updateProfile: (patch: Partial<UserProfile>) => void;
@@ -104,6 +122,9 @@ interface AppState {
   stopSession: () => Promise<void>;
 
   redeemReward: (rewardId: string, pointsCost: number) => { ok: boolean; error?: string };
+  recordCommunityReport: () => void;
+  claimWeeklyChallenge: (challengeId: string) => { ok: boolean; error?: string };
+  syncGamification: () => void;
 
   getFilteredStations: () => Station[];
   getNearbyStations: (limit?: number) => Station[];
@@ -129,11 +150,24 @@ function seedDemoUser(): UserProfile {
     favoriteStationIds: ['st-machern-markt', 'st-leipzig-plagwitz'],
     notifications: {
       sessionComplete: true,
-      promotions: true,
+      promotions: false,
       stationAvailability: true,
       loyaltyUpdates: true,
     },
     chargingPlan: defaultChargingPlan(),
+    gamification: {
+      ...defaultGamification(),
+      unlockedBadgeIds: ['first_charge', 'silver_tier', 'explorer', 'community'],
+      currentStreakDays: 4,
+      longestStreakDays: 8,
+      lastChargeDay: new Date().toISOString().slice(0, 10),
+      weeklyPoints: 420,
+      weekKey: getWeekKey(),
+      sessionsThisWeek: 2,
+      stationsThisWeek: ['st-machern-markt', 'st-leipzig-plagwitz'],
+      uniqueStationsCharged: ['st-machern-markt', 'st-leipzig-plagwitz', 'st-grimma-center', 'st-borna-sued'],
+      reportsSubmitted: 1,
+    },
     vehicles: [
       {
         id: 'v1',
@@ -213,7 +247,11 @@ function calcPoints(energyKwh: number, tier: UserProfile['loyaltyTier']): number
 
 /** Aktuellen Nutzer immer frisch aus dem Storage lesen (wichtig nach Registrierung während init läuft). */
 function enrichUser(profile: UserProfile): UserProfile {
-  return { ...profile, chargingPlan: normalizeChargingPlan(profile.chargingPlan) };
+  return {
+    ...profile,
+    chargingPlan: normalizeChargingPlan(profile.chargingPlan),
+    gamification: normalizeGamification(profile.gamification),
+  };
 }
 
 function resolveCurrentUser(): UserProfile | null {
@@ -232,10 +270,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   sessions: [],
   activeSession: null,
   redeemedRewardIds: [],
-  userLocation: { lat: 51.35, lng: 12.63 },
+  userLocation: null,
   searchQuery: '',
-  filterAvailableOnly: false,
-  filterConnector: 'all',
+  stationFilters: defaultStationFilters(),
   toast: null,
   citrineosConnected: false,
   citrineosSyncError: null,
@@ -269,6 +306,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     } else if (sync.error && !sync.error.includes('nicht erreichbar')) {
       citrineosSyncError = sync.error;
     }
+    saveStationsOfflineCache(getStations(), getStationDataSource());
 
     const user = resolveCurrentUser() ?? get().user;
 
@@ -332,8 +370,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       stationDataSource: sync.ok ? 'citrineos' : getStationDataSource(),
       pricingSyncedAt: sync.ok ? (sync.pricingSyncedAt ?? null) : get().pricingSyncedAt,
       toast: sync.ok
-        ? `${sync.count} Stationen von CitrineOS geladen${tariffHint}`
-        : sync.error ?? 'Sync fehlgeschlagen',
+        ? `${sync.count} Stationen aktualisiert${tariffHint.replace('Tarife', 'Preise')}`
+        : 'Stationen konnten nicht aktualisiert werden',
     });
   },
 
@@ -346,9 +384,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   setUserLocation: (loc) => set({ userLocation: loc }),
 
   requestUserLocation: () => {
-    const fallback = { lat: 51.35, lng: 12.63 };
+    if (getGeoConsent() !== 'granted') {
+      set({ toast: 'Bitte Standort zuerst erlauben (Banner oder Profil).' });
+      return;
+    }
     if (!navigator.geolocation) {
-      set({ userLocation: fallback });
+      set({ toast: 'Standort wird von diesem Gerät nicht unterstützt.' });
       return;
     }
     navigator.geolocation.getCurrentPosition(
@@ -356,19 +397,25 @@ export const useAppStore = create<AppState>((set, get) => ({
         set({
           userLocation: { lat: pos.coords.latitude, lng: pos.coords.longitude },
         }),
-      () => set({ userLocation: fallback }),
+      () => set({ toast: 'Standort konnte nicht ermittelt werden.' }),
       { enableHighAccuracy: false, timeout: 8000, maximumAge: 600_000 }
     );
   },
   setSearchQuery: (q) => set({ searchQuery: q }),
-  setFilterAvailableOnly: (v) => set({ filterAvailableOnly: v }),
-  setFilterConnector: (v) => set({ filterConnector: v }),
+  setStationFilters: (patch) =>
+    set((s) => ({ stationFilters: { ...s.stationFilters, ...patch } })),
+  resetStationFilters: () => set({ stationFilters: defaultStationFilters() }),
 
   register: async (data) => {
+    if (!data.acceptPrivacy || !data.acceptTerms) {
+      return { ok: false, error: 'Bitte Datenschutz und Nutzungsbedingungen bestätigen.' };
+    }
     const users = loadUsers();
     if (users.some((u) => u.email.toLowerCase() === data.email.toLowerCase())) {
       return { ok: false, error: 'Diese E-Mail ist bereits registriert.' };
     }
+    const now = new Date().toISOString();
+    const marketing = Boolean(data.marketingOptIn);
     const user: UserProfile = {
       id: generateId('user'),
       email: data.email.toLowerCase(),
@@ -388,11 +435,15 @@ export const useAppStore = create<AppState>((set, get) => ({
       favoriteStationIds: [],
       notifications: {
         sessionComplete: true,
-        promotions: true,
+        promotions: marketing,
         stationAvailability: false,
         loyaltyUpdates: true,
       },
       chargingPlan: defaultChargingPlan(),
+      gamification: defaultGamification(),
+      privacyConsentAt: now,
+      termsAcceptedAt: now,
+      marketingConsentAt: marketing ? now : null,
     };
     users.push(user);
     saveUsers(users);
@@ -434,14 +485,33 @@ export const useAppStore = create<AppState>((set, get) => ({
     return { ok: true };
   },
 
+  exportUserData: () => {
+    const { user } = get();
+    if (!user) return;
+    try {
+      downloadUserDataExport(user.id);
+      set({ toast: 'Datenexport wurde heruntergeladen.' });
+    } catch {
+      set({ toast: 'Export fehlgeschlagen.' });
+    }
+  },
+
   deleteAccount: () => {
     const { user } = get();
     if (!user) return;
-    const users = loadUsers().filter((u) => u.id !== user.id);
-    saveUsers(users);
+    purgeUserLocalData(user.id);
     setCurrentUserId(null);
-    set({ user: null, sessions: [], activeSession: null, redeemedRewardIds: [] });
-    set({ toast: 'Lokale Kontodaten wurden gelöscht.' });
+    set({
+      user: null,
+      sessions: [],
+      activeSession: null,
+      redeemedRewardIds: [],
+      userLocation: null,
+    });
+    set({
+      toast:
+        'Kontodaten auf diesem Gerät wurden gelöscht.',
+    });
   },
 
   logout: () => {
@@ -533,7 +603,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!user) return { ok: false, error: 'Bitte melden Sie sich an.' };
     if (activeSession) return { ok: false, error: 'Es läuft bereits eine Ladesitzung.' };
     if (stripeReady && user.paymentMethods.length === 0) {
-      return { ok: false, error: 'Bitte hinterlegen Sie eine Zahlungsmethode bei Stripe.' };
+      return { ok: false, error: 'Bitte hinterlegen Sie eine Zahlungsmethode unter Profil → Zahlung.' };
     }
     if (!stripeReady && user.paymentMethods.length === 0) {
       return { ok: false, error: 'Bitte hinterlegen Sie eine Zahlungsmethode.' };
@@ -573,7 +643,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       } catch (e) {
         return {
           ok: false,
-          error: e instanceof Error ? e.message : 'CitrineOS Ladestart fehlgeschlagen',
+          error: e instanceof Error ? e.message : 'Ladevorgang konnte nicht gestartet werden',
         };
       }
     }
@@ -642,7 +712,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         }
         await pollCitrineosSession(activeSession);
       } catch (e) {
-        set({ toast: e instanceof Error ? e.message : 'CitrineOS Stop fehlgeschlagen' });
+        set({ toast: e instanceof Error ? e.message : 'Ladevorgang konnte nicht beendet werden' });
         return;
       }
     }
@@ -669,7 +739,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       } catch (e) {
         paymentStatus = 'failed';
         set({
-          toast: e instanceof Error ? e.message : 'Stripe-Zahlung fehlgeschlagen',
+          toast: e instanceof Error ? e.message : 'Zahlung fehlgeschlagen',
         });
       }
     }
@@ -681,26 +751,57 @@ export const useAppStore = create<AppState>((set, get) => ({
       paymentStatus,
       stripePaymentIntentId,
     };
-    const co2 = ended.energyKwh * 0.64;
-    const points = ended.pointsEarned;
-    const updatedUser: UserProfile = {
-      ...user,
-      totalKwh: user.totalKwh + ended.energyKwh,
-      totalSessions: user.totalSessions + 1,
-      co2SavedKg: Math.round(user.co2SavedKg + co2),
-      loyaltyPoints: user.loyaltyPoints + points,
-      loyaltyTier: computeTier(user.loyaltyPoints + points),
-    };
+    const gam = processSessionGamification(user, ended);
+    const updatedUser = gam.user;
     const users = loadUsers().map((u) => (u.id === user.id ? updatedUser : u));
     saveUsers(users);
     const sessions = get().sessions.map((s) => (s.id === ended.id ? ended : s));
     saveSessions(user.id, sessions);
+    const toastMsg = `Laden beendet · ${formatGamificationToast(gam, 'de')}`;
     set({
       user: updatedUser,
       sessions,
       activeSession: null,
-      toast: `Laden beendet · +${points} BC Points`,
+      toast: toastMsg,
     });
+  },
+
+  recordCommunityReport: () => {
+    const { user } = get();
+    if (!user) return;
+    const gam = processReportGamification(user);
+    const users = loadUsers().map((u) => (u.id === user.id ? gam.user : u));
+    saveUsers(users);
+    set({
+      user: gam.user,
+      toast: gam.newBadgeIds.length
+        ? `Meldung gespeichert · ${formatGamificationToast(gam, 'de')}`
+        : 'Danke für Ihre Community-Meldung!',
+    });
+  },
+
+  syncGamification: () => {
+    const { user } = get();
+    if (!user) return;
+    const sync = syncPendingChallenges(user);
+    if (!sync.pointsDelta) return;
+    const users = loadUsers().map((u) => (u.id === user.id ? sync.user : u));
+    saveUsers(users);
+    set({ user: sync.user, toast: formatGamificationToast(sync, 'de') });
+  },
+
+  claimWeeklyChallenge: (challengeId) => {
+    const { user } = get();
+    if (!user) return { ok: false, error: 'Bitte anmelden.' };
+    const res = claimChallengeReward(user, challengeId);
+    if (!res.ok || !res.user) return { ok: false, error: res.error };
+    const users = loadUsers().map((u) => (u.id === user.id ? res.user! : u));
+    saveUsers(users);
+    set({
+      user: res.user,
+      toast: `Challenge abgeschlossen · +${res.pointsDelta} BC Points`,
+    });
+    return { ok: true };
   },
 
   redeemReward: (rewardId, pointsCost) => {
@@ -721,24 +822,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   getFilteredStations: () => {
-    const { searchQuery, filterAvailableOnly, filterConnector } = get();
-    let list = [...getStations()];
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      list = list.filter(
-        (s) =>
-          s.name.toLowerCase().includes(q) ||
-          s.city.toLowerCase().includes(q) ||
-          s.address.toLowerCase().includes(q) ||
-          s.evseCode.toLowerCase().includes(q)
-      );
-    }
-    if (filterAvailableOnly) {
-      list = list.filter((s) => s.connectors.some((c) => c.status === 'available'));
-    }
-    if (filterConnector !== 'all') {
-      list = list.filter((s) => s.connectors.some((c) => c.type === filterConnector));
-    }
+    const { searchQuery, stationFilters } = get();
+    let list = applyStationFilters(getStations(), stationFilters);
+    list = searchStations(list, searchQuery);
     return list;
   },
 

@@ -66,7 +66,9 @@ export function StripePaymentSetup({
   if (!stripePromise) {
     return (
       <p className="text-sm text-bc-warn">
-        VITE_STRIPE_PUBLISHABLE_KEY fehlt. Bitte Stripe in .env konfigurieren.
+        {import.meta.env.DEV
+          ? 'Zahlungsdienst nicht konfiguriert (VITE_STRIPE_PUBLISHABLE_KEY).'
+          : 'Zahlungsmethode kann derzeit nicht hinzugefügt werden.'}
       </p>
     );
   }

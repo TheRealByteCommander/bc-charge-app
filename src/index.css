@@ -7,6 +7,18 @@
     -webkit-tap-highlight-color: transparent;
   }
 
+  html {
+    font-size: 100%;
+  }
+
+  html[data-a11y-font='large'] {
+    font-size: 112.5%;
+  }
+
+  html[data-a11y-font='xlarge'] {
+    font-size: 125%;
+  }
+
   html,
   body,
   #root {
@@ -17,6 +29,85 @@
   body {
     overscroll-behavior: none;
   }
+
+  html[data-a11y-contrast='high'] body {
+    background-color: #000;
+    color: #fff;
+  }
+
+  html[data-a11y-motion='reduced'] *,
+  html[data-a11y-motion='reduced'] *::before,
+  html[data-a11y-motion='reduced'] *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  :focus-visible {
+    outline: 2px solid #2ee59d;
+    outline-offset: 2px;
+  }
+
+  html[data-a11y-contrast='high'] :focus-visible {
+    outline: 3px solid #fff;
+    outline-offset: 3px;
+  }
+}
+
+/* Hoher Kontrast – Tailwind-Farben überschreiben */
+html[data-a11y-contrast='high'] .text-bc-muted {
+  color: #e2eaf4 !important;
+}
+
+html[data-a11y-contrast='high'] .text-bc-text {
+  color: #ffffff !important;
+}
+
+html[data-a11y-contrast='high'] .border-bc-border,
+html[data-a11y-contrast='high'] .border-bc-border\/80 {
+  border-color: #9aacbf !important;
+}
+
+html[data-a11y-contrast='high'] .bg-bc-elevated,
+html[data-a11y-contrast='high'] .bg-bc-surface {
+  background-color: #0a0a0a !important;
+}
+
+html[data-a11y-contrast='high'] .text-bc-accent {
+  color: #5dffb8 !important;
+}
+
+html[data-a11y-contrast='high'] .btn-primary {
+  color: #000 !important;
+  box-shadow: none;
+  border: 2px solid #fff;
+}
+
+html[data-a11y-contrast='high'] .glass {
+  background-color: rgba(0, 0, 0, 0.95);
+  border-color: #9aacbf;
+}
+
+html[data-a11y-simple='true'] .a11y-hide-simple {
+  display: none !important;
+}
+
+html[data-a11y-simple='true'] .a11y-nav-link {
+  min-height: 3.25rem;
+  padding-top: 0.75rem;
+  padding-bottom: 0.75rem;
+  font-size: 0.8125rem;
+}
+
+html[data-a11y-simple='true'] .a11y-nav-link svg {
+  height: 1.75rem;
+  width: 1.75rem;
+}
+
+html[data-a11y-font='large'] .a11y-nav-link,
+html[data-a11y-font='xlarge'] .a11y-nav-link {
+  min-height: 3.5rem;
+  font-size: 0.875rem;
 }
 
 @layer components {

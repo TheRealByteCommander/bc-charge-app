@@ -1,74 +1,165 @@
 import { Link } from 'react-router-dom';
-import { companyInfo } from '../data/company';
+import { companyInfo, dataProtectionAuthority } from '../data/company';
+import { LegalPageLayout, LegalSection } from '../components/LegalPageLayout';
+import { LOCAL_STORAGE_DISCLOSURE } from '../utils/privacy';
 
 export function PrivacyPage() {
   return (
-    <div className="page-shell prose prose-invert max-w-none">
-      <h1 className="font-display text-2xl font-bold text-bc-text">Datenschutz</h1>
-      <p className="mt-2 text-sm text-bc-muted">Stand: Juni 2026 · BC Charge (Demo-/Entwicklungsstand)</p>
-
-      <section className="mt-6 space-y-3 text-sm text-bc-muted leading-relaxed">
-        <h2 className="font-display text-lg font-semibold text-bc-text">Verantwortlicher</h2>
+    <LegalPageLayout
+      title="Datenschutzerklärung"
+      subtitle={`${companyInfo.brand} · Stand Juni 2026 · Art. 13/14 DSGVO`}
+    >
+      <LegalSection title="1. Verantwortlicher">
         <p>
-          {companyInfo.legalName} · {companyInfo.street} · {companyInfo.zip} {companyInfo.city}
+          {companyInfo.legalName}
+          <br />
+          {companyInfo.street}, {companyInfo.zip} {companyInfo.city}
+          <br />
+          E-Mail:{' '}
+          <a href={`mailto:${companyInfo.emailPrivacy}`} className="text-bc-accent">
+            {companyInfo.emailPrivacy}
+          </a>
           <br />
           Telefon:{' '}
           <a href={`tel:${companyInfo.phoneTel}`} className="text-bc-accent">
             {companyInfo.phoneDisplay}
           </a>
           <br />
-          E-Mail:{' '}
-          <a href={`mailto:${companyInfo.emailLegal}`} className="text-bc-accent">
-            {companyInfo.emailLegal}
-          </a>
+          <Link to="/impressum" className="text-bc-accent">
+            Impressum
+          </Link>
         </p>
+      </LegalSection>
 
-        <h2 className="font-display text-lg font-semibold text-bc-text">Welche Daten verarbeitet werden</h2>
+      <LegalSection title="2. Zwecke & Datenkategorien">
         <ul className="list-disc space-y-1 pl-5">
-          <li>Profil (Name, E-Mail, Telefon, Mitglieds-ID)</li>
-          <li>Ladehistorie, Fahrzeuge, Favoriten, BC Points (aktuell im Browser/localStorage)</li>
-          <li>Standort (optional, nur nach Einwilligung, für Entfernungsanzeige)</li>
-          <li>Zahlungsdaten über Stripe (Karten-/SEPA-Token, keine vollständigen Kartendaten auf unseren Servern)</li>
+          <li>Konto: Name, E-Mail, Telefon, Mitglieds-ID, Fahrzeuge, Favoriten</li>
+          <li>Laden: Sessions, kWh, Kosten, Zahlungsreferenzen</li>
+          <li>Standort (optional): GPS-Koordinaten nur nach Einwilligung, für Entfernungen</li>
+          <li>Technisch: App-Einstellungen, Offline-Karten-Cache, Community-Meldungen</li>
+          <li>Marketing (optional): Werbe-Benachrichtigungen nur mit Einwilligung</li>
         </ul>
+      </LegalSection>
 
-        <h2 className="font-display text-lg font-semibold text-bc-text">Rechtsgrundlagen (DSGVO)</h2>
+      <LegalSection title="3. Rechtsgrundlagen">
         <ul className="list-disc space-y-1 pl-5">
-          <li>Vertrag / vorvertragliche Maßnahmen (Art. 6 Abs. 1 lit. b) – Nutzung der Lade-App</li>
-          <li>Einwilligung (Art. 6 Abs. 1 lit. a) – Standort, Marketing-Benachrichtigungen</li>
-          <li>Berechtigtes Interesse (Art. 6 Abs. 1 lit. f) – Betrugsprävention, IT-Sicherheit</li>
+          <li>
+            <strong>Art. 6 Abs. 1 lit. b DSGVO</strong> – Vertrag: Konto, Laden, Abrechnung
+          </li>
+          <li>
+            <strong>Art. 6 Abs. 1 lit. a DSGVO</strong> – Einwilligung: Standort, Marketing
+          </li>
+          <li>
+            <strong>Art. 6 Abs. 1 lit. f DSGVO</strong> – Berechtigtes Interesse: IT-Sicherheit,
+            Betrugsprävention, technischer Betrieb
+          </li>
         </ul>
+      </LegalSection>
 
-        <h2 className="font-display text-lg font-semibold text-bc-text">Auftragsverarbeiter</h2>
+      <LegalSection title="4. Speicherung auf Ihrem Gerät">
         <p>
-          <strong>Stripe Payments Europe Ltd.</strong> – Zahlungsabwicklung (PCI-DSS). Es gelten die{' '}
-          <a
-            href="https://stripe.com/de/privacy"
-            className="text-bc-accent"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Stripe-Datenschutzhinweise
+          In dieser App werden Daten primär im Browser-Speicher (localStorage) gehalten, bis ein
+          serverseitiges Backend aktiv ist. Übersicht:
+        </p>
+        <div className="mt-2 overflow-hidden rounded-xl border border-bc-border">
+          <table className="w-full text-left text-xs">
+            <thead className="bg-bc-surface text-bc-text">
+              <tr>
+                <th className="px-3 py-2 font-medium">Speicher</th>
+                <th className="px-3 py-2 font-medium">Zweck</th>
+              </tr>
+            </thead>
+            <tbody>
+              {LOCAL_STORAGE_DISCLOSURE.map((row) => (
+                <tr key={row.key} className="border-t border-bc-border">
+                  <td className="px-3 py-2 font-mono text-[10px]">{row.key}</td>
+                  <td className="px-3 py-2">{row.purpose}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </LegalSection>
+
+      <LegalSection title="5. Speicherdauer">
+        <ul className="list-disc space-y-1 pl-5">
+          <li>Kontodaten: bis zur Löschung des Kontos (Profil oder Anfrage an uns)</li>
+          <li>Ladehistorie: steuer- und handelsrechtlich ggf. bis zu 10 Jahre (Produktion)</li>
+          <li>Standort-Einwilligung: bis Widerruf in der App</li>
+          <li>Marketing-Einwilligung: bis Widerruf unter Benachrichtigungen</li>
+        </ul>
+      </LegalSection>
+
+      <LegalSection title="6. Empfänger & Auftragsverarbeiter">
+        <ul className="list-disc space-y-2 pl-5">
+          <li>
+            <strong>Stripe Payments Europe Ltd.</strong> – Zahlungsabwicklung.{' '}
+            <a
+              href="https://stripe.com/de/privacy"
+              className="text-bc-accent"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Datenschutz bei Stripe
+            </a>
+            . Kartendaten werden nicht auf unseren Servern gespeichert.
+          </li>
+          <li>
+            <strong>Ladepunkt-Backend (CitrineOS)</strong> – sofern konfiguriert: Status und Tarife
+            von Ladestationen (keine direkte Identifikation ohne Ladevorgang).
+          </li>
+          <li>
+            <strong>OpenStreetMap / Leaflet</strong> – Kartenkacheln; beim Laden der Karte wird Ihre
+            IP an Karten-Server übermittelt.
+          </li>
+          <li>
+            <strong>Google Fonts</strong> – Schriftarten werden beim Seitenaufruf von Google-Servern
+            geladen (IP-Adresse). Sie können dies in den Browser-Einstellungen einschränken.
+          </li>
+        </ul>
+      </LegalSection>
+
+      <LegalSection title="7. Ihre Rechte">
+        <p>Sie haben nach der DSGVO insbesondere folgende Rechte:</p>
+        <ul className="list-disc space-y-1 pl-5">
+          <li>Auskunft (Art. 15), Berichtigung (Art. 16), Löschung (Art. 17)</li>
+          <li>Einschränkung (Art. 18), Datenübertragbarkeit (Art. 20), Widerspruch (Art. 21)</li>
+          <li>Widerruf erteilter Einwilligungen mit Wirkung für die Zukunft</li>
+        </ul>
+        <p className="mt-2">
+          In der App: <strong>Profil → Daten exportieren</strong> (JSON),{' '}
+          <strong>Standort widerrufen</strong>, <strong>Konto löschen</strong>. Für Anfragen:{' '}
+          <a href={`mailto:${companyInfo.emailPrivacy}`} className="text-bc-accent">
+            {companyInfo.emailPrivacy}
           </a>
           .
         </p>
+      </LegalSection>
 
-        <h2 className="font-display text-lg font-semibold text-bc-text">Speicherdauer &amp; Ihre Rechte</h2>
+      <LegalSection title="8. Beschwerderecht">
         <p>
-          Sie können unter <strong>Profil → Lokale Daten löschen</strong> alle auf diesem Gerät gespeicherten
-          Kontodaten entfernen. Weitere Rechte: Auskunft, Berichtigung, Löschung, Einschränkung, Widerspruch,
-          Datenübertragbarkeit, Beschwerde bei einer Aufsichtsbehörde (Art. 15–21 DSGVO).
+          Sie können sich bei einer Aufsichtsbehörde beschweren, z. B. beim{' '}
+          {dataProtectionAuthority.name}, {dataProtectionAuthority.street},{' '}
+          {dataProtectionAuthority.zip} {dataProtectionAuthority.city},{' '}
+          <a href={dataProtectionAuthority.website} className="text-bc-accent" target="_blank" rel="noopener noreferrer">
+            {dataProtectionAuthority.website}
+          </a>
+          .
         </p>
+      </LegalSection>
 
-        <h2 className="font-display text-lg font-semibold text-bc-text">Sicherheitshinweis (Demo)</h2>
+      <LegalSection title="9. Pflicht zur Bereitstellung">
         <p>
-          Diese Version speichert Konten im Browser und ist nicht für den Produktivbetrieb ohne serverseitige
-          Authentifizierung geeignet. Details: <code className="text-bc-text">SECURITY.md</code> im Projekt.
+          Die Bereitstellung von Kontodaten ist für den Vertrag erforderlich. Standort und Marketing
+          sind freiwillig. Ohne Standort nutzen Sie Karte und Suche ohne exakte Entfernungsanzeige.
         </p>
-      </section>
+      </LegalSection>
 
-      <Link to="/profil" className="btn-secondary mt-8 inline-block">
-        Zurück zum Profil
-      </Link>
-    </div>
+      <p className="text-xs text-bc-muted">
+        <Link to="/nutzungsbedingungen" className="text-bc-accent">
+          Nutzungsbedingungen
+        </Link>
+      </p>
+    </LegalPageLayout>
   );
 }
