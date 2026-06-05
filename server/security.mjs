@@ -119,8 +119,9 @@ export function getCorsOptions() {
         callback(new Error('CORS blockiert'));
       }
     },
-    methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'X-BC-API-Key', 'X-BC-User-Id'],
+    credentials: true,
+    methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'X-BC-API-Key', 'X-BC-User-Id', 'Cookie'],
   };
 }
 

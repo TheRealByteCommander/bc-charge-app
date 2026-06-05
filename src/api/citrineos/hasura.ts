@@ -1,4 +1,6 @@
+import { apiConfig } from '../../config/api';
 import { citrineosConfig } from '../../config/citrineos';
+import { isBackendMode } from '../../services/backendMode';
 import type { CitrineosTransaction, HasuraChargingStationRow } from './types';
 
 const STATIONS_QUERY = `
@@ -86,12 +88,14 @@ const TX_BY_REMOTE_START_QUERY = `
 
 async function hasuraRequest<T>(query: string, variables: Record<string, unknown>): Promise<T> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (citrineosConfig.hasuraAdminSecret) {
+  const url = isBackendMode() ? `${apiConfig.baseUrl}/api/citrineos/hasura` : citrineosConfig.hasuraUrl;
+  if (!isBackendMode() && citrineosConfig.hasuraAdminSecret) {
     headers['x-hasura-admin-secret'] = citrineosConfig.hasuraAdminSecret;
   }
 
-  const res = await fetch(citrineosConfig.hasuraUrl, {
+  const res = await fetch(url, {
     method: 'POST',
+    credentials: isBackendMode() ? 'include' : 'same-origin',
     headers,
     body: JSON.stringify({ query, variables }),
   });

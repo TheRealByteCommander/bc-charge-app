@@ -1,4 +1,5 @@
 import { stripeConfig } from '../../config/stripe';
+import { isBackendMode } from '../../services/backendMode';
 import { getStripeApiHeaders } from '../../utils/apiAuth';
 
 export class StripeApiError extends Error {
@@ -15,6 +16,7 @@ async function stripeApi<T>(path: string, options: RequestInit = {}): Promise<T>
   const url = `${stripeConfig.apiBase}${path}`;
   const res = await fetch(url, {
     ...options,
+    credentials: isBackendMode() ? 'include' : 'same-origin',
     headers: {
       'Content-Type': 'application/json',
       ...getStripeApiHeaders(),
@@ -99,6 +101,7 @@ export async function chargeSession(params: {
   currency?: string;
   description?: string;
   sessionId?: string;
+  sessionCostEur?: number;
 }): Promise<{ paymentIntentId: string; status: string; paid: boolean }> {
   return stripeApi('/api/stripe/charge-session', {
     method: 'POST',

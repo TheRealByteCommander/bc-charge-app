@@ -139,6 +139,10 @@ export interface ChargingSession {
   citrineosBacked?: boolean;
   stripePaymentIntentId?: string;
   paymentStatus?: 'pending' | 'paid' | 'failed' | 'skipped';
+  /** Rechnungsnummer (z. B. BC-2026-123456) */
+  invoiceNumber?: string;
+  /** Zeitpunkt des E-Mail-Versands der Rechnung (ISO) */
+  invoiceEmailedAt?: string | null;
 }
 
 export interface LoyaltyReward {

@@ -76,6 +76,7 @@ export async function chargeChargingSession(
     currency: 'eur',
     description,
     sessionId,
+    sessionCostEur: amountEur,
   });
 }
 

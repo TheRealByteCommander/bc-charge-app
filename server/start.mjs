@@ -6,6 +6,16 @@ import { loadProjectEnv } from './loadEnv.mjs';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const loadedFrom = loadProjectEnv();
 
+if (!process.env.BC_JWT_SECRET) {
+  console.warn('[bc-charge] BC_JWT_SECRET fehlt – Dev-Fallback aktiv (nicht für Produktion).');
+}
+const dbClient = (process.env.BC_DB_CLIENT ?? (process.env.DATABASE_URL ? 'postgres' : 'sqlite')).toLowerCase();
+if (dbClient === 'postgres' && !process.env.DATABASE_URL) {
+  console.warn('[bc-charge] BC_DB_CLIENT=postgres, aber DATABASE_URL fehlt.');
+}
+if (!process.env.SMTP_HOST) {
+  console.warn('[bc-charge] SMTP nicht konfiguriert – Rechnungs-PDFs nur per Download, kein E-Mail-Versand.');
+}
 if (!process.env.STRIPE_SECRET_KEY) {
   console.warn('[bc-charge] STRIPE_SECRET_KEY fehlt – Stripe-API antwortet mit 503.');
   console.warn('[bc-charge] Projektordner:', root);

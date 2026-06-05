@@ -45,6 +45,22 @@ import { generateId, generateMembershipId } from '../utils/format';
 import { getGeoConsent } from '../utils/geoConsent';
 import { downloadUserDataExport, purgeUserLocalData } from '../utils/privacy';
 import {
+  deleteAccountRemote,
+  downloadExportFromServer,
+  fetchCurrentUser,
+  loginUser,
+  logoutUser,
+  registerUser,
+} from '../api/backend/auth';
+import { fetchRedeemedRewards, patchProfile, redeemRewardRemote } from '../api/backend/profile';
+import {
+  completeSessionRemote,
+  fetchSessions,
+  saveSession,
+  updateSession,
+} from '../api/backend/sessions';
+import { isBackendMode } from '../services/backendMode';
+import {
   getCurrentUserId,
   isOnboardingDone,
   loadRedeemed,
@@ -284,6 +300,45 @@ export const useAppStore = create<AppState>((set, get) => ({
   init: async () => {
     const runId = ++initRun;
 
+    if (isBackendMode()) {
+      const sync = await syncStationsFromCitrineos();
+      if (runId !== initRun) return;
+
+      const userRaw = await fetchCurrentUser();
+      const user = userRaw ? enrichUser(userRaw) : null;
+      if (user) setCurrentUserId(user.id);
+
+      let citrineosConnected = false;
+      let citrineosSyncError: string | null = null;
+      let stationDataSource: StationDataSource = getStationDataSource();
+      if (sync.ok) {
+        citrineosConnected = true;
+        stationDataSource = 'citrineos';
+      } else if (sync.error && !sync.error.includes('nicht erreichbar')) {
+        citrineosSyncError = sync.error;
+      }
+      saveStationsOfflineCache(getStations(), getStationDataSource());
+
+      const sessions = user ? await fetchSessions() : [];
+      const redeemedRewardIds = user ? await fetchRedeemedRewards() : [];
+
+      set({
+        initialized: true,
+        onboardingDone: isOnboardingDone() || get().onboardingDone,
+        user,
+        sessions,
+        activeSession: sessions.find((s) => s.status === 'active') ?? null,
+        redeemedRewardIds,
+        citrineosConnected,
+        citrineosSyncError,
+        stationDataSource,
+        pricingSyncedAt: sync.ok ? (sync.pricingSyncedAt ?? null) : null,
+      });
+
+      if (user) await get().syncStripePayments();
+      return;
+    }
+
     let users = loadUsers();
     if (!users.some((u) => u.email === 'demo@bc-charge.com')) {
       users = [...users, seedDemoUser()];
@@ -410,6 +465,27 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!data.acceptPrivacy || !data.acceptTerms) {
       return { ok: false, error: 'Bitte Datenschutz und Nutzungsbedingungen bestätigen.' };
     }
+    if (isBackendMode()) {
+      try {
+        const user = enrichUser(await registerUser(data));
+        setCurrentUserId(user.id);
+        setOnboardingDone();
+        set({
+          user,
+          onboardingDone: true,
+          sessions: [],
+          activeSession: null,
+          redeemedRewardIds: [],
+        });
+        void get().syncStripePayments();
+        return { ok: true };
+      } catch (e) {
+        return {
+          ok: false,
+          error: e instanceof Error ? e.message : 'Registrierung fehlgeschlagen.',
+        };
+      }
+    }
     const users = loadUsers();
     if (users.some((u) => u.email.toLowerCase() === data.email.toLowerCase())) {
       return { ok: false, error: 'Diese E-Mail ist bereits registriert.' };
@@ -461,6 +537,27 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   login: async (email, password) => {
+    if (isBackendMode()) {
+      try {
+        const activeUser = enrichUser(await loginUser(email, password));
+        const sessions = await fetchSessions();
+        const redeemedRewardIds = await fetchRedeemedRewards();
+        setCurrentUserId(activeUser.id);
+        set({
+          user: activeUser,
+          sessions,
+          activeSession: sessions.find((s) => s.status === 'active') ?? null,
+          redeemedRewardIds,
+        });
+        void get().syncStripePayments();
+        return { ok: true };
+      } catch (e) {
+        return {
+          ok: false,
+          error: e instanceof Error ? e.message : 'E-Mail oder Passwort ist ungültig.',
+        };
+      }
+    }
     const users = loadUsers();
     const user = users.find((u) => u.email === email.toLowerCase());
     if (!user || !(await verifyPassword(password, user.passwordHash))) {
@@ -488,6 +585,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   exportUserData: () => {
     const { user } = get();
     if (!user) return;
+    if (isBackendMode()) {
+      void downloadExportFromServer()
+        .then(() => set({ toast: 'Datenexport wurde heruntergeladen.' }))
+        .catch(() => set({ toast: 'Export fehlgeschlagen.' }));
+      return;
+    }
     try {
       downloadUserDataExport(user.id);
       set({ toast: 'Datenexport wurde heruntergeladen.' });
@@ -499,7 +602,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   deleteAccount: () => {
     const { user } = get();
     if (!user) return;
-    purgeUserLocalData(user.id);
+    if (isBackendMode()) {
+      void deleteAccountRemote();
+    } else {
+      purgeUserLocalData(user.id);
+    }
     setCurrentUserId(null);
     set({
       user: null,
@@ -509,12 +616,14 @@ export const useAppStore = create<AppState>((set, get) => ({
       userLocation: null,
     });
     set({
-      toast:
-        'Kontodaten auf diesem Gerät wurden gelöscht.',
+      toast: isBackendMode()
+        ? 'Ihr Konto wurde gelöscht.'
+        : 'Kontodaten auf diesem Gerät wurden gelöscht.',
     });
   },
 
   logout: () => {
+    if (isBackendMode()) void logoutUser();
     setCurrentUserId(null);
     set({ user: null, sessions: [], activeSession: null, redeemedRewardIds: [] });
   },
@@ -522,6 +631,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   updateProfile: (patch) => {
     const { user } = get();
     if (!user) return;
+    if (isBackendMode()) {
+      void patchProfile(patch).then((updated) => set({ user: enrichUser(updated) }));
+      return;
+    }
     const updated = { ...user, ...patch, loyaltyTier: computeTier(patch.loyaltyPoints ?? user.loyaltyPoints) };
     const users = loadUsers().map((u) => (u.id === user.id ? updated : u));
     saveUsers(users);
@@ -649,7 +762,18 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     const sessions = [session, ...get().sessions];
-    saveSessions(user.id, sessions);
+    if (isBackendMode()) {
+      try {
+        await saveSession(session);
+      } catch (e) {
+        return {
+          ok: false,
+          error: e instanceof Error ? e.message : 'Sitzung konnte nicht gespeichert werden.',
+        };
+      }
+    } else {
+      saveSessions(user.id, sessions);
+    }
     set({ activeSession: session, sessions });
     return { ok: true };
   },
@@ -695,7 +819,15 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     const sessions = get().sessions.map((s) => (s.id === updated.id ? updated : s));
-    saveSessions(user.id, sessions);
+    if (isBackendMode()) {
+      try {
+        await updateSession(updated);
+      } catch {
+        /* lokaler Stand bleibt sichtbar */
+      }
+    } else {
+      saveSessions(user.id, sessions);
+    }
     set({ activeSession: updated, sessions });
   },
 
@@ -753,9 +885,45 @@ export const useAppStore = create<AppState>((set, get) => ({
     };
     const gam = processSessionGamification(user, ended);
     const updatedUser = gam.user;
+    const sessions = get().sessions.map((s) => (s.id === ended.id ? ended : s));
+
+    if (isBackendMode()) {
+      try {
+        const result = await completeSessionRemote(ended, updatedUser.gamification);
+        const mergedUser = enrichUser({
+          ...result.user,
+          gamification: updatedUser.gamification,
+          loyaltyPoints: updatedUser.loyaltyPoints,
+          loyaltyTier: updatedUser.loyaltyTier,
+        });
+        await patchProfile({
+          gamification: mergedUser.gamification,
+          loyaltyPoints: mergedUser.loyaltyPoints,
+          loyaltyTier: mergedUser.loyaltyTier,
+          totalKwh: mergedUser.totalKwh,
+          totalSessions: mergedUser.totalSessions,
+          co2SavedKg: mergedUser.co2SavedKg,
+        });
+        const invoiceHint = result.invoice?.emailSent
+          ? ' · Rechnung per E-Mail versendet'
+          : result.invoice?.error
+            ? ' · Rechnung konnte nicht per E-Mail versendet werden'
+            : '';
+        set({
+          user: mergedUser,
+          sessions: sessions.map((s) => (s.id === result.session.id ? result.session : s)),
+          activeSession: null,
+          toast: `Laden beendet · ${formatGamificationToast(gam, 'de')}${invoiceHint}`,
+        });
+        return;
+      } catch (e) {
+        set({ toast: e instanceof Error ? e.message : 'Sitzung konnte nicht abgeschlossen werden.' });
+        return;
+      }
+    }
+
     const users = loadUsers().map((u) => (u.id === user.id ? updatedUser : u));
     saveUsers(users);
-    const sessions = get().sessions.map((s) => (s.id === ended.id ? ended : s));
     saveSessions(user.id, sessions);
     const toastMsg = `Laden beendet · ${formatGamificationToast(gam, 'de')}`;
     set({
@@ -770,6 +938,21 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { user } = get();
     if (!user) return;
     const gam = processReportGamification(user);
+    if (isBackendMode()) {
+      void patchProfile({
+        gamification: gam.user.gamification,
+        loyaltyPoints: gam.user.loyaltyPoints,
+        loyaltyTier: gam.user.loyaltyTier,
+      }).then((updated) =>
+        set({
+          user: enrichUser(updated),
+          toast: gam.newBadgeIds.length
+            ? `Meldung gespeichert · ${formatGamificationToast(gam, 'de')}`
+            : 'Danke für Ihre Community-Meldung!',
+        })
+      );
+      return;
+    }
     const users = loadUsers().map((u) => (u.id === user.id ? gam.user : u));
     saveUsers(users);
     set({
@@ -785,6 +968,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!user) return;
     const sync = syncPendingChallenges(user);
     if (!sync.pointsDelta) return;
+    if (isBackendMode()) {
+      void patchProfile({
+        gamification: sync.user.gamification,
+        loyaltyPoints: sync.user.loyaltyPoints,
+        loyaltyTier: sync.user.loyaltyTier,
+      }).then((updated) => set({ user: enrichUser(updated), toast: formatGamificationToast(sync, 'de') }));
+      return;
+    }
     const users = loadUsers().map((u) => (u.id === user.id ? sync.user : u));
     saveUsers(users);
     set({ user: sync.user, toast: formatGamificationToast(sync, 'de') });
@@ -795,6 +986,19 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!user) return { ok: false, error: 'Bitte anmelden.' };
     const res = claimChallengeReward(user, challengeId);
     if (!res.ok || !res.user) return { ok: false, error: res.error };
+    if (isBackendMode()) {
+      void patchProfile({
+        gamification: res.user.gamification,
+        loyaltyPoints: res.user.loyaltyPoints,
+        loyaltyTier: res.user.loyaltyTier,
+      }).then((updated) =>
+        set({
+          user: enrichUser(updated),
+          toast: `Challenge abgeschlossen · +${res.pointsDelta} BC Points`,
+        })
+      );
+      return { ok: true };
+    }
     const users = loadUsers().map((u) => (u.id === user.id ? res.user! : u));
     saveUsers(users);
     set({
@@ -812,6 +1016,20 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
     if (user.loyaltyPoints < pointsCost) {
       return { ok: false, error: 'Nicht genügend BC Points.' };
+    }
+    if (isBackendMode()) {
+      void redeemRewardRemote(rewardId, pointsCost)
+        .then((res) =>
+          set({
+            user: enrichUser(res.user),
+            redeemedRewardIds: res.rewardIds,
+            toast: 'Prämie erfolgreich eingelöst!',
+          })
+        )
+        .catch((e) =>
+          set({ toast: e instanceof Error ? e.message : 'Einlösung fehlgeschlagen.' })
+        );
+      return { ok: true };
     }
     const newPoints = user.loyaltyPoints - pointsCost;
     get().updateProfile({ loyaltyPoints: newPoints, loyaltyTier: computeTier(newPoints) });

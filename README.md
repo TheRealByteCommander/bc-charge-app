@@ -4,7 +4,7 @@ Mobile-first Web-App für **BC Charge** (Charge Point Operator) – öffentliche
 
 ## Funktionen
 
-- Onboarding, Registrierung & Anmeldung (lokal persistiert)
+- Onboarding, Registrierung & Anmeldung (Backend-Modus oder lokal im Demo-Modus)
 - Interaktive Karte mit allen Ladestationen (Leaflet / Dark OSM)
 - Stationssuche, Filter, Favoriten, Detail & Navigation
 - QR-/Kamera-Scan & manuelle Ladepunkt-ID
@@ -71,7 +71,8 @@ docker compose up -d
 
 Kopieren Sie `.env.example` nach `.env` und passen Sie URLs an.
 
-Ohne laufendes CitrineOS bleiben die **Demo-Stationen** und die **lokale Ladesimulation** aktiv. Konto und BC Points werden im Browser (localStorage) gehalten.
+Ohne laufendes CitrineOS bleiben die **Demo-Stationen** und die **lokale Ladesimulation** aktiv.  
+Mit `VITE_BC_USE_BACKEND=true` liegen Konto/Sessions serverseitig; ohne Backend-Modus im Browser (`localStorage`).
 
 ## Produkt-Roadmap (Marktführer-Ziel)
 
@@ -99,6 +100,12 @@ Einzeln: `npm run dev` + `npm run dev:stripe`
 - **`SECURITY.md`** – Risiken, umgesetzte Maßnahmen, Produktions-Checkliste
 - **`.env`**: `BC_STRIPE_API_KEY` und `VITE_BC_STRIPE_API_KEY` (gleicher Wert, min. 32 Zeichen) für den Stripe-BFF
 - Datenschutz in der App: **Profil → Datenschutz** (`/datenschutz`)
+
+## Skalierung (viele Kunden)
+
+- Für lokalen Betrieb: `BC_DB_CLIENT=sqlite`
+- Für Skalierung/mehrere API-Instanzen: `BC_DB_CLIENT=postgres` + `DATABASE_URL`
+- Connection Pool über `BC_DB_POOL_MAX` und `BC_DB_POOL_IDLE_MS`
 
 ## Hinweis
 

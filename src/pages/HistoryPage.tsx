@@ -1,16 +1,34 @@
-import { FileText } from 'lucide-react';
+import { useState } from 'react';
+import { Download, FileText } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { downloadInvoicePdf } from '../api/backend/invoices';
 import { useAppStore } from '../store/appStore';
+import { isBackendMode } from '../services/backendMode';
 import { formatCurrency, formatDate, formatKwh } from '../utils/format';
-
-function invoiceId(sessionId: string): string {
-  const n = sessionId.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
-  return `BC-2026-${String(100000 + (n % 900000)).slice(0, 6)}`;
-}
+import { displayInvoiceNumber } from '../utils/invoice';
 
 export function HistoryPage() {
   const user = useAppStore((s) => s.user);
+  const setToast = useAppStore((s) => s.setToast);
   const sessions = useAppStore((s) => s.sessions).filter((s) => s.status === 'completed');
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const backend = isBackendMode();
+
+  async function handleDownload(sessionId: string, invoiceNumber: string) {
+    if (!backend) {
+      setToast('PDF-Rechnungen sind nur mit aktivem Backend verfügbar.');
+      return;
+    }
+    setDownloadingId(sessionId);
+    try {
+      await downloadInvoicePdf(sessionId, invoiceNumber);
+      setToast('Rechnung wurde heruntergeladen.');
+    } catch (e) {
+      setToast(e instanceof Error ? e.message : 'Download fehlgeschlagen.');
+    } finally {
+      setDownloadingId(null);
+    }
+  }
 
   if (!user) {
     return (
@@ -33,32 +51,44 @@ export function HistoryPage() {
             Noch keine abgeschlossenen Ladungen.
           </p>
         ) : (
-          sessions.map((sess) => (
-            <div key={sess.id} className="rounded-2xl border border-bc-border bg-bc-elevated p-4">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="font-medium">{sess.stationName}</p>
-                  <p className="text-sm text-bc-muted">{sess.endedAt && formatDate(sess.endedAt)}</p>
+          sessions.map((sess) => {
+            const invoiceNo = displayInvoiceNumber(sess);
+            const isDownloading = downloadingId === sess.id;
+            return (
+              <div key={sess.id} className="rounded-2xl border border-bc-border bg-bc-elevated p-4">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="font-medium">{sess.stationName}</p>
+                    <p className="text-sm text-bc-muted">{sess.endedAt && formatDate(sess.endedAt)}</p>
+                  </div>
+                  <p className="font-display font-bold">{formatCurrency(sess.costEur)}</p>
                 </div>
-                <p className="font-display font-bold">{formatCurrency(sess.costEur)}</p>
+                <div className="mt-3 flex flex-wrap gap-3 text-sm text-bc-muted">
+                  <span>{formatKwh(sess.energyKwh)}</span>
+                  <span>{sess.connectorType}</span>
+                  <span className="text-bc-accent">+{sess.pointsEarned} Points</span>
+                  {sess.paymentStatus === 'paid' && <span className="text-bc-accent">Bezahlt</span>}
+                  {sess.paymentStatus === 'failed' && (
+                    <span className="text-bc-danger">Zahlung fehlgeschlagen</span>
+                  )}
+                  {sess.invoiceEmailedAt && <span>E-Rechnung versendet</span>}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void handleDownload(sess.id, invoiceNo)}
+                  disabled={!backend || isDownloading}
+                  className="mt-3 flex w-full items-center justify-between gap-2 rounded-lg bg-bc-surface px-3 py-2 text-left text-xs font-mono text-bc-muted transition hover:bg-bc-border disabled:cursor-not-allowed disabled:opacity-60"
+                  title={backend ? 'Rechnung als PDF herunterladen' : 'Backend erforderlich für PDF-Rechnungen'}
+                >
+                  <span className="flex items-center gap-2">
+                    <FileText className="h-3.5 w-3.5 shrink-0" />
+                    Rechnung {invoiceNo}
+                  </span>
+                  <Download className="h-3.5 w-3.5 shrink-0 text-bc-accent" />
+                </button>
               </div>
-              <div className="mt-3 flex flex-wrap gap-3 text-sm text-bc-muted">
-                <span>{formatKwh(sess.energyKwh)}</span>
-                <span>{sess.connectorType}</span>
-                <span className="text-bc-accent">+{sess.pointsEarned} Points</span>
-                {sess.paymentStatus === 'paid' && (
-                  <span className="text-bc-accent">Bezahlt</span>
-                )}
-                {sess.paymentStatus === 'failed' && (
-                  <span className="text-bc-danger">Zahlung fehlgeschlagen</span>
-                )}
-              </div>
-              <div className="mt-3 flex items-center gap-2 rounded-lg bg-bc-surface px-3 py-2 text-xs font-mono text-bc-muted">
-                <FileText className="h-3.5 w-3.5" />
-                Rechnung {invoiceId(sess.id)}
-              </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
     </div>

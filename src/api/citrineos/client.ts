@@ -1,4 +1,6 @@
+import { apiConfig } from '../../config/api';
 import { citrineosConfig } from '../../config/citrineos';
+import { isBackendMode } from '../../services/backendMode';
 import { citrineosPaths } from './paths';
 
 export class CitrineosApiError extends Error {
@@ -38,6 +40,21 @@ export async function citrineosFetch<T>(
   const timeout = setTimeout(() => controller.abort(), CITRINEOS_FETCH_MS);
   let res: Response;
   try {
+    if (isBackendMode()) {
+      res = await fetch(`${apiConfig.baseUrl}/api/citrineos/proxy`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ path, method, query, body }),
+        signal: controller.signal,
+      });
+      const proxyPayload = (await res.json()) as { ok?: boolean; data?: T; error?: string };
+      if (!res.ok || proxyPayload.ok === false) {
+        throw new CitrineosApiError(proxyPayload.error ?? `CitrineOS Proxy ${res.status}`, res.status, proxyPayload);
+      }
+      return proxyPayload.data as T;
+    }
+
     res = await fetch(buildUrl(path, query), {
       method,
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
@@ -71,6 +88,11 @@ export async function citrineosFetch<T>(
 
 export async function citrineosHealth(): Promise<boolean> {
   try {
+    if (isBackendMode()) {
+      const r = await fetch(`${apiConfig.baseUrl}/api/citrineos/health`, { credentials: 'include' });
+      const json = (await r.json()) as { ok?: boolean };
+      return Boolean(json.ok);
+    }
     await citrineosFetch<{ status?: string }>(citrineosPaths.health);
     return true;
   } catch {
