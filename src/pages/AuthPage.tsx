@@ -8,19 +8,32 @@ export function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
   const login = useAppStore((s) => s.login);
   const navigate = useNavigate();
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const res = await login(email, password);
-    if (res.ok) navigate('/', { replace: true });
-    else setError(res.error ?? 'Anmeldung fehlgeschlagen');
+    setLoading(true);
+    setError('');
+    try {
+      const res = await login(email, password);
+      if (res.ok) navigate('/', { replace: true });
+      else setError(res.error ?? 'Anmeldung fehlgeschlagen');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const demoLogin = async () => {
-    const res = await login('demo@bc-charge.com', 'demo123');
-    if (res.ok) navigate('/', { replace: true });
+    setLoading(true);
+    setError('');
+    try {
+      const res = await login('demo@bc-charge.com', 'demo123');
+      if (res.ok) navigate('/', { replace: true });
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -52,12 +65,12 @@ export function LoginPage() {
           />
         </div>
         {error && <p className="text-sm text-bc-danger">{error}</p>}
-        <button type="submit" className="btn-primary w-full">
-          Anmelden
+        <button type="submit" className="btn-primary w-full" disabled={loading}>
+          {loading ? 'Wird angemeldet…' : 'Anmelden'}
         </button>
       </form>
       {import.meta.env.DEV && (
-        <button type="button" onClick={demoLogin} className="btn-secondary mt-4 w-full">
+        <button type="button" onClick={demoLogin} className="btn-secondary mt-4 w-full" disabled={loading}>
           Demo-Konto testen
         </button>
       )}
@@ -84,6 +97,7 @@ export function RegisterPage() {
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [marketingOptIn, setMarketingOptIn] = useState(false);
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
   const register = useAppStore((s) => s.register);
   const navigate = useNavigate();
 
@@ -93,18 +107,24 @@ export function RegisterPage() {
       setError('Bitte Datenschutzerklärung und Nutzungsbedingungen bestätigen.');
       return;
     }
-    if (form.password.length < 6) {
-      setError('Passwort mindestens 6 Zeichen.');
+    if (form.password.length < 8) {
+      setError('Passwort muss mindestens 8 Zeichen haben.');
       return;
     }
-    const res = await register({
-      ...form,
-      acceptPrivacy,
-      acceptTerms,
-      marketingOptIn,
-    });
-    if (res.ok) navigate('/', { replace: true });
-    else setError(res.error ?? 'Registrierung fehlgeschlagen');
+    setLoading(true);
+    setError('');
+    try {
+      const res = await register({
+        ...form,
+        acceptPrivacy,
+        acceptTerms,
+        marketingOptIn,
+      });
+      if (res.ok) navigate('/', { replace: true });
+      else setError(res.error ?? 'Registrierung fehlgeschlagen');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -114,45 +134,76 @@ export function RegisterPage() {
       <p className="mt-2 text-bc-muted">Starten Sie mit 250 Willkommens-BC-Points.</p>
       <form onSubmit={submit} className="mt-6 space-y-3">
         <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label htmlFor="reg-firstName" className="mb-1.5 block text-sm text-bc-muted">
+              Vorname
+            </label>
+            <input
+              id="reg-firstName"
+              className="input-field"
+              required
+              autoComplete="given-name"
+              value={form.firstName}
+              onChange={(e) => setForm({ ...form, firstName: e.target.value })}
+            />
+          </div>
+          <div>
+            <label htmlFor="reg-lastName" className="mb-1.5 block text-sm text-bc-muted">
+              Nachname
+            </label>
+            <input
+              id="reg-lastName"
+              className="input-field"
+              required
+              autoComplete="family-name"
+              value={form.lastName}
+              onChange={(e) => setForm({ ...form, lastName: e.target.value })}
+            />
+          </div>
+        </div>
+        <div>
+          <label htmlFor="reg-email" className="mb-1.5 block text-sm text-bc-muted">
+            E-Mail
+          </label>
           <input
+            id="reg-email"
+            type="email"
             className="input-field"
-            placeholder="Vorname"
             required
-            value={form.firstName}
-            onChange={(e) => setForm({ ...form, firstName: e.target.value })}
-          />
-          <input
-            className="input-field"
-            placeholder="Nachname"
-            required
-            value={form.lastName}
-            onChange={(e) => setForm({ ...form, lastName: e.target.value })}
+            autoComplete="email"
+            value={form.email}
+            onChange={(e) => setForm({ ...form, email: e.target.value })}
           />
         </div>
-        <input
-          type="email"
-          className="input-field"
-          placeholder="E-Mail"
-          required
-          value={form.email}
-          onChange={(e) => setForm({ ...form, email: e.target.value })}
-        />
-        <input
-          type="tel"
-          className="input-field"
-          placeholder="Telefon"
-          required
-          value={form.phone}
-          onChange={(e) => setForm({ ...form, phone: e.target.value })}
-        />
-        <input
-          type="password"
-          className="input-field"
-          placeholder="Passwort (min. 6 Zeichen)"
-          required
-          value={form.password}
-          onChange={(e) => setForm({ ...form, password: e.target.value })}
-        />
+        <div>
+          <label htmlFor="reg-phone" className="mb-1.5 block text-sm text-bc-muted">
+            Telefon
+          </label>
+          <input
+            id="reg-phone"
+            type="tel"
+            className="input-field"
+            required
+            autoComplete="tel"
+            value={form.phone}
+            onChange={(e) => setForm({ ...form, phone: e.target.value })}
+          />
+        </div>
+        <div>
+          <label htmlFor="reg-password" className="mb-1.5 block text-sm text-bc-muted">
+            Passwort (min. 8 Zeichen)
+          </label>
+          <input
+            id="reg-password"
+            type="password"
+            className="input-field"
+            required
+            minLength={8}
+            autoComplete="new-password"
+            value={form.password}
+            onChange={(e) => setForm({ ...form, password: e.target.value })}
+          />
+        </div>
 
         <div className="space-y-3 rounded-xl border border-bc-border bg-bc-elevated p-3 text-sm">
           <label className="flex cursor-pointer items-start gap-3">
@@ -202,8 +253,8 @@ export function RegisterPage() {
         </div>
 
         {error && <p className="text-sm text-bc-danger">{error}</p>}
-        <button type="submit" className="btn-primary w-full">
-          Registrieren
+        <button type="submit" className="btn-primary w-full" disabled={loading}>
+          {loading ? 'Konto wird erstellt…' : 'Registrieren'}
         </button>
       </form>
       <p className="mt-6 text-center text-sm text-bc-muted">

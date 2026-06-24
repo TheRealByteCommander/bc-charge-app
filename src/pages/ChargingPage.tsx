@@ -1,15 +1,24 @@
 import { motion } from 'framer-motion';
-import { useState } from 'react';
-import { Pause, Square, Zap } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Square, Zap } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store/appStore';
+import { estimateRemainingChargeMinutes, vehicleTargetKwh } from '../utils/chargeEstimate';
 import { formatCurrency, formatDuration, formatKwh, formatPower } from '../utils/format';
 
 export function ChargingPage() {
   const activeSession = useAppStore((s) => s.activeSession);
+  const user = useAppStore((s) => s.user);
   const stopSession = useAppStore((s) => s.stopSession);
   const navigate = useNavigate();
   const [stopping, setStopping] = useState(false);
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    if (!activeSession) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [activeSession]);
 
   if (!activeSession) {
     return (
@@ -17,15 +26,25 @@ export function ChargingPage() {
         <Zap className="h-16 w-16 text-bc-muted opacity-40" />
         <h1 className="mt-6 font-display text-xl font-bold">Kein aktiver Ladevorgang</h1>
         <p className="mt-2 text-bc-muted">Wählen Sie eine Station und starten Sie das Laden.</p>
-        <Link to="/stationen" className="btn-primary mt-8">
-          Station finden
+        <Link to="/scan" className="btn-primary mt-8">
+          Ladepunkt-ID eingeben
         </Link>
       </div>
     );
   }
 
-  const elapsed = Math.floor((Date.now() - new Date(activeSession.startedAt).getTime()) / 1000);
-  const progress = Math.min(100, (activeSession.energyKwh / 60) * 100);
+  const vehicle = user?.vehicles.find((v) => v.id === activeSession.vehicleId);
+  const targetKwh = vehicle ? vehicleTargetKwh(vehicle) : 60;
+  const elapsed = Math.floor((now - new Date(activeSession.startedAt).getTime()) / 1000);
+  const progress = Math.min(100, (activeSession.energyKwh / targetKwh) * 100);
+  const remainingMin = estimateRemainingChargeMinutes(
+    activeSession.energyKwh,
+    targetKwh,
+    activeSession.powerKw
+  );
+  const socPercent = vehicle
+    ? Math.min(100, Math.round((activeSession.energyKwh / vehicle.batteryKwh) * 100))
+    : null;
 
   const handleStop = async () => {
     setStopping(true);
@@ -46,7 +65,20 @@ export function ChargingPage() {
         {activeSession.connectorType} · {formatPower(activeSession.powerKw)}
       </p>
 
-      <div className="relative mx-auto mt-10 flex h-56 w-56 items-center justify-center">
+      <div className="mt-4 flex justify-center gap-6">
+        <div className="text-center">
+          <p className="text-xs text-bc-muted">Aktuelle Leistung</p>
+          <p className="font-display text-2xl font-bold text-bc-accent">{formatPower(activeSession.powerKw)}</p>
+        </div>
+        <div className="text-center">
+          <p className="text-xs text-bc-muted">Restzeit (ca.)</p>
+          <p className="font-display text-2xl font-bold">
+            {remainingMin == null ? '—' : remainingMin <= 0 ? 'Fertig' : `~${remainingMin} Min.`}
+          </p>
+        </div>
+      </div>
+
+      <div className="relative mx-auto mt-8 flex h-56 w-56 items-center justify-center">
         <svg className="absolute inset-0 -rotate-90" viewBox="0 0 100 100">
           <circle cx="50" cy="50" r="44" fill="none" stroke="#243040" strokeWidth="6" />
           <circle
@@ -73,6 +105,9 @@ export function ChargingPage() {
         >
           <p className="font-display text-4xl font-bold text-bc-text">{formatKwh(activeSession.energyKwh)}</p>
           <p className="text-sm text-bc-muted">{formatDuration(elapsed)}</p>
+          {socPercent != null && vehicle && (
+            <p className="mt-1 text-xs text-bc-accent">~{socPercent}% von {vehicle.batteryKwh} kWh</p>
+          )}
         </motion.div>
       </div>
 
@@ -89,8 +124,8 @@ export function ChargingPage() {
 
       <div className="mt-6 rounded-2xl border border-bc-border bg-bc-elevated p-4">
         <div className="flex justify-between text-sm">
-          <span className="text-bc-muted">Leistung</span>
-          <span>{formatPower(activeSession.powerKw)}</span>
+          <span className="text-bc-muted">Ziel</span>
+          <span>{formatKwh(targetKwh)}</span>
         </div>
         <div className="mt-2 flex justify-between text-sm">
           <span className="text-bc-muted">Preis</span>
@@ -102,19 +137,15 @@ export function ChargingPage() {
         </div>
       </div>
 
-      <div className="mt-auto flex gap-3 pt-8">
-        <button type="button" className="btn-secondary flex-1" disabled>
-          <Pause className="h-4 w-4" />
-          Pause
-        </button>
+      <div className="mt-auto pt-8">
         <button
           type="button"
-          className="btn-primary flex-1 bg-bc-danger from-bc-danger to-red-600"
+          className="btn-primary flex w-full items-center justify-center gap-2 bg-bc-danger from-bc-danger to-red-600"
           onClick={handleStop}
           disabled={stopping}
         >
           <Square className="h-4 w-4" />
-          {stopping ? 'Beende…' : 'Beenden'}
+          {stopping ? 'Beende…' : 'Laden beenden'}
         </button>
       </div>
     </div>

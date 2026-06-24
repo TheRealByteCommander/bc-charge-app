@@ -1,10 +1,13 @@
 import { Leaf, MapPin, Navigation, Zap } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { ChargeMap } from '../components/ChargeMap';
 import { useLocale } from '../i18n/LocaleContext';
+import { getStations } from '../data/stations';
 import {
   geocodeDestination,
   mapsDirectionsUrl,
+  mapsDirectionsWithWaypoints,
   planTrip,
   type RoutePreference,
 } from '../services/tripPlanner';
@@ -48,13 +51,21 @@ export function TripPage() {
 
   const toCoords = destination.trim() ? geocodeDestination(destination) : null;
 
+  const chargeWaypoints = useMemo(
+    () =>
+      plan?.legs
+        .filter((l) => l.kind === 'charge' && l.lat != null && l.lng != null)
+        .map((l) => ({ lat: l.lat!, lng: l.lng! })) ?? [],
+    [plan]
+  );
+
   return (
     <div className="page-shell pb-8">
       <h1 className="font-display text-2xl font-bold">{t.trip.title}</h1>
       <p className="mt-2 text-sm text-bc-muted leading-relaxed">
         {locale === 'de'
-          ? 'Routenplanung mit automatischen Lade-Stopps (Basis). Städte: Berlin, Leipzig, München, Hamburg, Dresden, Frankfurt, Köln.'
-          : 'Route planning with automatic charging stops (basic). Cities: Berlin, Leipzig, Munich, Hamburg, Dresden, Frankfurt, Cologne.'}
+          ? 'Routenplanung mit Lade-Stopps entlang der Strecke. Städte: Berlin, Leipzig, München, Hamburg, Dresden, Frankfurt, Köln.'
+          : 'Route planning with charging stops along the way. Cities: Berlin, Leipzig, Munich, Hamburg, Dresden, Frankfurt, Cologne.'}
       </p>
 
       {!userLocation && getGeoConsent() !== 'denied' && (
@@ -146,6 +157,24 @@ export function TripPage() {
         ))}
       </div>
 
+      {plan && userLocation && (
+        <div className="mt-6">
+          <h2 className="font-display font-semibold">
+            {locale === 'de' ? 'Route auf der Karte' : 'Route on map'}
+          </h2>
+          <div className="mt-3">
+            <ChargeMap
+              stations={getStations()}
+              center={[userLocation.lat, userLocation.lng]}
+              zoom={8}
+              height="220px"
+              highlightStationIds={plan.chargeStationIds}
+              routeLine={plan.routeLine}
+            />
+          </div>
+        </div>
+      )}
+
       {plan && (
         <div className="mt-6 rounded-2xl border border-bc-accent/30 bg-bc-accent/5 p-4">
           <p className="text-sm text-bc-muted">
@@ -174,7 +203,8 @@ export function TripPage() {
                   </>
                 ) : (
                   <span className="flex items-center gap-1 font-medium">
-                    <Navigation className="h-4 w-4" /> {locale === 'de' ? 'Fahrt nach' : 'Drive to'} {leg.label}
+                    <Navigation className="h-4 w-4" />{' '}
+                    {locale === 'de' ? 'Fahrt' : 'Drive'} · {leg.label} ({leg.distanceKm} km)
                   </span>
                 )}
               </li>
@@ -182,7 +212,11 @@ export function TripPage() {
           </ol>
           {userLocation && toCoords && (
             <a
-              href={mapsDirectionsUrl(userLocation, toCoords)}
+              href={
+                chargeWaypoints.length > 0
+                  ? mapsDirectionsWithWaypoints(userLocation, toCoords, chargeWaypoints)
+                  : mapsDirectionsUrl(userLocation, toCoords)
+              }
               target="_blank"
               rel="noreferrer"
               className="btn-primary mt-4 flex w-full items-center justify-center gap-2"

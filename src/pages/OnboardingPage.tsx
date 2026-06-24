@@ -15,12 +15,12 @@ const slides = [
   {
     icon: BatteryCharging,
     title: 'Laden starten & live verfolgen',
-    text: 'Per QR-Code oder Direktwahl: kWh, Kosten und Ladekurve in Echtzeit.',
+    text: 'Mit Ladepunkt-ID oder Direktwahl: kWh, Kosten und Fortschritt in Echtzeit.',
   },
   {
     icon: Gift,
     title: 'BC Points sammeln',
-    text: 'Jede Ladung bringt Prämien, Rabatte und exklusive Vorteile für Stammkunden.',
+    text: 'Mit Konto: Prämien, Rabatte und exklusive Vorteile für Stammkunden.',
   },
 ];
 
@@ -30,7 +30,12 @@ export function OnboardingPage() {
   const complete = useAppStore((s) => s.completeOnboarding);
   const SlideIcon = slides[step].icon;
 
-  const finish = () => {
+  const finishAsGuest = () => {
+    complete();
+    navigate('/karte', { replace: true });
+  };
+
+  const finishToLogin = () => {
     complete();
     navigate('/anmelden', { replace: true });
   };
@@ -48,7 +53,7 @@ export function OnboardingPage() {
           <SlideIcon className="h-12 w-12" />
         </div>
         <h1 className="mt-8 font-display text-3xl font-bold leading-tight text-bc-text">{slides[step].title}</h1>
-        <p className="mt-4 text-lg text-bc-muted leading-relaxed">{slides[step].text}</p>
+        <p className="mt-4 text-lg leading-relaxed text-bc-muted">{slides[step].text}</p>
       </motion.div>
       <div className="flex gap-2">
         {slides.map((_, i) => (
@@ -58,20 +63,25 @@ export function OnboardingPage() {
           />
         ))}
       </div>
-      <div className="mt-8 flex gap-3">
+      <div className="mt-8 flex flex-col gap-3">
         {step < slides.length - 1 ? (
-          <>
-            <button type="button" className="btn-secondary flex-1" onClick={finish}>
-              Überspringen
+          <div className="flex gap-3">
+            <button type="button" className="btn-secondary flex-1" onClick={finishAsGuest}>
+              Als Gast
             </button>
             <button type="button" className="btn-primary flex-1" onClick={() => setStep((s) => s + 1)}>
               Weiter
             </button>
-          </>
+          </div>
         ) : (
-          <button type="button" className="btn-primary w-full" onClick={finish}>
-            Jetzt starten
-          </button>
+          <>
+            <button type="button" className="btn-primary w-full" onClick={finishToLogin}>
+              Anmelden & laden
+            </button>
+            <button type="button" className="btn-secondary w-full" onClick={finishAsGuest}>
+              Als Gast zur Karte
+            </button>
+          </>
         )}
       </div>
       <p className="mt-6 text-center text-xs text-bc-muted">

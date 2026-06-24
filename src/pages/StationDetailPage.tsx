@@ -11,6 +11,8 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { ChargingSetupChecklist } from '../components/ChargingSetupChecklist';
+import { ChargePriceEstimate } from '../components/ChargePriceEstimate';
 import { CommunityReportForm } from '../components/CommunityReportForm';
 import { ConnectorPrice } from '../components/ConnectorPrice';
 import { GuestBanner } from '../components/GuestBanner';
@@ -66,6 +68,8 @@ export function StationDetailPage() {
   const plugScore = computePlugScore(station.id, station.rating, station.reviewCount);
   const showGreenBadge = stationDataSource !== 'citrineos' ? station.greenEnergy : false;
   const showAccessibleBadge = stationDataSource !== 'citrineos' ? station.accessible : false;
+  const selectedConnectorData = station.connectors.find((c) => c.id === selectedConnector);
+  const selectedVehicleData = user?.vehicles.find((v) => v.id === selectedVehicle);
 
   const beginCharge = async () => {
     if (!user) {
@@ -88,13 +92,11 @@ export function StationDetailPage() {
         return;
       }
       if (!user.vehicles.length) {
-        setError('Bitte legen Sie zuerst ein Fahrzeug an.');
-        navigate('/fahrzeuge');
+        setError('Bitte legen Sie zuerst ein Fahrzeug an (siehe Checkliste oben).');
         return;
       }
       if (!user.paymentMethods.length) {
-        setError('Bitte hinterlegen Sie eine Zahlungsmethode.');
-        navigate('/zahlung');
+        setError('Bitte hinterlegen Sie eine Zahlungsmethode (siehe Checkliste oben).');
         return;
       }
       const res = await startSession(station.id, selectedConnector, selectedVehicle, selectedPayment);
@@ -163,6 +165,8 @@ export function StationDetailPage() {
         Route planen
       </a>
 
+      {user && <ChargingSetupChecklist user={user} returnTo={`/station/${station.id}`} />}
+
       <h2 className="mt-8 font-display font-semibold">Anschlüsse ({getAvailableCount(station)} frei)</h2>
       <div className="mt-3 space-y-3">
         {station.connectors.map((c: Connector) => (
@@ -189,6 +193,10 @@ export function StationDetailPage() {
           </button>
         ))}
       </div>
+
+      {selectedConnectorData && (
+        <ChargePriceEstimate connector={selectedConnectorData} vehicle={selectedVehicleData} />
+      )}
 
       {user && user.vehicles.length > 0 && (
         <>
@@ -231,7 +239,13 @@ export function StationDetailPage() {
           type="button"
           className="btn-primary w-full shadow-glow"
           onClick={beginCharge}
-          disabled={starting}
+          disabled={
+            starting ||
+            !selectedConnector ||
+            !user ||
+            user.vehicles.length === 0 ||
+            user.paymentMethods.length === 0
+          }
         >
           {starting ? 'Starte Ladevorgang…' : 'Laden starten'}
         </button>

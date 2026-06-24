@@ -57,7 +57,7 @@ function SuggestionRow({
   );
 }
 
-export function ChargingPlannerCard() {
+export function ChargingPlannerCard({ compact = false }: { compact?: boolean }) {
   const user = useAppStore((s) => s.user);
   const activeSession = useAppStore((s) => s.activeSession);
   const userLocation = useAppStore((s) => s.userLocation);
@@ -67,7 +67,7 @@ export function ChargingPlannerCard() {
   const { prefs: a11y } = useAccessibility();
   const prefs = normalizeChargingPlan(user?.chargingPlan);
   const vehicle = user?.vehicles[0];
-  const expanded = a11y.simpleMode || prefs.expandedOnHome;
+  const expanded = compact || a11y.simpleMode || prefs.expandedOnHome;
 
   const patchPlan = (patch: Partial<ChargingPlanPrefs>) => {
     const current = useAppStore.getState().user;
@@ -118,7 +118,7 @@ export function ChargingPlannerCard() {
     </>
   );
 
-  const header = a11y.simpleMode ? (
+  const header = a11y.simpleMode || compact ? (
     <div className="flex w-full items-center gap-3">{headerContent}</div>
   ) : (
     <button type="button" onClick={toggleExpanded} className="flex w-full items-center gap-3 text-left">
@@ -126,7 +126,7 @@ export function ChargingPlannerCard() {
     </button>
   );
 
-  const settingsBody = expanded && !a11y.simpleMode ? (
+  const settingsBody = expanded && !a11y.simpleMode && !compact ? (
     <div className="mt-4 space-y-4 border-t border-bc-border pt-4">
       <p className="text-sm text-bc-muted leading-relaxed">
         Bis zu {MAX_NEARBY_STATION_SUGGESTIONS} Stationen – zuerst mit freiem Anschluss, sortiert nach Entfernung.
@@ -206,8 +206,12 @@ export function ChargingPlannerCard() {
 
   return (
     <section
-      className={`rounded-2xl border bg-bc-elevated p-4 transition-colors ${
-        showSuggestion && hasSuggestions ? 'border-bc-accent/40' : 'border-bc-border'
+      className={`rounded-2xl border bg-bc-elevated transition-colors ${
+        compact ? 'p-3' : 'p-4'
+      } ${
+        showSuggestion && hasSuggestions
+          ? 'border-bc-accent/50 shadow-glow ring-1 ring-bc-accent/20'
+          : 'border-bc-border'
       }`}
     >
       {header}

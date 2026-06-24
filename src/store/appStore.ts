@@ -17,6 +17,7 @@ import { defaultStationFilters, type StationFilterState } from '../types/filters
 import { applyStationFilters, searchStations } from '../utils/stationFilters';
 import { saveStationsOfflineCache } from '../utils/offlineCache';
 import { haversineKm } from '../utils/geo';
+import { notifySessionComplete } from '../services/browserNotifications';
 import {
   pollCitrineosSession,
   startCitrineosCharge,
@@ -249,6 +250,12 @@ function seedDemoSessions(): ChargingSession[] {
       pointsEarned: 48,
     },
   ];
+}
+
+function notifyIfSessionComplete(user: UserProfile, session: ChargingSession): void {
+  if (user.notifications.sessionComplete) {
+    notifySessionComplete(session);
+  }
 }
 
 function calcCost(energyKwh: number, connector: Connector, minutes: number): number {
@@ -915,6 +922,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           activeSession: null,
           toast: `Laden beendet · ${formatGamificationToast(gam, 'de')}${invoiceHint}`,
         });
+        notifyIfSessionComplete(mergedUser, result.session);
         return;
       } catch (e) {
         set({ toast: e instanceof Error ? e.message : 'Sitzung konnte nicht abgeschlossen werden.' });
@@ -932,6 +940,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       activeSession: null,
       toast: toastMsg,
     });
+    notifyIfSessionComplete(updatedUser, ended);
   },
 
   recordCommunityReport: () => {

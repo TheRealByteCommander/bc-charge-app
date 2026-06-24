@@ -1,15 +1,12 @@
-import { Camera, Keyboard } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Info, Keyboard } from 'lucide-react';
+import { useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { getStationByEvseCode } from '../data/stations';
 import { useAppStore } from '../store/appStore';
 
 export function ScanPage() {
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
-  const [cameraOn, setCameraOn] = useState(false);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
   const navigate = useNavigate();
   const user = useAppStore((s) => s.user);
 
@@ -29,86 +26,53 @@ export function ScanPage() {
     lookup(code.trim());
   };
 
-  useEffect(() => {
-    if (!cameraOn) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'environment' },
-          audio: false,
-        });
-        if (cancelled) {
-          stream.getTracks().forEach((t) => t.stop());
-          return;
-        }
-        streamRef.current = stream;
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          await videoRef.current.play();
-        }
-      } catch {
-        setError('Kamera nicht verfügbar. Bitte Ladepunkt-ID manuell eingeben.');
-        setCameraOn(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-      streamRef.current?.getTracks().forEach((t) => t.stop());
-      streamRef.current = null;
-    };
-  }, [cameraOn]);
-
   const quickCodes = ['BC-MAC-001', 'BC-LEI-002', 'BC-LEI-006'];
 
   return (
     <div className="page-shell">
-      <h1 className="font-display text-2xl font-bold">Ladepunkt scannen</h1>
+      <h1 className="font-display text-2xl font-bold">Ladepunkt finden</h1>
       <p className="mt-2 text-bc-muted">
-        Scannen Sie den QR-Code am BC-Charge-Ladepunkt oder geben Sie die Standort-ID ein.
+        Geben Sie die Ladepunkt-ID von der Säule ein – sie steht unter dem QR-Code (z. B. BC-MAC-001).
       </p>
+
+      <div className="mt-4 flex gap-3 rounded-xl border border-bc-border bg-bc-elevated p-4 text-sm text-bc-muted">
+        <Info className="mt-0.5 h-4 w-4 shrink-0 text-bc-accent" aria-hidden />
+        <p>
+          Automatisches QR-Scannen kommt in einer späteren Version. Bis dahin reicht die Eingabe der
+          Ladepunkt-ID.
+        </p>
+      </div>
 
       {!user && (
         <p className="mt-4 rounded-xl border border-bc-warn/30 bg-bc-warn/10 px-4 py-3 text-sm text-bc-warn">
-          Zum Starten einer Ladung ist eine Anmeldung erforderlich.
+          Zum Starten einer Ladung ist eine{' '}
+          <Link to="/anmelden" className="font-medium underline">
+            Anmeldung
+          </Link>{' '}
+          erforderlich. Die Karte können Sie auch ohne Konto nutzen.
         </p>
       )}
 
-      <div className="mt-6 overflow-hidden rounded-2xl border border-bc-border bg-bc-surface">
-        {cameraOn ? (
-          <video ref={videoRef} className="aspect-[4/3] w-full object-cover" playsInline muted />
-        ) : (
-          <div className="flex aspect-[4/3] flex-col items-center justify-center gap-3 text-bc-muted">
-            <Camera className="h-12 w-12 opacity-50" />
-            <p className="text-sm">Kamera für QR-Erkennung aktivieren</p>
-          </div>
-        )}
-      </div>
-
-      <button
-        type="button"
-        className="btn-primary mt-4 w-full"
-        onClick={() => {
-          setError('');
-          setCameraOn((v) => !v);
-        }}
-      >
-        {cameraOn ? 'Kamera beenden' : 'Kamera starten'}
-      </button>
-
       <form onSubmit={submitCode} className="mt-6">
-        <label className="mb-2 flex items-center gap-2 text-sm text-bc-muted">
-          <Keyboard className="h-4 w-4" />
-          Ladepunkt-ID (z. B. BC-MAC-001)
+        <label htmlFor="evse-code" className="mb-2 flex items-center gap-2 text-sm font-medium text-bc-text">
+          <Keyboard className="h-4 w-4 text-bc-muted" aria-hidden />
+          Ladepunkt-ID
         </label>
         <input
-          className="input-field uppercase"
-          placeholder="BC-XXX-000"
+          id="evse-code"
+          className="input-field font-mono uppercase"
+          placeholder="BC-MAC-001"
           value={code}
           onChange={(e) => setCode(e.target.value.toUpperCase())}
+          autoComplete="off"
+          inputMode="text"
         />
-        {error && <p className="mt-2 text-sm text-bc-danger">{error}</p>}
-        <button type="submit" className="btn-secondary mt-3 w-full">
+        {error && (
+          <p className="mt-2 text-sm text-bc-danger" role="alert">
+            {error}
+          </p>
+        )}
+        <button type="submit" className="btn-primary mt-4 w-full">
           Station öffnen
         </button>
       </form>

@@ -1,4 +1,11 @@
+import { Bell, BellOff, BellRing } from 'lucide-react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import {
+  canSendBrowserNotifications,
+  notificationPermission,
+  requestBrowserNotificationPermission,
+} from '../services/browserNotifications';
 import { useAppStore } from '../store/appStore';
 import type { NotificationPrefs } from '../types';
 
@@ -12,6 +19,7 @@ export function NotificationsPage() {
   const user = useAppStore((s) => s.user);
   const updateNotifications = useAppStore((s) => s.updateNotifications);
   const updateProfile = useAppStore((s) => s.updateProfile);
+  const [browserPerm, setBrowserPerm] = useState(notificationPermission());
 
   if (!user) {
     return (
@@ -33,6 +41,13 @@ export function NotificationsPage() {
     }
   };
 
+  const requestBrowser = async () => {
+    const result = await requestBrowserNotificationPermission();
+    setBrowserPerm(result);
+  };
+
+  const browserEnabled = canSendBrowserNotifications();
+
   return (
     <div className="page-shell pb-8">
       <Link to="/profil" className="text-sm text-bc-accent">
@@ -46,6 +61,35 @@ export function NotificationsPage() {
           Datenschutz
         </Link>
       </p>
+
+      <div className="mt-6 rounded-2xl border border-bc-accent/25 bg-bc-accent/5 p-4">
+        <div className="flex items-start gap-3">
+          {browserEnabled ? (
+            <BellRing className="h-5 w-5 shrink-0 text-bc-accent" />
+          ) : browserPerm === 'denied' ? (
+            <BellOff className="h-5 w-5 shrink-0 text-bc-warn" />
+          ) : (
+            <Bell className="h-5 w-5 shrink-0 text-bc-muted" />
+          )}
+          <div className="min-w-0 flex-1">
+            <p className="font-medium">Browser-Hinweise</p>
+            <p className="mt-1 text-sm text-bc-muted">
+              {browserPerm === 'unsupported'
+                ? 'Ihr Browser unterstützt keine Push-Hinweise.'
+                : browserEnabled
+                  ? 'Aktiv – Sie erhalten Hinweise auch bei minimierter App.'
+                  : browserPerm === 'denied'
+                    ? 'Blockiert – bitte in den Browser-Einstellungen erlauben.'
+                    : 'Optional: Hinweis wenn ein Ladevorgang beendet ist.'}
+            </p>
+            {browserPerm !== 'unsupported' && browserPerm !== 'denied' && !browserEnabled && (
+              <button type="button" className="btn-primary mt-3 py-2 text-sm" onClick={requestBrowser}>
+                Browser-Benachrichtigungen erlauben
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
 
       <p className="mt-6 text-xs font-semibold uppercase tracking-wider text-bc-muted">Laden & Konto</p>
       <div className="mt-2 space-y-3">

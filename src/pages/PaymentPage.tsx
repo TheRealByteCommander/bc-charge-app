@@ -1,12 +1,14 @@
 import { CreditCard, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { StripePaymentSetup } from '../components/StripePaymentSetup';
 import { isStripeConfigured } from '../config/stripe';
 import { prepareSetupIntent } from '../services/stripeService';
 import { useAppStore } from '../store/appStore';
 
 export function PaymentPage() {
+  const [searchParams] = useSearchParams();
+  const returnTo = searchParams.get('returnTo');
   const user = useAppStore((s) => s.user);
   const paymentsOnline = useAppStore((s) => s.stripeReady);
   const syncStripePayments = useAppStore((s) => s.syncStripePayments);
@@ -55,9 +57,15 @@ export function PaymentPage() {
 
   return (
     <div className="page-shell pb-8">
-      <Link to="/profil" className="text-sm text-bc-accent">
-        ← Profil
-      </Link>
+      {returnTo ? (
+        <Link to={returnTo} className="text-sm text-bc-accent">
+          ← Zurück zur Station
+        </Link>
+      ) : (
+        <Link to="/profil" className="text-sm text-bc-accent">
+          ← Profil
+        </Link>
+      )}
       <h1 className="mt-4 font-display text-2xl font-bold">Zahlung</h1>
       <p className="mt-2 text-sm text-bc-muted leading-relaxed">
         Hinterlegen Sie Karte oder SEPA-Lastschrift. Nach jeder Ladesitzung wird der Betrag automatisch

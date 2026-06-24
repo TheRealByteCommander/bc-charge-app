@@ -1,6 +1,6 @@
 import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store/appStore';
 import type { ConnectorType, Vehicle } from '../types';
 
@@ -25,6 +25,8 @@ function FieldLabel({ children }: { children: React.ReactNode }) {
 }
 
 export function VehiclesPage() {
+  const [searchParams] = useSearchParams();
+  const returnTo = searchParams.get('returnTo');
   const user = useAppStore((s) => s.user);
   const addVehicle = useAppStore((s) => s.addVehicle);
   const updateVehicle = useAppStore((s) => s.updateVehicle);
@@ -75,7 +77,16 @@ export function VehiclesPage() {
 
   return (
     <div className="page-shell">
-      <h1 className="font-display text-2xl font-bold">Fahrzeuge</h1>
+      {returnTo ? (
+        <Link to={returnTo} className="text-sm text-bc-accent">
+          ← Zurück zur Station
+        </Link>
+      ) : (
+        <Link to="/profil" className="text-sm text-bc-accent">
+          ← Profil
+        </Link>
+      )}
+      <h1 className={`font-display text-2xl font-bold ${returnTo ? 'mt-4' : 'mt-4'}`}>Fahrzeuge</h1>
       <p className="mt-1 text-bc-muted">Für passende Anschluss-Empfehlungen und Ladeprofil.</p>
 
       <div className="mt-6 space-y-3">

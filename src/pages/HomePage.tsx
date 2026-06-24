@@ -1,4 +1,4 @@
-import { BatteryCharging, ChevronRight, Route, Search } from 'lucide-react';
+import { BatteryCharging, ChevronRight, Route, Search, Zap } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { ChargingPlannerCard } from '../components/ChargingPlannerCard';
 import { LoyaltyCard } from '../components/LoyaltyCard';
@@ -51,6 +51,15 @@ export function HomePage() {
         </Link>
       ) : (
         <div className="mt-6">
+          <div className="mb-3 flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-bc-accent/20 text-bc-accent">
+              <Zap className="h-4 w-4" />
+            </div>
+            <div>
+              <p className="font-display text-sm font-semibold">Ladeplaner</p>
+              <p className="text-xs text-bc-muted">Freie Stationen in Ihrer Nähe</p>
+            </div>
+          </div>
           <ChargingPlannerCard />
         </div>
       )}
@@ -77,7 +86,7 @@ export function HomePage() {
           to="/scan"
           className={`btn-primary text-center ${a11y.simpleMode ? 'py-4 text-base' : 'py-3 text-sm'}`}
         >
-          QR scannen – Laden starten
+          Ladepunkt-ID eingeben
         </Link>
         <Link
           to="/karte"

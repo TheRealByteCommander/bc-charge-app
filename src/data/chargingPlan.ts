@@ -3,7 +3,7 @@ import type { ChargingPlanPrefs } from '../types';
 export const defaultChargingPlan = (): ChargingPlanPrefs => ({
   enabled: true,
   snoozedUntil: null,
-  expandedOnHome: false,
+  expandedOnHome: true,
 });
 
 export function normalizeChargingPlan(prefs?: Partial<ChargingPlanPrefs> | null): ChargingPlanPrefs {
