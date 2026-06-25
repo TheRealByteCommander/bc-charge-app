@@ -1,9 +1,11 @@
 import { SlidersHorizontal } from 'lucide-react';
 import { useState } from 'react';
+import { BottomSheet } from '../components/BottomSheet';
 import { StationCard } from '../components/StationCard';
 import { StationFiltersPanel } from '../components/StationFiltersPanel';
 import { useFilteredStations } from '../hooks/useStationLists';
 import { useAppStore } from '../store/appStore';
+import { countActiveFilters } from '../utils/filterCount';
 import { loadStationsOfflineCache } from '../utils/offlineCache';
 
 export function StationsPage() {
@@ -14,6 +16,7 @@ export function StationsPage() {
   const setStationFilters = useAppStore((s) => s.setStationFilters);
   const [showFilters, setShowFilters] = useState(false);
   const offline = loadStationsOfflineCache();
+  const activeFilterCount = countActiveFilters(stationFilters);
 
   return (
     <div className="page-shell">
@@ -30,26 +33,35 @@ export function StationsPage() {
       />
       <button
         type="button"
-        onClick={() => setShowFilters((v) => !v)}
-        className="mt-3 flex w-full items-center justify-between rounded-xl border border-bc-border px-4 py-3 text-sm"
+        onClick={() => setShowFilters(true)}
+        className="mt-3 flex w-full items-center justify-between rounded-xl border border-bc-border bg-bc-elevated px-4 py-3 text-sm"
       >
         <span className="flex items-center gap-2 text-bc-muted">
           <SlidersHorizontal className="h-4 w-4" />
           Filter
         </span>
-        <span className="text-bc-accent text-xs font-medium">{showFilters ? '−' : '+'}</span>
+        {activeFilterCount > 0 ? (
+          <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-bc-accent px-1.5 text-[10px] font-bold text-bc-ink">
+            {activeFilterCount}
+          </span>
+        ) : (
+          <span className="text-xs text-bc-accent">Öffnen</span>
+        )}
       </button>
-      {showFilters && (
-        <div className="mt-3">
-          <StationFiltersPanel filters={stationFilters} onChange={setStationFilters} />
-        </div>
-      )}
-      <p className="mt-4 text-sm text-bc-muted">{stations.length} Ergebnisse</p>
-      <div className="mt-3 space-y-3">
-        {stations.map((s, i) => (
-          <StationCard key={s.id} station={s} index={i} />
-        ))}
+
+      <div className="mt-4 space-y-3">
+        {stations.length === 0 ? (
+          <p className="rounded-2xl border border-bc-border bg-bc-elevated p-6 text-center text-sm text-bc-muted">
+            Keine Stationen für diese Suche oder Filter. Passen Sie die Filter an.
+          </p>
+        ) : (
+          stations.map((s, i) => <StationCard key={s.id} station={s} index={i} />)
+        )}
       </div>
+
+      <BottomSheet open={showFilters} onClose={() => setShowFilters(false)} title="Stationen filtern">
+        <StationFiltersPanel filters={stationFilters} onChange={setStationFilters} />
+      </BottomSheet>
     </div>
   );
 }

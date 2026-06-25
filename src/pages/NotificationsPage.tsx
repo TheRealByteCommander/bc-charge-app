@@ -11,7 +11,7 @@ import type { NotificationPrefs } from '../types';
 
 const serviceLabels: { key: keyof NotificationPrefs; title: string; desc: string }[] = [
   { key: 'sessionComplete', title: 'Ladevorgang beendet', desc: 'Zusammenfassung nach jeder Session (transaktional)' },
-  { key: 'stationAvailability', title: 'Verfügbarkeit', desc: 'Favorit hat wieder freie Anschlüsse' },
+  { key: 'stationAvailability', title: 'Verfügbarkeit', desc: 'Favorit hat wieder freie Anschlüsse (Browser-Hinweis)' },
   { key: 'loyaltyUpdates', title: 'BC Points', desc: 'Stufenaufstieg und einlösbare Prämien' },
 ];
 

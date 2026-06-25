@@ -1,28 +1,35 @@
-import { useEffect } from 'react';
+import { lazy, useEffect } from 'react';
 import { BrowserRouter, Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom';
 import { AppShell } from './components/AppShell';
 import { LoginPage, RegisterPage } from './pages/AuthPage';
-import { ChargingPage } from './pages/ChargingPage';
-import { HistoryPage } from './pages/HistoryPage';
-import { HomePage } from './pages/HomePage';
-import { LoyaltyPage } from './pages/LoyaltyPage';
-import { MapPage } from './pages/MapPage';
-import { NotificationsPage } from './pages/NotificationsPage';
 import { OnboardingPage } from './pages/OnboardingPage';
-import { PaymentPage } from './pages/PaymentPage';
-import { ProfilePage } from './pages/ProfilePage';
-import { ScanPage } from './pages/ScanPage';
-import { StationDetailPage } from './pages/StationDetailPage';
-import { StationsPage } from './pages/StationsPage';
-import { ImpressumPage } from './pages/ImpressumPage';
-import { PrivacyPage } from './pages/PrivacyPage';
-import { SupportPage } from './pages/SupportPage';
-import { TermsPage } from './pages/TermsPage';
-import { TariffsPage } from './pages/TariffsPage';
-import { TripPage } from './pages/TripPage';
-import { AccessibilityPage } from './pages/AccessibilityPage';
-import { VehiclesPage } from './pages/VehiclesPage';
 import { useAppStore } from './store/appStore';
+
+const HomePage = lazy(() => import('./pages/HomePage').then((m) => ({ default: m.HomePage })));
+const MapPage = lazy(() => import('./pages/MapPage').then((m) => ({ default: m.MapPage })));
+const StationsPage = lazy(() => import('./pages/StationsPage').then((m) => ({ default: m.StationsPage })));
+const StationDetailPage = lazy(() =>
+  import('./pages/StationDetailPage').then((m) => ({ default: m.StationDetailPage }))
+);
+const ChargingPage = lazy(() => import('./pages/ChargingPage').then((m) => ({ default: m.ChargingPage })));
+const ScanPage = lazy(() => import('./pages/ScanPage').then((m) => ({ default: m.ScanPage })));
+const ProfilePage = lazy(() => import('./pages/ProfilePage').then((m) => ({ default: m.ProfilePage })));
+const HistoryPage = lazy(() => import('./pages/HistoryPage').then((m) => ({ default: m.HistoryPage })));
+const TripPage = lazy(() => import('./pages/TripPage').then((m) => ({ default: m.TripPage })));
+const LoyaltyPage = lazy(() => import('./pages/LoyaltyPage').then((m) => ({ default: m.LoyaltyPage })));
+const VehiclesPage = lazy(() => import('./pages/VehiclesPage').then((m) => ({ default: m.VehiclesPage })));
+const PaymentPage = lazy(() => import('./pages/PaymentPage').then((m) => ({ default: m.PaymentPage })));
+const NotificationsPage = lazy(() =>
+  import('./pages/NotificationsPage').then((m) => ({ default: m.NotificationsPage }))
+);
+const TariffsPage = lazy(() => import('./pages/TariffsPage').then((m) => ({ default: m.TariffsPage })));
+const SupportPage = lazy(() => import('./pages/SupportPage').then((m) => ({ default: m.SupportPage })));
+const PrivacyPage = lazy(() => import('./pages/PrivacyPage').then((m) => ({ default: m.PrivacyPage })));
+const ImpressumPage = lazy(() => import('./pages/ImpressumPage').then((m) => ({ default: m.ImpressumPage })));
+const TermsPage = lazy(() => import('./pages/TermsPage').then((m) => ({ default: m.TermsPage })));
+const AccessibilityPage = lazy(() =>
+  import('./pages/AccessibilityPage').then((m) => ({ default: m.AccessibilityPage }))
+);
 
 const PUBLIC_PATHS = [
   '/karte',

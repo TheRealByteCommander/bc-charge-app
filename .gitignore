@@ -17,6 +17,9 @@ dist-ssr
 data/*.sqlite
 data/*.sqlite-*
 
+# Separates lokales Projekt (nicht Teil von bc-charge-app)
+mt5/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

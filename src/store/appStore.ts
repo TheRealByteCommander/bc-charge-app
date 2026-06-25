@@ -18,6 +18,7 @@ import { applyStationFilters, searchStations } from '../utils/stationFilters';
 import { saveStationsOfflineCache } from '../utils/offlineCache';
 import { haversineKm } from '../utils/geo';
 import { notifySessionComplete } from '../services/browserNotifications';
+import { checkFavoriteAvailability } from '../services/favoriteAvailability';
 import {
   pollCitrineosSession,
   startCitrineosCharge,
@@ -435,6 +436,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         ? `${sync.count} Stationen aktualisiert${tariffHint.replace('Tarife', 'Preise')}`
         : 'Stationen konnten nicht aktualisiert werden',
     });
+    if (sync.ok) checkFavoriteAvailability(get().user);
   },
 
   completeOnboarding: () => {

@@ -10,7 +10,7 @@ Ziel: **Eine App für E-Auto-Fahrer**, die Fragmentierung, unzuverlässige Daten
 
 | Bereich | Status | Phase |
 |--------|--------|-------|
-| PWA (installierbar, offline-Karten-Cache) | In Arbeit | MVP |
+| PWA (installierbar, offline-Karten-Cache) | ✅ Basis (SW + Install-Prompt) | MVP |
 | OCPI 2.2.1 (Roaming, Locations, Tariffs, Sessions) | CitrineOS-OCPI / Hub-Anbindung geplant | MVP → 2 |
 | OCPP 1.6J / 2.0.1 | CitrineOS Core aktiv | MVP |
 | ISO 15118 Plug & Charge | Geplant | 2 |
@@ -63,7 +63,7 @@ Ziel: **Eine App für E-Auto-Fahrer**, die Fragmentierung, unzuverlässige Daten
 |---------|--------|
 | Start/Stopp/Monitoring | ✅ |
 | Reservierung / Warteschlange | Phase 2 |
-| Push-Benachrichtigungen | Phase 2 (PWA) |
+| Push-Benachrichtigungen | ✅ Basis (Browser: Session-Ende, Favorit frei) |
 | Wallbox / Fleet | Phase 3 |
 
 ---

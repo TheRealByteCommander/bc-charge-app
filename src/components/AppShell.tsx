@@ -1,12 +1,22 @@
 import { AnimatePresence, motion } from 'framer-motion';
-import { useEffect } from 'react';
+import { Suspense, useEffect } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
+import { checkFavoriteAvailability } from '../services/favoriteAvailability';
 import { useAppStore } from '../store/appStore';
 import { BottomNav } from './BottomNav';
-import { getGeoConsent } from '../utils/geoConsent';
 import { GeoConsentBanner } from './GeoConsentBanner';
+import { InstallPrompt } from './InstallPrompt';
+import { getGeoConsent } from '../utils/geoConsent';
 
 const hideNav = ['/onboarding', '/anmelden', '/registrieren', '/laden'];
+
+function PageLoader() {
+  return (
+    <div className="flex flex-1 items-center justify-center py-24">
+      <div className="h-8 w-8 animate-spin rounded-full border-2 border-bc-accent border-t-transparent" />
+    </div>
+  );
+}
 
 export function AppShell() {
   const location = useLocation();
@@ -14,6 +24,8 @@ export function AppShell() {
   const message = useAppStore((s) => s.toast);
   const tickSession = useAppStore((s) => s.tickSession);
   const activeSession = useAppStore((s) => s.activeSession);
+  const user = useAppStore((s) => s.user);
+  const stationDataSource = useAppStore((s) => s.stationDataSource);
   const showNav = !hideNav.some((p) => location.pathname.startsWith(p));
 
   useEffect(() => {
@@ -34,6 +46,12 @@ export function AppShell() {
     }
   }, []);
 
+  useEffect(() => {
+    checkFavoriteAvailability(user);
+    const id = setInterval(() => checkFavoriteAvailability(useAppStore.getState().user), 60_000);
+    return () => clearInterval(id);
+  }, [user, stationDataSource]);
+
   return (
     <div className="mx-auto flex min-h-dvh max-w-lg flex-col bg-bc-gradient bg-hero-mesh">
       <a
@@ -43,10 +61,13 @@ export function AppShell() {
         Zum Inhalt springen
       </a>
       <main id="main-content" className="flex min-h-0 flex-1 flex-col outline-none">
-        <Outlet />
+        <Suspense fallback={<PageLoader />}>
+          <Outlet />
+        </Suspense>
       </main>
       <GeoConsentBanner />
       {showNav && <BottomNav />}
+      <InstallPrompt />
       <AnimatePresence>
         {message && (
           <motion.div
