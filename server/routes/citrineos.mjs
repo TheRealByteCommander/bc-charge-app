@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { optionalAuth } from '../middleware/auth.mjs';
+import { citrineosIntegrationContract } from '../contracts/citrineosContract.mjs';
 
 const router = Router();
 
@@ -44,6 +45,18 @@ router.get('/status', (_req, res) => {
   });
 });
 
+router.get('/contract', (_req, res) => {
+  res.json({
+    ...citrineosIntegrationContract,
+    configured: isConfigured(),
+    env: {
+      tenantId: process.env.CITRINEOS_TENANT_ID ?? '1',
+      apiUrl: process.env.CITRINEOS_API_URL ?? null,
+      hasuraUrl: process.env.CITRINEOS_HASURA_URL ?? null,
+    },
+  });
+});
+
 router.post('/hasura', optionalAuth, async (req, res) => {
   if (!process.env.CITRINEOS_HASURA_URL) {
     res.status(503).json({ error: 'Hasura nicht konfiguriert' });
@@ -77,6 +90,29 @@ router.post('/hasura', optionalAuth, async (req, res) => {
     res.json(data);
   } catch (e) {
     res.status(502).json({ error: e instanceof Error ? e.message : 'Hasura-Anfrage fehlgeschlagen' });
+  }
+});
+
+router.get('/tariffs', optionalAuth, async (_req, res) => {
+  if (!process.env.CITRINEOS_API_URL) {
+    res.status(503).json({ error: 'CitrineOS API nicht konfiguriert' });
+    return;
+  }
+  try {
+    const tenantId = process.env.CITRINEOS_TENANT_ID ?? '1';
+    const url = `${citrineosApiUrl()}/data/transactions/tariff?tenantId=${tenantId}`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    const r = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeout);
+    const data = await r.json();
+    if (!r.ok) {
+      res.status(r.status).json(data);
+      return;
+    }
+    res.json(data);
+  } catch (e) {
+    res.status(502).json({ error: e instanceof Error ? e.message : 'Tarife nicht abrufbar' });
   }
 });
 

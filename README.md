@@ -63,11 +63,31 @@ Die App nutzt die **CitrineOS REST-API** (OCPP 2.0.1):
 
 ### CitrineOS starten
 
+Deployment-Repository (BC-konfiguriert): **[bc-citrineos](https://github.com/TheRealByteCommander/bc-citrineos)**
+
+```bash
+git clone https://github.com/TheRealByteCommander/bc-citrineos
+cd bc-citrineos
+.\scripts\setup.ps1   # Windows
+# ./scripts/setup.sh  # Linux/macOS
+```
+
+Alternativ Upstream direkt:
+
 ```bash
 git clone https://github.com/citrineos/citrineos-core
-cd citrineos-core/Server
+cd citrineos-core
 docker compose up -d
 ```
+
+Integrations-Check (mit laufender BC API):
+
+```bash
+cd bc-citrineos
+node scripts/verify-integration.mjs --api http://localhost:4242
+```
+
+API-Vertrag: `GET http://localhost:4242/api/citrineos/contract`
 
 Kopieren Sie `.env.example` nach `.env` und passen Sie URLs an.
 
