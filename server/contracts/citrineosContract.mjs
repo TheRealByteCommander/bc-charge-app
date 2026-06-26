@@ -80,6 +80,7 @@ export const citrineosIntegrationContract = {
     { method: 'GET', path: '/api/citrineos/health' },
     { method: 'GET', path: '/api/citrineos/status' },
     { method: 'GET', path: '/api/citrineos/contract' },
+    { method: 'GET', path: '/api/citrineos/tariffs' },
     { method: 'POST', path: '/api/citrineos/hasura' },
     { method: 'POST', path: '/api/citrineos/proxy' },
   ],
