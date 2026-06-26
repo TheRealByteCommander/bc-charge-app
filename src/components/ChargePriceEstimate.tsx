@@ -1,4 +1,4 @@
-import { Euro, Info } from 'lucide-react';
+import { Euro, Info, Shield } from 'lucide-react';
 import { useState } from 'react';
 import type { Connector, Vehicle } from '../types';
 import { estimateChargeSession } from '../utils/chargeEstimate';
@@ -7,12 +7,30 @@ import { formatCurrency } from '../utils/format';
 export function ChargePriceEstimate({
   connector,
   vehicle,
+  startSoc: controlledStart,
+  targetSoc: controlledTarget,
+  onSocChange,
 }: {
   connector: Connector;
   vehicle?: Vehicle;
+  startSoc?: number;
+  targetSoc?: number;
+  onSocChange?: (start: number, target: number) => void;
 }) {
-  const [startSoc, setStartSoc] = useState(30);
-  const [targetSoc, setTargetSoc] = useState(80);
+  const [internalStart, setInternalStart] = useState(30);
+  const [internalTarget, setInternalTarget] = useState(80);
+  const startSoc = controlledStart ?? internalStart;
+  const targetSoc = controlledTarget ?? internalTarget;
+
+  const setStartSoc = (v: number) => {
+    if (onSocChange) onSocChange(v, targetSoc);
+    else setInternalStart(v);
+  };
+  const setTargetSoc = (v: number) => {
+    if (onSocChange) onSocChange(startSoc, v);
+    else setInternalTarget(v);
+  };
+
   const est = estimateChargeSession(connector, vehicle, {
     startSocPercent: startSoc,
     targetSocPercent: targetSoc,
@@ -83,8 +101,9 @@ export function ChargePriceEstimate({
             </div>
           </div>
 
-          <p className="mt-2 text-xs text-bc-muted">
-            Schätzung inkl. Startgebühr – tatsächliche Kosten hängen von Ladedauer und SoC ab.
+          <p className="mt-3 flex items-start gap-2 text-xs text-bc-muted">
+            <Shield className="mt-0.5 h-3.5 w-3.5 shrink-0 text-bc-accent" />
+            Keine Blockiergebühr – Sie zahlen nur kWh und ggf. Startgebühr.
           </p>
         </div>
       </div>

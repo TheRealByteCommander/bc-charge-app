@@ -68,8 +68,16 @@ export function SupportPage() {
             a: 'Unter Profil → Barrierefreiheit (oder /barrierefreiheit): Schriftgröße, hoher Kontrast und einfache Ansicht einstellbar.',
           },
           {
-            q: 'Was bedeutet Ökostrom am Standort?',
-            a: 'BC Charge bezieht an ausgewiesenen Standorten zertifizierten Ökostrom für Ihre Ladesitzung.',
+            q: 'Fallen Blockiergebühren an?',
+            a: 'Nein. BC Charge erhebt keine Blockier- oder Standgebühren nach dem Laden. Abgerechnet werden nur die geladene Energie (kWh) und ggf. eine Startgebühr – transparent vor dem Ladevorgang.',
+          },
+          {
+            q: 'Rechnung stimmt nicht?',
+            a: 'In der Ladehistorie „Rechnung prüfen / Support“ wählen – Ihre Session-Daten werden automatisch an unser Team übermittelt.',
+          },
+          {
+            q: 'Laden lässt sich nicht beenden?',
+            a: 'Auf der Ladevorgangs-Seite „Problem beim Beenden?“ nutzen: Hotline mit Session-ID oder Notfall-E-Mail. Wir stoppen den Vorgang remote.',
           },
         ].map((faq) => (
           <details key={faq.q} className="rounded-xl border border-bc-border bg-bc-elevated group">

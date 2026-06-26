@@ -19,6 +19,7 @@ import { saveStationsOfflineCache } from '../utils/offlineCache';
 import { haversineKm } from '../utils/geo';
 import { notifySessionComplete } from '../services/browserNotifications';
 import { checkFavoriteAvailability } from '../services/favoriteAvailability';
+import { recordStationSuccess } from '../services/stationTrust';
 import {
   pollCitrineosSession,
   startCitrineosCharge,
@@ -925,6 +926,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           toast: `Laden beendet · ${formatGamificationToast(gam, 'de')}${invoiceHint}`,
         });
         notifyIfSessionComplete(mergedUser, result.session);
+        recordStationSuccess(result.session.stationId);
         return;
       } catch (e) {
         set({ toast: e instanceof Error ? e.message : 'Sitzung konnte nicht abgeschlossen werden.' });
@@ -943,6 +945,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       toast: toastMsg,
     });
     notifyIfSessionComplete(updatedUser, ended);
+    recordStationSuccess(ended.stationId);
   },
 
   recordCommunityReport: () => {

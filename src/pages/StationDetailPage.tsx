@@ -13,9 +13,11 @@ import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ChargingSetupChecklist } from '../components/ChargingSetupChecklist';
 import { ChargePriceEstimate } from '../components/ChargePriceEstimate';
+import { ChargeStartConfirmSheet } from '../components/ChargeStartConfirmSheet';
 import { CommunityReportForm } from '../components/CommunityReportForm';
 import { ConnectorPrice } from '../components/ConnectorPrice';
 import { GuestBanner } from '../components/GuestBanner';
+import { StationTrustBadge } from '../components/StationTrustBadge';
 import { getAvailableCount, getStationById } from '../data/stations';
 import { computePlugScore } from '../services/community';
 import { useAppStore } from '../store/appStore';
@@ -50,6 +52,9 @@ export function StationDetailPage() {
   );
   const [error, setError] = useState('');
   const [starting, setStarting] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [startSoc, setStartSoc] = useState(30);
+  const [targetSoc, setTargetSoc] = useState(80);
 
   if (!station) {
     return (
@@ -65,7 +70,11 @@ export function StationDetailPage() {
   const dist = distance(station);
   const isFav = user?.favoriteStationIds.includes(station.id);
   const stationDataSource = useAppStore((s) => s.stationDataSource);
+  const citrineosConnected = useAppStore((s) => s.citrineosConnected);
   const plugScore = computePlugScore(station.id, station.rating, station.reviewCount);
+  const availableCount = getAvailableCount(station);
+  const offlineCount = station.connectors.filter((c) => c.status === 'offline').length;
+  const liveTrust = citrineosConnected && stationDataSource === 'citrineos';
   const showGreenBadge = stationDataSource !== 'citrineos' ? station.greenEnergy : false;
   const showAccessibleBadge = stationDataSource !== 'citrineos' ? station.accessible : false;
   const selectedConnectorData = station.connectors.find((c) => c.id === selectedConnector);
@@ -100,11 +109,22 @@ export function StationDetailPage() {
         return;
       }
       const res = await startSession(station.id, selectedConnector, selectedVehicle, selectedPayment);
-      if (res.ok) navigate('/laden');
-      else setError(res.error ?? 'Start fehlgeschlagen');
+      if (res.ok) {
+        setShowConfirm(false);
+        navigate('/laden');
+      } else setError(res.error ?? 'Start fehlgeschlagen');
     } finally {
       setStarting(false);
     }
+  };
+
+  const openConfirm = () => {
+    if (!user) {
+      navigate('/anmelden');
+      return;
+    }
+    setError('');
+    setShowConfirm(true);
   };
 
   return (
@@ -155,6 +175,15 @@ export function StationDetailPage() {
         )}
       </div>
 
+      <div className="mt-4">
+        <StationTrustBadge
+          stationId={station.id}
+          liveData={liveTrust}
+          availableCount={availableCount}
+          offlineCount={offlineCount}
+        />
+      </div>
+
       <a
         href={`https://www.google.com/maps/dir/?api=1&destination=${station.lat},${station.lng}`}
         target="_blank"
@@ -195,7 +224,16 @@ export function StationDetailPage() {
       </div>
 
       {selectedConnectorData && (
-        <ChargePriceEstimate connector={selectedConnectorData} vehicle={selectedVehicleData} />
+        <ChargePriceEstimate
+          connector={selectedConnectorData}
+          vehicle={selectedVehicleData}
+          startSoc={startSoc}
+          targetSoc={targetSoc}
+          onSocChange={(s, t) => {
+            setStartSoc(s);
+            setTargetSoc(t);
+          }}
+        />
       )}
 
       {user && user.vehicles.length > 0 && (
@@ -238,7 +276,7 @@ export function StationDetailPage() {
         <button
           type="button"
           className="btn-primary w-full shadow-glow"
-          onClick={beginCharge}
+          onClick={openConfirm}
           disabled={
             starting ||
             !selectedConnector ||
@@ -247,9 +285,23 @@ export function StationDetailPage() {
             user.paymentMethods.length === 0
           }
         >
-          {starting ? 'Starte Ladevorgang…' : 'Laden starten'}
+          Laden starten
         </button>
       </div>
+
+      {selectedConnectorData && (
+        <ChargeStartConfirmSheet
+          open={showConfirm}
+          onClose={() => setShowConfirm(false)}
+          onConfirm={() => void beginCharge()}
+          station={station}
+          connector={selectedConnectorData}
+          vehicle={selectedVehicleData}
+          startSoc={startSoc}
+          targetSoc={targetSoc}
+          confirming={starting}
+        />
+      )}
 
       {station.amenities.length > 0 && (
         <>

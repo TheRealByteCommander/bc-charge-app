@@ -1,11 +1,25 @@
 import { useState } from 'react';
-import { Download, FileText } from 'lucide-react';
+import { Download, FileText, LifeBuoy } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { downloadInvoicePdf } from '../api/backend/invoices';
 import { useAppStore } from '../store/appStore';
 import { isBackendMode } from '../services/backendMode';
+import type { ChargingSession } from '../types';
 import { formatCurrency, formatDate, formatKwh } from '../utils/format';
 import { displayInvoiceNumber } from '../utils/invoice';
+import { buildSessionSupportMailto } from '../utils/supportContact';
+
+function SessionDisputeActions({ session }: { session: ChargingSession }) {
+  return (
+    <a
+      href={buildSessionSupportMailto(session, 'dispute')}
+      className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-bc-border bg-bc-surface px-3 py-2.5 text-sm text-bc-muted transition hover:border-bc-accent/40 hover:text-bc-accent"
+    >
+      <LifeBuoy className="h-4 w-4" />
+      Rechnung prüfen / Support
+    </a>
+  );
+}
 
 export function HistoryPage() {
   const user = useAppStore((s) => s.user);
@@ -44,7 +58,9 @@ export function HistoryPage() {
   return (
     <div className="page-shell">
       <h1 className="font-display text-2xl font-bold">Ladehistorie</h1>
-      <p className="mt-1 text-bc-muted">{sessions.length} abgeschlossene Sessions</p>
+      <p className="mt-1 text-bc-muted">
+        {sessions.length} abgeschlossene Sessions · Rechnung prüfen oder Support kontaktieren
+      </p>
       <div className="mt-6 space-y-3">
         {sessions.length === 0 ? (
           <p className="rounded-xl border border-bc-border p-6 text-center text-bc-muted">
@@ -86,6 +102,7 @@ export function HistoryPage() {
                   </span>
                   <Download className="h-3.5 w-3.5 shrink-0 text-bc-accent" />
                 </button>
+                <SessionDisputeActions session={sess} />
               </div>
             );
           })

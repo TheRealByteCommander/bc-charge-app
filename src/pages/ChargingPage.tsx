@@ -1,7 +1,8 @@
 import { motion } from 'framer-motion';
 import { useEffect, useState } from 'react';
-import { Square, Zap } from 'lucide-react';
+import { Shield, Square, Zap } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
+import { ChargingEmergencyHelp } from '../components/ChargingEmergencyHelp';
 import { useAppStore } from '../store/appStore';
 import { estimateRemainingChargeMinutes, vehicleTargetKwh } from '../utils/chargeEstimate';
 import { formatCurrency, formatDuration, formatKwh, formatPower } from '../utils/format';
@@ -135,9 +136,15 @@ export function ChargingPage() {
           <span className="text-bc-muted">Startgebühr</span>
           <span>{formatCurrency(activeSession.sessionFee)}</span>
         </div>
+        <p className="mt-3 flex items-center gap-2 border-t border-bc-border pt-3 text-xs text-bc-accent">
+          <Shield className="h-3.5 w-3.5 shrink-0" />
+          Keine Blockiergebühr bei BC Charge
+        </p>
       </div>
 
-      <div className="mt-auto pt-8">
+      <ChargingEmergencyHelp session={activeSession} />
+
+      <div className="mt-8">
         <button
           type="button"
           className="btn-primary flex w-full items-center justify-center gap-2 bg-bc-danger from-bc-danger to-red-600"

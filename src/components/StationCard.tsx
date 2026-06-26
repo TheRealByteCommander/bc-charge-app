@@ -6,6 +6,7 @@ import { getAvailableCount } from '../data/stations';
 import { useAppStore } from '../store/appStore';
 import type { Station } from '../types';
 import { computePlugScore } from '../services/community';
+import { StationTrustBadge } from '../components/StationTrustBadge';
 import { formatCurrency } from '../utils/format';
 import { minKnownPricePerKwh } from '../utils/pricing';
 
@@ -21,6 +22,9 @@ export function StationCard({ station, index = 0 }: { station: Station; index?: 
   const minPrice = minKnownPricePerKwh(station.connectors);
   const isFav = user?.favoriteStationIds.includes(station.id);
   const plugScore = computePlugScore(station.id, station.rating, station.reviewCount);
+  const stationDataSource = useAppStore((s) => s.stationDataSource);
+  const citrineosConnected = useAppStore((s) => s.citrineosConnected);
+  const liveTrust = citrineosConnected && stationDataSource === 'citrineos';
 
   return (
     <motion.div
@@ -73,6 +77,13 @@ export function StationCard({ station, index = 0 }: { station: Station; index?: 
               <Star className="h-3 w-3 fill-bc-warn text-bc-warn" />
               {plugScore} PlugScore
             </span>
+            <StationTrustBadge
+              stationId={station.id}
+              liveData={liveTrust}
+              availableCount={available}
+              offlineCount={station.connectors.filter((c) => c.status === 'offline').length}
+              compact
+            />
           </div>
         </div>
       </Link>
