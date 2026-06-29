@@ -2,6 +2,12 @@
   "chargerModel": "Elinta CityCharge H2",
   "manufacturer": "Elinta Charge",
   "ocppVersion": "1.6J",
+  "targetApiVersion": "CitrineOS v1.8.x (OCPP 2.0.1 Schema)",
+  "translationLayer": {
+    "mapping": "OCPP 1.6 JSON -> CitrineOS 2.0.1 Virtual Representation",
+    "idTokenMapping": "Central -> Local (Hardware based)",
+    "meterValueMapping": "Sampled -> Measured"
+  },
   "technicalSpecs": {
     "maxPowerPerConnector": 22000,
     "maxCurrentPerConnector": 32,
