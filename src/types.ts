@@ -176,6 +176,8 @@ export interface ChargingSession {
   chargePointModel?: string;
   /** EVSE-Nummer (für Multi-Connector-Stationen) */
   evseNumber?: number;
+  /** OCPP Charging State (Idle, EVConnected, Charging, SuspendedEVSE, SuspendedEV) */
+  chargingState?: string | null;
 }
 
 export interface LoyaltyReward {

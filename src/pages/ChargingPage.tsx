@@ -3,10 +3,12 @@ import { useEffect, useState } from 'react';
 import { Gauge, Scale, Shield, Square, Zap } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ChargingEmergencyHelp } from '../components/ChargingEmergencyHelp';
+import { ConnectorLedStatus } from '../components/ConnectorLedStatus';
 import { getStationById } from '../data/stations';
 import { useAppStore } from '../store/appStore';
 import { estimateRemainingChargeMinutes, vehicleTargetKwh } from '../utils/chargeEstimate';
 import { formatCurrency, formatDuration, formatKwh, formatPower } from '../utils/format';
+import { getChargingStateInfo } from '../utils/ocppStateMapping';
 
 export function ChargingPage() {
   const activeSession = useAppStore((s) => s.activeSession);
@@ -52,6 +54,7 @@ export function ChargingPage() {
   const hasMidMeters = station?.hardwareFeatures?.midCertifiedMeters ?? false;
   const hasDynamicLoad = station?.hardwareFeatures?.dynamicLoadManagement ?? false;
   const evseNumber = activeSession.evseNumber;
+  const chargingStateInfo = getChargingStateInfo(activeSession.chargingState);
 
   const handleStop = async () => {
     setStopping(true);
@@ -72,6 +75,11 @@ export function ChargingPage() {
         {evseNumber != null && <span className="font-medium text-bc-accent">Ladepunkt {evseNumber} · </span>}
         {activeSession.connectorType} · {formatPower(activeSession.powerKw)}
       </p>
+      {station?.hardwareModel === 'CityCharge H2' && (
+        <div className="mt-2 flex justify-center">
+          <ConnectorLedStatus status="occupied" isH2Hardware className="text-sm" />
+        </div>
+      )}
       {(hasMidMeters || hasDynamicLoad) && (
         <div className="mt-2 flex justify-center gap-2">
           {hasMidMeters && (
@@ -100,6 +108,13 @@ export function ChargingPage() {
         </div>
       </div>
 
+      {chargingStateInfo.isPaused && (
+        <div className="mx-auto mt-4 max-w-xs rounded-xl border border-bc-warn/30 bg-bc-warn/10 px-4 py-3 text-center">
+          <p className="text-sm font-medium text-bc-warn">{chargingStateInfo.label}</p>
+          <p className="mt-1 text-xs text-bc-muted">{chargingStateInfo.description}</p>
+        </div>
+      )}
+
       <div className="relative mx-auto mt-8 flex h-56 w-56 items-center justify-center">
         <svg className="absolute inset-0 -rotate-90" viewBox="0 0 100 100">
           <circle cx="50" cy="50" r="44" fill="none" stroke="#243040" strokeWidth="6" />
@@ -108,7 +123,7 @@ export function ChargingPage() {
             cy="50"
             r="44"
             fill="none"
-            stroke="url(#grad)"
+            stroke={chargingStateInfo.isPaused ? 'url(#grad-paused)' : 'url(#grad)'}
             strokeWidth="6"
             strokeLinecap="round"
             strokeDasharray={`${progress * 2.76} 276`}
@@ -118,10 +133,14 @@ export function ChargingPage() {
               <stop offset="0%" stopColor="#2ee59d" />
               <stop offset="100%" stopColor="#5dffb8" />
             </linearGradient>
+            <linearGradient id="grad-paused" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#fbbf24" />
+              <stop offset="100%" stopColor="#f59e0b" />
+            </linearGradient>
           </defs>
         </svg>
         <motion.div
-          animate={{ scale: [1, 1.03, 1] }}
+          animate={{ scale: chargingStateInfo.isPaused ? [1, 1, 1] : [1, 1.03, 1] }}
           transition={{ repeat: Infinity, duration: 2 }}
           className="text-center"
         >

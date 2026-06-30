@@ -1,0 +1,37 @@
+{
+  "chargerModel": "Elinta CityCharge H2",
+  "manufacturer": "Elinta Charge",
+  "ocppVersion": "1.6J",
+  "targetApiVersion": "CitrineOS v1.8.x (OCPP 2.0.1 Schema)",
+  "translationLayer": {
+    "mapping": "OCPP 1.6 JSON -> CitrineOS 2.0.1 Virtual Representation",
+    "idTokenMapping": "Central -> Local (Hardware based)",
+    "meterValueMapping": "Sampled -> Measured"
+  },
+  "technicalSpecs": {
+    "maxPowerPerConnector": 22000,
+    "maxCurrentPerConnector": 32,
+    "numberOfConnectors": 2,
+    "connectorType": "Type 2",
+    "supportedPowerSystems": ["TNC-S", "TNS", "TT"],
+    "phase": 3,
+    "voltage": 400
+  },
+  "features": {
+    "eichrechtCompliant": true,
+    "midCompliantMeters": true,
+    "dynamicLoadManagement": true,
+    "staticPowerBalancing": true,
+    "remoteMaintenance": true,
+    "otaUpdates": true
+  },
+  "connectivity": {
+    "options": ["Ethernet", "4G", "WiFi"],
+    "heartbeatInterval": 300
+  },
+  "citrineOSMapping": {
+    "meterValueSampling": "sampled",
+    "loadManagementMode": "dynamic",
+    "authMethods": ["RFID", "MobileApp"]
+  }
+}
