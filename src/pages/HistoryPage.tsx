@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Download, FileText, LifeBuoy } from 'lucide-react';
+import { Download, FileText, LifeBuoy, Scale } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { downloadInvoicePdf } from '../api/backend/invoices';
 import { useAppStore } from '../store/appStore';
@@ -8,6 +8,14 @@ import type { ChargingSession } from '../types';
 import { formatCurrency, formatDate, formatKwh } from '../utils/format';
 import { displayInvoiceNumber } from '../utils/invoice';
 import { buildSessionSupportMailto } from '../utils/supportContact';
+
+const MID_CERTIFIED_MODELS = ['CityCharge H2', 'Elinta CityCharge H2'];
+
+function isMidCertifiedSession(session: ChargingSession): boolean {
+  if (session.midCertified) return true;
+  if (session.chargePointModel && MID_CERTIFIED_MODELS.includes(session.chargePointModel)) return true;
+  return false;
+}
 
 function SessionDisputeActions({ session }: { session: ChargingSession }) {
   return (
@@ -88,6 +96,11 @@ export function HistoryPage() {
                     <span className="text-bc-danger">Zahlung fehlgeschlagen</span>
                   )}
                   {sess.invoiceEmailedAt && <span>E-Rechnung versendet</span>}
+                  {isMidCertifiedSession(sess) && (
+                    <span className="flex items-center gap-1 text-bc-blue" title="MID-zertifizierte Messung nach deutschem Eichrecht">
+                      <Scale className="h-3 w-3" /> Eichrecht
+                    </span>
+                  )}
                 </div>
                 <button
                   type="button"
