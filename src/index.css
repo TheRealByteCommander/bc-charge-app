@@ -116,9 +116,9 @@ html[data-a11y-font='xlarge'] .a11y-nav-link {
   }
 
   .glass {
-    background-color: rgba(23, 30, 38, 0.8);
+    background-color: rgba(255, 255, 255, 0.9);
     backdrop-filter: blur(24px);
-    border: 1px solid rgba(36, 48, 64, 0.6);
+    border: 1px solid rgba(226, 232, 240, 0.8);
   }
 
   .btn-primary {
@@ -127,12 +127,16 @@ html[data-a11y-font='xlarge'] .a11y-nav-link {
     justify-content: center;
     gap: 0.5rem;
     border-radius: 1rem;
-    background: linear-gradient(135deg, #2ee59d 0%, #1ab87a 100%);
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
     padding: 0.875rem 1.5rem;
     font-weight: 600;
-    color: #06080c;
-    box-shadow: 0 0 40px rgba(46, 229, 157, 0.25);
-    transition: transform 0.15s ease, opacity 0.15s ease;
+    color: #ffffff;
+    box-shadow: 0 4px 14px rgba(16, 185, 129, 0.3);
+    transition: transform 0.15s ease, opacity 0.15s ease, box-shadow 0.15s ease;
+  }
+
+  .btn-primary:hover {
+    box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4);
   }
 
   .btn-primary:active {
@@ -150,12 +154,16 @@ html[data-a11y-font='xlarge'] .a11y-nav-link {
     justify-content: center;
     gap: 0.5rem;
     border-radius: 1rem;
-    border: 1px solid #243040;
-    background-color: #171e26;
+    border: 1px solid #e2e8f0;
+    background-color: #ffffff;
     padding: 0.875rem 1.5rem;
     font-weight: 500;
-    color: #e8eef6;
-    transition: transform 0.15s ease;
+    color: #1e293b;
+    transition: transform 0.15s ease, background-color 0.15s ease;
+  }
+
+  .btn-secondary:hover {
+    background-color: #f8fafc;
   }
 
   .btn-secondary:active {
@@ -165,21 +173,21 @@ html[data-a11y-font='xlarge'] .a11y-nav-link {
   .input-field {
     width: 100%;
     border-radius: 0.75rem;
-    border: 1px solid #243040;
-    background-color: #0f1419;
+    border: 1px solid #e2e8f0;
+    background-color: #ffffff;
     padding: 0.75rem 1rem;
-    color: #e8eef6;
+    color: #1e293b;
     outline: none;
     transition: border-color 0.15s ease, box-shadow 0.15s ease;
   }
 
   .input-field::placeholder {
-    color: #8b9cb3;
+    color: #94a3b8;
   }
 
   .input-field:focus {
-    border-color: #2ee59d;
-    box-shadow: 0 0 0 2px rgba(46, 229, 157, 0.2);
+    border-color: #10b981;
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.15);
   }
 
   .page-shell {
@@ -195,16 +203,17 @@ html[data-a11y-font='xlarge'] .a11y-nav-link {
   width: 100%;
   height: 100%;
   border-radius: 1.25rem;
-  background: #0f1419 !important;
+  background: #f1f5f9 !important;
 }
 
 .leaflet-popup-content-wrapper {
-  background: #171e26 !important;
-  color: #e8eef6 !important;
+  background: #ffffff !important;
+  color: #1e293b !important;
   border-radius: 12px !important;
-  border: 1px solid #243040 !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1) !important;
 }
 
 .leaflet-popup-tip {
-  background: #171e26 !important;
+  background: #ffffff !important;
 }
