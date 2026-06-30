@@ -93,8 +93,9 @@ else
 fi
 
 cd "$APP_DIR"
-sudo -u "$APP_USER" npm ci --omit=dev
+sudo -u "$APP_USER" npm ci
 sudo -u "$APP_USER" npm run build
+sudo -u "$APP_USER" npm prune --omit=dev
 
 # .env Datei erstellen
 cat > "$APP_DIR/.env" << EOF
