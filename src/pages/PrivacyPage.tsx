@@ -138,7 +138,7 @@ export function PrivacyPage() {
 
       <LegalSection title="8. Beschwerderecht">
         <p>
-          Sie können sich bei einer Aufsichtsbehörde beschweren, z. B. beim{' '}
+          Sie können sich bei einer Aufsichtsbehörde beschweren, z. B. beim{' '}
           {dataProtectionAuthority.name}, {dataProtectionAuthority.street},{' '}
           {dataProtectionAuthority.zip} {dataProtectionAuthority.city},{' '}
           <a href={dataProtectionAuthority.website} className="text-bc-accent" target="_blank" rel="noopener noreferrer">

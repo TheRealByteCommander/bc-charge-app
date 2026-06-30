@@ -219,7 +219,7 @@ export function processSessionGamification(user: UserProfile, session: ChargingS
     return res;
   };
 
-  let badgeRes = runBadges(tierBefore);
+  const badgeRes = runBadges(tierBefore);
   pointsDelta += badgeRes.bonusPoints;
   loyaltyPoints += badgeRes.bonusPoints;
   const newBadgeIds = [...badgeRes.newBadgeIds];
