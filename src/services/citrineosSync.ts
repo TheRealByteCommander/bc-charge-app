@@ -36,7 +36,7 @@ export async function syncStationsFromCitrineos(): Promise<{
     mapped = applyTariffCatalogToStations(mapped, catalog);
     if (mapped.length > 0) {
       setStationsFromCitrineos(mapped);
-      saveStationsOfflineCache(getStations(), 'citrineos');
+      void saveStationsOfflineCache(getStations(), 'citrineos');
       return {
         ok: true,
         count: mapped.length,

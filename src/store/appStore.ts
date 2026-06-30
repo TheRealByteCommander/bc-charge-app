@@ -326,7 +326,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       } else if (sync.error && !sync.error.includes('nicht erreichbar')) {
         citrineosSyncError = sync.error;
       }
-      saveStationsOfflineCache(getStations(), getStationDataSource());
+      void saveStationsOfflineCache(getStations(), getStationDataSource());
 
       const sessions = user ? await fetchSessions() : [];
       const redeemedRewardIds = user ? await fetchRedeemedRewards() : [];
@@ -370,7 +370,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     } else if (sync.error && !sync.error.includes('nicht erreichbar')) {
       citrineosSyncError = sync.error;
     }
-    saveStationsOfflineCache(getStations(), getStationDataSource());
+    void saveStationsOfflineCache(getStations(), getStationDataSource());
 
     const user = resolveCurrentUser() ?? get().user;
 
