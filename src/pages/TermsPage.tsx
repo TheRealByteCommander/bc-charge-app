@@ -38,7 +38,7 @@ export function TermsPage() {
       <LegalSection title="4. Preise & Zahlung">
         <p>
           Es gelten die am Ladepunkt bzw. in der App angezeigten Preise inkl. ausgewiesener
-          Bestandteile (z. B. kWh-Preis, Startgebühr). Die Zahlung erfolgt über hinterlegte
+          Bestandteile (z. B. kWh-Preis, Startgebühr). Die Zahlung erfolgt über hinterlegte
           Zahlungsmittel (Karte/SEPA) über unseren Zahlungsdienstleister (siehe Datenschutzerklärung).
         </p>
       </LegalSection>
@@ -59,7 +59,7 @@ export function TermsPage() {
 
       <LegalSection title="6. Pflichten des Nutzers">
         <p>
-          Missbrauch (z. B. Manipulation von Ladepunkten, falsche Meldungen, Umgehung von
+          Missbrauch (z. B. Manipulation von Ladepunkten, falsche Meldungen, Umgehung von
           Zahlungssystemen) ist untersagt. Parkplatz- und Verkehrsregeln am Standort sind einzuhalten.
         </p>
       </LegalSection>

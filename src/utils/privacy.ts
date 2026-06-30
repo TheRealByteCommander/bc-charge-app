@@ -23,6 +23,7 @@ function loadStationReports(): unknown[] {
 }
 
 function sanitizeUserForExport(user: UserProfile) {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { passwordHash: _pw, ...rest } = user;
   return rest;
 }

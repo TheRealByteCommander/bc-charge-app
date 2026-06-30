@@ -82,6 +82,7 @@ export function pickNearestAvailableStations(
   fallback.sort((a, b) => a.sortKey - b.sortKey);
 
   const merged = [...withFree, ...fallback.filter((f) => !withFree.some((w) => w.station.id === f.station.id))];
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   return merged.slice(0, limit).map(({ sortKey: _sortKey, ...suggestion }) => suggestion);
 }
 

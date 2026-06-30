@@ -5,4 +5,5 @@ export {
   getStationDataSource,
   getStations,
   setStationsFromCitrineos,
+  setStationsFromOfflineCache,
 } from './stationRegistry';

@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { getStations } from '../data/stations';
+import { LanguageSwitcher } from '../components/LanguageSwitcher';
 import { StationCard } from '../components/StationCard';
 import { useAppStore } from '../store/appStore';
 import { formatDate, formatPoints } from '../utils/format';
@@ -101,6 +102,15 @@ export function ProfilePage() {
           </p>
         </div>
       </div>
+
+      <section className="mt-8">
+        <p className="mb-2 px-1 text-xs font-semibold uppercase tracking-wider text-bc-muted">
+          Sprache
+        </p>
+        <div className="rounded-2xl border border-bc-border bg-bc-elevated p-4">
+          <LanguageSwitcher />
+        </div>
+      </section>
 
       <section className="mt-8">
         <p className="mb-2 px-1 text-xs font-semibold uppercase tracking-wider text-bc-muted">

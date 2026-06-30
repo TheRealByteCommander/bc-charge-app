@@ -16,6 +16,7 @@ const emptyForm = (): Omit<Vehicle, 'id'> => ({
 });
 
 function vehicleToForm(v: Vehicle): Omit<Vehicle, 'id'> {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { id: _id, ...rest } = v;
   return rest;
 }

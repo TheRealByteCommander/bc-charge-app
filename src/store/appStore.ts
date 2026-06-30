@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { getStationById, getStationDataSource, getStations } from '../data/stations';
+import { getStationById, getStationDataSource, getStations, setStationsFromOfflineCache } from '../data/stations';
 import type { StationDataSource } from '../data/stationRegistry';
 import { defaultChargingPlan, normalizeChargingPlan } from '../data/chargingPlan';
 import { computeTier, tierThresholds } from '../data/rewards';
@@ -15,7 +15,7 @@ import {
 } from '../services/gamification';
 import { defaultStationFilters, type StationFilterState } from '../types/filters';
 import { applyStationFilters, searchStations } from '../utils/stationFilters';
-import { saveStationsOfflineCache } from '../utils/offlineCache';
+import { loadStationsOfflineCache, saveStationsOfflineCache } from '../utils/offlineCache';
 import { haversineKm } from '../utils/geo';
 import { notifySessionComplete } from '../services/browserNotifications';
 import { checkFavoriteAvailability } from '../services/favoriteAvailability';
@@ -323,10 +323,18 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (sync.ok) {
         citrineosConnected = true;
         stationDataSource = 'citrineos';
-      } else if (sync.error && !sync.error.includes('nicht erreichbar')) {
-        citrineosSyncError = sync.error;
+        void saveStationsOfflineCache(getStations(), 'citrineos');
+      } else {
+        if (sync.error && !sync.error.includes('nicht erreichbar')) {
+          citrineosSyncError = sync.error;
+        }
+        const cached = await loadStationsOfflineCache();
+        if (cached && cached.stations.length > 0) {
+          setStationsFromOfflineCache(cached.stations);
+          stationDataSource = 'offline-cache';
+          console.log(`[BC Charge] ${cached.stations.length} Stationen aus Offline-Cache geladen (${cached.source}, ${cached.savedAt})`);
+        }
       }
-      saveStationsOfflineCache(getStations(), getStationDataSource());
 
       const sessions = user ? await fetchSessions() : [];
       const redeemedRewardIds = user ? await fetchRedeemedRewards() : [];
@@ -367,10 +375,18 @@ export const useAppStore = create<AppState>((set, get) => ({
       citrineosConnected = true;
       stationDataSource = 'citrineos';
       citrineosSyncError = null;
-    } else if (sync.error && !sync.error.includes('nicht erreichbar')) {
-      citrineosSyncError = sync.error;
+      void saveStationsOfflineCache(getStations(), 'citrineos');
+    } else {
+      if (sync.error && !sync.error.includes('nicht erreichbar')) {
+        citrineosSyncError = sync.error;
+      }
+      const cached = await loadStationsOfflineCache();
+      if (cached && cached.stations.length > 0) {
+        setStationsFromOfflineCache(cached.stations);
+        stationDataSource = 'offline-cache';
+        console.log(`[BC Charge] ${cached.stations.length} Stationen aus Offline-Cache geladen (${cached.source}, ${cached.savedAt})`);
+      }
     }
-    saveStationsOfflineCache(getStations(), getStationDataSource());
 
     const user = resolveCurrentUser() ?? get().user;
 

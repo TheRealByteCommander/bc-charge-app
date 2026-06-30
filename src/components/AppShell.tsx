@@ -52,6 +52,20 @@ export function AppShell() {
     return () => clearInterval(id);
   }, [user, stationDataSource]);
 
+  useEffect(() => {
+    const { citrineosConnected, refreshCitrineosData } = useAppStore.getState();
+    if (!citrineosConnected) return;
+    
+    const refreshInterval = setInterval(() => {
+      const state = useAppStore.getState();
+      if (state.citrineosConnected && !state.citrineosSyncing) {
+        void refreshCitrineosData();
+      }
+    }, 120_000);
+    
+    return () => clearInterval(refreshInterval);
+  }, [stationDataSource]);
+
   return (
     <div className="mx-auto flex min-h-dvh max-w-lg flex-col bg-bc-gradient bg-hero-mesh">
       <a
