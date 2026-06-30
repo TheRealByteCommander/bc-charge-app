@@ -1,8 +1,9 @@
 import { motion } from 'framer-motion';
 import { useEffect, useState } from 'react';
-import { Shield, Square, Zap } from 'lucide-react';
+import { Gauge, Scale, Shield, Square, Zap } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ChargingEmergencyHelp } from '../components/ChargingEmergencyHelp';
+import { getStationById } from '../data/stations';
 import { useAppStore } from '../store/appStore';
 import { estimateRemainingChargeMinutes, vehicleTargetKwh } from '../utils/chargeEstimate';
 import { formatCurrency, formatDuration, formatKwh, formatPower } from '../utils/format';
@@ -35,6 +36,7 @@ export function ChargingPage() {
   }
 
   const vehicle = user?.vehicles.find((v) => v.id === activeSession.vehicleId);
+  const station = getStationById(activeSession.stationId);
   const targetKwh = vehicle ? vehicleTargetKwh(vehicle) : 60;
   const elapsed = Math.floor((now - new Date(activeSession.startedAt).getTime()) / 1000);
   const progress = Math.min(100, (activeSession.energyKwh / targetKwh) * 100);
@@ -46,6 +48,10 @@ export function ChargingPage() {
   const socPercent = vehicle
     ? Math.min(100, Math.round((activeSession.energyKwh / vehicle.batteryKwh) * 100))
     : null;
+  
+  const hasMidMeters = station?.hardwareFeatures?.midCertifiedMeters ?? false;
+  const hasDynamicLoad = station?.hardwareFeatures?.dynamicLoadManagement ?? false;
+  const evseNumber = activeSession.evseNumber;
 
   const handleStop = async () => {
     setStopping(true);
@@ -63,8 +69,23 @@ export function ChargingPage() {
         {activeSession.stationName}
       </h1>
       <p className="text-center text-sm text-bc-muted">
+        {evseNumber != null && <span className="font-medium text-bc-accent">Ladepunkt {evseNumber} · </span>}
         {activeSession.connectorType} · {formatPower(activeSession.powerKw)}
       </p>
+      {(hasMidMeters || hasDynamicLoad) && (
+        <div className="mt-2 flex justify-center gap-2">
+          {hasMidMeters && (
+            <span className="flex items-center gap-1 rounded-full bg-bc-blue/10 px-2 py-0.5 text-xs text-bc-blue">
+              <Scale className="h-3 w-3" /> Eichrecht
+            </span>
+          )}
+          {hasDynamicLoad && (
+            <span className="flex items-center gap-1 rounded-full bg-bc-elevated px-2 py-0.5 text-xs text-bc-muted">
+              <Gauge className="h-3 w-3" /> Lastmanagement
+            </span>
+          )}
+        </div>
+      )}
 
       <div className="mt-4 flex justify-center gap-6">
         <div className="text-center">

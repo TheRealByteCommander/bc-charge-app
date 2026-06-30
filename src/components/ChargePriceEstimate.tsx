@@ -1,6 +1,6 @@
-import { Euro, Info, Shield } from 'lucide-react';
+import { Euro, Gauge, Info, Shield } from 'lucide-react';
 import { useState } from 'react';
-import type { Connector, Vehicle } from '../types';
+import type { Connector, HardwareFeatures, Vehicle } from '../types';
 import { estimateChargeSession } from '../utils/chargeEstimate';
 import { formatCurrency } from '../utils/format';
 
@@ -10,12 +10,14 @@ export function ChargePriceEstimate({
   startSoc: controlledStart,
   targetSoc: controlledTarget,
   onSocChange,
+  hardwareFeatures,
 }: {
   connector: Connector;
   vehicle?: Vehicle;
   startSoc?: number;
   targetSoc?: number;
   onSocChange?: (start: number, target: number) => void;
+  hardwareFeatures?: HardwareFeatures;
 }) {
   const [internalStart, setInternalStart] = useState(30);
   const [internalTarget, setInternalTarget] = useState(80);
@@ -105,6 +107,13 @@ export function ChargePriceEstimate({
             <Shield className="mt-0.5 h-3.5 w-3.5 shrink-0 text-bc-accent" />
             Keine Blockiergebühr – Sie zahlen nur kWh und ggf. Startgebühr.
           </p>
+
+          {hardwareFeatures?.dynamicLoadManagement && (
+            <p className="mt-2 flex items-start gap-2 text-xs text-bc-muted">
+              <Gauge className="mt-0.5 h-3.5 w-3.5 shrink-0 text-bc-warn" />
+              Dynamisches Lastmanagement: Ladegeschwindigkeit kann je nach Netzauslastung variieren.
+            </p>
+          )}
         </div>
       </div>
     </div>

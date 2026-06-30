@@ -756,6 +756,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       sessionFee: connector.sessionFee ?? 0,
       pointsEarned: 0,
       citrineosBacked: false,
+      midCertified: station.hardwareFeatures?.midCertifiedMeters ?? false,
+      chargePointModel: station.chargePointModel,
+      evseNumber: connector.evseNumber,
     };
 
     if (citrineosConnected && getStationDataSource() === 'citrineos') {

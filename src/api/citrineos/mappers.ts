@@ -1,4 +1,11 @@
-import type { Connector, ConnectorStatus, ConnectorType, Station } from '../../types';
+import type {
+  Connector,
+  ConnectorStatus,
+  ConnectorType,
+  HardwareFeatures,
+  KnownHardwareModel,
+  Station,
+} from '../../types';
 import { mapTariffToConnectorPricing, type TariffCatalog } from './tariffPricing';
 import type { HasuraChargingStationRow } from './types';
 
@@ -9,6 +16,53 @@ const GRADIENTS = [
   'from-teal-900/60 to-bc-surface',
   'from-amber-900/50 to-bc-surface',
 ];
+
+/** Hardware-Konfigurationen für bekannte Modelle (basierend auf Arias CITRINE_H2_CONFIG.json) */
+const HARDWARE_CONFIGS: Record<string, { model: KnownHardwareModel; features: HardwareFeatures }> = {
+  'CityCharge H2': {
+    model: 'CityCharge H2',
+    features: {
+      midCertifiedMeters: true,
+      dynamicLoadManagement: true,
+      ocppVersion: '1.6',
+      multiConnector: true,
+    },
+  },
+  'Elinta CityCharge H2': {
+    model: 'CityCharge H2',
+    features: {
+      midCertifiedMeters: true,
+      dynamicLoadManagement: true,
+      ocppVersion: '1.6',
+      multiConnector: true,
+    },
+  },
+};
+
+/** Erkennt Hardware-Modell und Features basierend auf chargePointModel/Vendor */
+function detectHardwareFeatures(
+  chargePointModel?: string | null,
+  chargePointVendor?: string | null
+): { hardwareModel: KnownHardwareModel; hardwareFeatures: HardwareFeatures } {
+  const modelKey = chargePointModel ?? '';
+  const vendorModelKey = `${chargePointVendor ?? ''} ${modelKey}`.trim();
+  
+  const config = HARDWARE_CONFIGS[modelKey] ?? HARDWARE_CONFIGS[vendorModelKey];
+  
+  if (config) {
+    return { hardwareModel: config.model, hardwareFeatures: config.features };
+  }
+  
+  return {
+    hardwareModel: 'generic',
+    hardwareFeatures: {
+      midCertifiedMeters: false,
+      dynamicLoadManagement: false,
+      ocppVersion: '2.0.1',
+      multiConnector: false,
+    },
+  };
+}
 
 function mapConnectorStatus(ocppStatus: string, stationOnline: boolean): ConnectorStatus {
   if (!stationOnline) return 'offline';
@@ -54,6 +108,11 @@ export function mapHasuraStationToApp(
     loc?.name ??
     `${row.chargePointVendor ?? 'BC Charge'} ${row.chargePointModel ?? row.id}`.trim();
 
+  const { hardwareModel, hardwareFeatures } = detectHardwareFeatures(
+    row.chargePointModel,
+    row.chargePointVendor
+  );
+
   const connectors: Connector[] = [];
   for (const evse of row.evses ?? []) {
     for (const conn of evse.connectors ?? []) {
@@ -65,6 +124,8 @@ export function mapHasuraStationToApp(
         powerKw: powerKw > 0 ? powerKw : 22,
         status: mapConnectorStatus(conn.status, row.isOnline),
         evseId: `DE*BCC*${row.id}*${evse.evseId}*${conn.connectorId}`,
+        evseNumber: evse.evseId,
+        connectorNumber: conn.connectorId,
         ...pricing,
       });
     }
@@ -91,6 +152,10 @@ export function mapHasuraStationToApp(
     greenEnergy: true,
     accessible: true,
     connectors,
+    chargePointVendor: row.chargePointVendor ?? undefined,
+    chargePointModel: row.chargePointModel ?? undefined,
+    hardwareModel,
+    hardwareFeatures,
   };
 }
 

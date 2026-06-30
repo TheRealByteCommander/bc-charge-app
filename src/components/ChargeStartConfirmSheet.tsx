@@ -1,9 +1,16 @@
-import { Check, Shield } from 'lucide-react';
+import { Check, Gauge, Scale, Shield } from 'lucide-react';
 import { BottomSheet } from './BottomSheet';
 import type { Connector, Station, Vehicle } from '../types';
 import { estimateChargeSession } from '../utils/chargeEstimate';
 import { formatConnectorPriceSummary } from '../utils/pricing';
 import { formatCurrency } from '../utils/format';
+
+function formatEvseDisplay(connector: Connector): string | null {
+  if (connector.evseNumber != null) {
+    return `Ladepunkt ${connector.evseNumber}`;
+  }
+  return null;
+}
 
 export function ChargeStartConfirmSheet({
   open,
@@ -40,6 +47,11 @@ export function ChargeStartConfirmSheet({
         </p>
 
         <div className="rounded-xl border border-bc-border bg-bc-surface p-4 text-sm">
+          {formatEvseDisplay(connector) && (
+            <div className="mb-3 flex items-center gap-2 border-b border-bc-border pb-3">
+              <span className="font-semibold text-bc-accent">{formatEvseDisplay(connector)}</span>
+            </div>
+          )}
           <div className="flex justify-between gap-2">
             <span className="text-bc-muted">Anschluss</span>
             <span className="font-medium">
@@ -76,6 +88,30 @@ export function ChargeStartConfirmSheet({
             </p>
           </div>
         </div>
+
+        {station.hardwareFeatures?.midCertifiedMeters && (
+          <div className="flex items-start gap-3 rounded-xl border border-bc-blue/25 bg-bc-blue/5 p-3 text-sm">
+            <Scale className="mt-0.5 h-4 w-4 shrink-0 text-bc-blue" />
+            <div>
+              <p className="font-medium text-bc-text">Eichrecht-konforme Messung</p>
+              <p className="mt-1 text-bc-muted">
+                Diese Station nutzt MID-zertifizierte Zähler. Die Abrechnung erfolgt nach deutschem Eichrecht.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {station.hardwareFeatures?.dynamicLoadManagement && (
+          <div className="flex items-start gap-3 rounded-xl border border-bc-border bg-bc-elevated p-3 text-sm">
+            <Gauge className="mt-0.5 h-4 w-4 shrink-0 text-bc-muted" />
+            <div>
+              <p className="font-medium text-bc-text">Dynamisches Lastmanagement</p>
+              <p className="mt-1 text-bc-muted">
+                Die Ladeleistung kann je nach Netzauslastung automatisch angepasst werden.
+              </p>
+            </div>
+          </div>
+        )}
 
         <p className="text-xs text-bc-muted">
           Die Endabrechnung richtet sich nach der tatsächlich geladenen Energie. Sie erhalten sofort nach dem

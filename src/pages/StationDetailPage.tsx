@@ -2,10 +2,12 @@ import {
   Accessibility,
   ArrowLeft,
   Clock,
+  Gauge,
   Heart,
   Leaf,
   MapPin,
   Navigation,
+  Scale,
   Star,
   Zap,
 } from 'lucide-react';
@@ -37,6 +39,21 @@ const statusColor: Record<string, string> = {
   reserved: 'text-bc-blue',
 };
 
+/** Prüft ob Station Multi-Connector-Support hat (z.B. H2 mit 2 EVSEs) */
+function isMultiConnectorStation(station: ReturnType<typeof getStationById>): boolean {
+  if (!station) return false;
+  const uniqueEvses = new Set(station.connectors.map((c) => c.evseNumber).filter(Boolean));
+  return uniqueEvses.size > 1 || station.hardwareFeatures?.multiConnector === true;
+}
+
+/** Formatiert EVSE-Anzeige für Multi-Connector-Stationen */
+function formatEvseLabel(connector: { evseNumber?: number; connectorNumber?: number }): string {
+  if (connector.evseNumber != null) {
+    return `Ladepunkt ${connector.evseNumber}`;
+  }
+  return '';
+}
+
 export function StationDetailPage() {
   const { id } = useParams<{ id: string }>();
   const station = getStationById(id ?? '');
@@ -44,6 +61,8 @@ export function StationDetailPage() {
   const distance = useAppStore((s) => s.distanceKm);
   const toggleFavorite = useAppStore((s) => s.toggleFavorite);
   const startSession = useAppStore((s) => s.startSession);
+  const stationDataSource = useAppStore((s) => s.stationDataSource);
+  const citrineosConnected = useAppStore((s) => s.citrineosConnected);
   const navigate = useNavigate();
   const [selectedConnector, setSelectedConnector] = useState<string | null>(null);
   const [selectedVehicle, setSelectedVehicle] = useState(user?.vehicles[0]?.id ?? '');
@@ -69,8 +88,6 @@ export function StationDetailPage() {
 
   const dist = distance(station);
   const isFav = user?.favoriteStationIds.includes(station.id);
-  const stationDataSource = useAppStore((s) => s.stationDataSource);
-  const citrineosConnected = useAppStore((s) => s.citrineosConnected);
   const plugScore = computePlugScore(station.id, station.rating, station.reviewCount);
   const availableCount = getAvailableCount(station);
   const offlineCount = station.connectors.filter((c) => c.status === 'offline').length;
@@ -173,6 +190,16 @@ export function StationDetailPage() {
             <Accessibility className="inline h-3 w-3" /> Barrierefrei
           </span>
         )}
+        {station.hardwareFeatures?.midCertifiedMeters && (
+          <span className="rounded-lg bg-bc-blue/15 px-2 py-1 text-xs text-bc-blue">
+            <Scale className="inline h-3 w-3" /> Eichrecht
+          </span>
+        )}
+        {station.hardwareFeatures?.dynamicLoadManagement && (
+          <span className="rounded-lg bg-bc-elevated px-2 py-1 text-xs text-bc-muted">
+            <Gauge className="inline h-3 w-3" /> Lastmanagement
+          </span>
+        )}
       </div>
 
       <div className="mt-4">
@@ -196,31 +223,46 @@ export function StationDetailPage() {
 
       {user && <ChargingSetupChecklist user={user} returnTo={`/station/${station.id}`} />}
 
-      <h2 className="mt-8 font-display font-semibold">Anschlüsse ({getAvailableCount(station)} frei)</h2>
+      <h2 className="mt-8 font-display font-semibold">
+        {isMultiConnectorStation(station) ? 'Ladepunkt wählen' : 'Anschlüsse'} ({getAvailableCount(station)} frei)
+      </h2>
+      {isMultiConnectorStation(station) && (
+        <p className="mt-1 text-sm text-bc-muted">
+          Diese Station hat mehrere Ladepunkte. Bitte wählen Sie den Anschluss, an dem Ihr Fahrzeug steht.
+        </p>
+      )}
       <div className="mt-3 space-y-3">
-        {station.connectors.map((c: Connector) => (
-          <button
-            key={c.id}
-            type="button"
-            disabled={c.status !== 'available'}
-            onClick={() => setSelectedConnector(c.id)}
-            className={`w-full rounded-2xl border p-4 text-left transition ${
-              selectedConnector === c.id
-                ? 'border-bc-accent bg-bc-accent/10'
-                : 'border-bc-border bg-bc-elevated'
-            } ${c.status !== 'available' ? 'opacity-50' : ''}`}
-          >
-            <div className="flex items-center justify-between">
-              <span className="flex items-center gap-2 font-semibold">
-                <Zap className="h-4 w-4 text-bc-accent" />
-                {c.type} · {c.powerKw} kW
-              </span>
-              <span className={`text-sm font-medium ${statusColor[c.status]}`}>{statusLabel[c.status]}</span>
-            </div>
-            <ConnectorPrice connector={c} className="mt-1" />
-            <p className="mt-1 font-mono text-xs text-bc-muted">{c.evseId}</p>
-          </button>
-        ))}
+        {station.connectors.map((c: Connector) => {
+          const evseLabel = formatEvseLabel(c);
+          return (
+            <button
+              key={c.id}
+              type="button"
+              disabled={c.status !== 'available'}
+              onClick={() => setSelectedConnector(c.id)}
+              className={`w-full rounded-2xl border p-4 text-left transition ${
+                selectedConnector === c.id
+                  ? 'border-bc-accent bg-bc-accent/10'
+                  : 'border-bc-border bg-bc-elevated'
+              } ${c.status !== 'available' ? 'opacity-50' : ''}`}
+            >
+              {evseLabel && (
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-bc-accent">
+                  {evseLabel}
+                </p>
+              )}
+              <div className="flex items-center justify-between">
+                <span className="flex items-center gap-2 font-semibold">
+                  <Zap className="h-4 w-4 text-bc-accent" />
+                  {c.type} · {c.powerKw} kW
+                </span>
+                <span className={`text-sm font-medium ${statusColor[c.status]}`}>{statusLabel[c.status]}</span>
+              </div>
+              <ConnectorPrice connector={c} className="mt-1" />
+              <p className="mt-1 font-mono text-xs text-bc-muted">{c.evseId}</p>
+            </button>
+          );
+        })}
       </div>
 
       {selectedConnectorData && (
@@ -233,6 +275,7 @@ export function StationDetailPage() {
             setStartSoc(s);
             setTargetSoc(t);
           }}
+          hardwareFeatures={station.hardwareFeatures}
         />
       )}
 
