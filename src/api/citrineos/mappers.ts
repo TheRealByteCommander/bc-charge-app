@@ -6,6 +6,7 @@ import type {
   KnownHardwareModel,
   Station,
 } from '../../types';
+import { mapOcpp16StatusToApp, mapOcpp201StatusToApp } from '../../utils/ocppStateMapping';
 import { mapTariffToConnectorPricing, type TariffCatalog } from './tariffPricing';
 import type { HasuraChargingStationRow } from './types';
 
@@ -64,14 +65,17 @@ function detectHardwareFeatures(
   };
 }
 
-function mapConnectorStatus(ocppStatus: string, stationOnline: boolean): ConnectorStatus {
+function mapConnectorStatus(
+  ocppStatus: string,
+  stationOnline: boolean,
+  ocppVersion: '1.6' | '2.0.1' = '2.0.1'
+): ConnectorStatus {
   if (!stationOnline) return 'offline';
-  const s = ocppStatus.toLowerCase();
-  if (s.includes('available')) return 'available';
-  if (s.includes('occupied') || s.includes('charging')) return 'occupied';
-  if (s.includes('reserved')) return 'reserved';
-  if (s.includes('unavailable') || s.includes('fault')) return 'offline';
-  return 'offline';
+  
+  if (ocppVersion === '1.6') {
+    return mapOcpp16StatusToApp(ocppStatus);
+  }
+  return mapOcpp201StatusToApp(ocppStatus);
 }
 
 function mapConnectorType(type?: string | null): ConnectorType {
@@ -122,7 +126,7 @@ export function mapHasuraStationToApp(
         id: connectorId(evse.evseId, conn.connectorId),
         type: mapConnectorType(conn.type),
         powerKw: powerKw > 0 ? powerKw : 22,
-        status: mapConnectorStatus(conn.status, row.isOnline),
+        status: mapConnectorStatus(conn.status, row.isOnline, hardwareFeatures.ocppVersion),
         evseId: `DE*BCC*${row.id}*${evse.evseId}*${conn.connectorId}`,
         evseNumber: evse.evseId,
         connectorNumber: conn.connectorId,

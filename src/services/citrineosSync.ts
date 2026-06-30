@@ -131,6 +131,7 @@ export async function pollCitrineosSession(
         energyKwh: tx.totalKwh ?? session.energyKwh,
         costEur: tx.totalCost ?? session.costEur,
         citrineosTransactionId: tx.transactionId,
+        chargingState: tx.chargingState,
       };
     }
   }
@@ -142,6 +143,7 @@ export async function pollCitrineosSession(
         energyKwh: tx.totalKwh ?? session.energyKwh,
         costEur: tx.totalCost ?? session.costEur,
         citrineosTransactionId: tx.transactionId,
+        chargingState: tx.chargingState,
       };
     }
   }

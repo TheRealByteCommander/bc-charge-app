@@ -17,6 +17,7 @@ import { ChargingSetupChecklist } from '../components/ChargingSetupChecklist';
 import { ChargePriceEstimate } from '../components/ChargePriceEstimate';
 import { ChargeStartConfirmSheet } from '../components/ChargeStartConfirmSheet';
 import { CommunityReportForm } from '../components/CommunityReportForm';
+import { ConnectorLedStatus } from '../components/ConnectorLedStatus';
 import { ConnectorPrice } from '../components/ConnectorPrice';
 import { GuestBanner } from '../components/GuestBanner';
 import { StationTrustBadge } from '../components/StationTrustBadge';
@@ -256,7 +257,13 @@ export function StationDetailPage() {
                   <Zap className="h-4 w-4 text-bc-accent" />
                   {c.type} · {c.powerKw} kW
                 </span>
-                <span className={`text-sm font-medium ${statusColor[c.status]}`}>{statusLabel[c.status]}</span>
+                <div className="flex items-center gap-3">
+                  <ConnectorLedStatus
+                    status={c.status}
+                    isH2Hardware={station.hardwareModel === 'CityCharge H2'}
+                  />
+                  <span className={`text-sm font-medium ${statusColor[c.status]}`}>{statusLabel[c.status]}</span>
+                </div>
               </div>
               <ConnectorPrice connector={c} className="mt-1" />
               <p className="mt-1 font-mono text-xs text-bc-muted">{c.evseId}</p>
