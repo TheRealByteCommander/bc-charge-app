@@ -44,7 +44,8 @@ export async function deleteAccountRemote(): Promise<void> {
 }
 
 export async function downloadExportFromServer(): Promise<void> {
-  const url = `${import.meta.env.DEV && import.meta.env.VITE_BC_USE_PROXY !== 'false' ? '' : (import.meta.env.VITE_BC_API_URL ?? 'http://localhost:4242')}/api/auth/export`;
+  const baseUrl = import.meta.env.VITE_BC_API_URL?.replace(/\/$/, '') ?? (import.meta.env.PROD ? '' : 'http://localhost:4242');
+  const url = `${baseUrl}/api/auth/export`;
   const res = await fetch(url, { credentials: 'include' });
   if (!res.ok) throw new Error('Export fehlgeschlagen');
   const blob = await res.blob();
