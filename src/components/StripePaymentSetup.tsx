@@ -79,12 +79,12 @@ export function StripePaymentSetup({
       options={{
         clientSecret,
         appearance: {
-          theme: 'night',
+          theme: 'stripe',
           variables: {
-            colorPrimary: '#2ee59d',
-            colorBackground: '#0f1419',
-            colorText: '#e8eef6',
-            colorDanger: '#ff6b6b',
+            colorPrimary: '#10b981',
+            colorBackground: '#ffffff',
+            colorText: '#1e293b',
+            colorDanger: '#ef4444',
             borderRadius: '12px',
           },
         },

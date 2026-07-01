@@ -54,7 +54,7 @@ function Bootstrap({ children }: { children: React.ReactNode }) {
 
   if (!initialized) {
     return (
-      <div className="flex min-h-dvh items-center justify-center bg-bc-ink">
+      <div className="flex min-h-dvh items-center justify-center bg-bc-surface">
         <div className="h-10 w-10 animate-spin rounded-full border-2 border-bc-accent border-t-transparent" />
       </div>
     );
