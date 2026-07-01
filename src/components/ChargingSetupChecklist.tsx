@@ -1,7 +1,6 @@
 import { Car, CheckCircle2, ChevronRight, CreditCard } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useLocale } from '../i18n/LocaleContext';
-import { useAppStore } from '../store/appStore';
 import type { UserProfile } from '../types';
 
 interface ChargingSetupChecklistProps {
@@ -11,21 +10,16 @@ interface ChargingSetupChecklistProps {
 
 export function ChargingSetupChecklist({ user, returnTo }: ChargingSetupChecklistProps) {
   const { t, locale } = useLocale();
-  const stripeReady = useAppStore((s) => s.stripeReady);
-  const requirePayment = stripeReady && import.meta.env.VITE_REQUIRE_PAYMENT !== 'false';
   
   const hasVehicle = user.vehicles.length > 0;
   const hasPayment = user.paymentMethods.length > 0;
-  const ready = hasVehicle && (hasPayment || !requirePayment);
+  const ready = hasVehicle && hasPayment;
 
   if (ready) {
     return (
       <div className="mt-4 flex items-center gap-2 rounded-xl border border-bc-accent/30 bg-bc-accent/10 px-4 py-3 text-sm text-bc-accent">
         <CheckCircle2 className="h-4 w-4 shrink-0" />
-        {locale === 'de' ? 'Bereit zum Laden – Fahrzeug ist hinterlegt.' : 'Ready to charge – vehicle is set up.'}
-        {!requirePayment && !hasPayment && (
-          <span className="ml-1 text-xs">({t.charging.noPaymentRequired})</span>
-        )}
+        {locale === 'de' ? 'Bereit zum Laden – Fahrzeug und Zahlung sind hinterlegt.' : 'Ready to charge – vehicle and payment are set up.'}
       </div>
     );
   }
@@ -41,14 +35,14 @@ export function ChargingSetupChecklist({ user, returnTo }: ChargingSetupChecklis
       hint: locale === 'de' ? 'Damit wir Ladeleistung und Verbrauch zuordnen können.' : 'So we can track charging power and consumption.',
       to: `/fahrzeuge${returnParam}`,
     },
-    ...(requirePayment ? [{
+    {
       id: 'payment',
       done: hasPayment,
       icon: CreditCard,
       title: t.charging.addPayment,
       hint: locale === 'de' ? 'Für die Abrechnung nach dem Ladevorgang.' : 'For billing after charging.',
       to: `/zahlung${returnParam}`,
-    }] : []),
+    },
   ];
 
   const remaining = steps.filter((s) => !s.done).length;

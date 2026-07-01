@@ -741,8 +741,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { user, activeSession, citrineosConnected, stripeReady } = get();
     if (!user) return { ok: false, error: 'Bitte melden Sie sich an.' };
     if (activeSession) return { ok: false, error: 'Es läuft bereits eine Ladesitzung.' };
-    const requirePayment = stripeReady && import.meta.env.VITE_REQUIRE_PAYMENT !== 'false';
-    if (requirePayment && user.paymentMethods.length === 0) {
+    if (user.paymentMethods.length === 0) {
       return { ok: false, error: 'Bitte hinterlegen Sie eine Zahlungsmethode unter Profil → Zahlung.' };
     }
     const station = getStationById(stationId);
