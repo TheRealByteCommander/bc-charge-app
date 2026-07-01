@@ -183,7 +183,9 @@ export interface ChargingSession {
 export interface LoyaltyReward {
   id: string;
   title: string;
+  titleEn?: string;
   description: string;
+  descriptionEn?: string;
   pointsCost: number;
   category: 'charging' | 'partner' | 'exclusive';
   available: boolean;

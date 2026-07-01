@@ -6,6 +6,7 @@ import { ChallengesPanel } from '../components/gamification/ChallengesPanel';
 import { LeaderboardPanel } from '../components/gamification/LeaderboardPanel';
 import { StreakBanner } from '../components/gamification/StreakBanner';
 import { LoyaltyCard } from '../components/LoyaltyCard';
+import { useLocale } from '../i18n/LocaleContext';
 import { loyaltyRewards } from '../data/rewards';
 import { badges } from '../data/badges';
 import { badgeProgressPercent } from '../services/gamification';
@@ -15,6 +16,7 @@ import { formatPoints } from '../utils/format';
 type Tab = 'overview' | 'badges' | 'challenges' | 'leaderboard';
 
 export function LoyaltyPage() {
+  const { t, locale } = useLocale();
   const user = useAppStore((s) => s.user);
   const redeemed = useAppStore((s) => s.redeemedRewardIds);
   const redeemReward = useAppStore((s) => s.redeemReward);
@@ -23,15 +25,15 @@ export function LoyaltyPage() {
 
   useEffect(() => {
     syncGamification();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- einmal beim Öffnen
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (!user) {
     return (
       <div className="page-shell text-center">
-        <p className="text-bc-muted">Melden Sie sich an für BC Points und Prämien.</p>
+        <p className="text-bc-muted">{t.guest.hint}</p>
         <a href="/anmelden" className="btn-primary mt-6 inline-block">
-          Anmelden
+          {t.auth.login}
         </a>
       </div>
     );
@@ -41,16 +43,18 @@ export function LoyaltyPage() {
   const badgePct = badgeProgressPercent(g);
 
   const tabs: { id: Tab; label: string }[] = [
-    { id: 'overview', label: 'Übersicht' },
-    { id: 'badges', label: `Abzeichen ${g.unlockedBadgeIds.length}/${badges.length}` },
-    { id: 'challenges', label: 'Aufgaben' },
-    { id: 'leaderboard', label: 'Bestenliste' },
+    { id: 'overview', label: locale === 'de' ? 'Übersicht' : 'Overview' },
+    { id: 'badges', label: `${t.gamification.badges} ${g.unlockedBadgeIds.length}/${badges.length}` },
+    { id: 'challenges', label: t.gamification.challenges },
+    { id: 'leaderboard', label: t.gamification.leaderboard },
   ];
 
   return (
     <div className="page-shell pb-8">
-      <h1 className="font-display text-2xl font-bold">BC Vorteile</h1>
-      <p className="mt-1 text-bc-muted">Points, Abzeichen, Aufgaben und Bestenliste.</p>
+      <h1 className="font-display text-2xl font-bold">{t.gamification.title}</h1>
+      <p className="mt-1 text-bc-muted">
+        {locale === 'de' ? 'Points, Abzeichen, Aufgaben und Bestenliste.' : 'Points, badges, challenges and leaderboard.'}
+      </p>
 
       <div className="mt-4 flex gap-1 overflow-x-auto pb-1">
         {tabs.map((t) => (
@@ -76,14 +80,14 @@ export function LoyaltyPage() {
             <StreakBanner g={g} />
           </div>
           <div className="mt-4 rounded-2xl border border-bc-border bg-bc-elevated p-4 text-center">
-            <p className="text-sm text-bc-muted">Fortschritt Abzeichen</p>
+            <p className="text-sm text-bc-muted">{t.gamification.progress} {t.gamification.badges}</p>
             <p className="mt-1 font-display text-2xl font-bold text-bc-accent">{badgePct}%</p>
             <button type="button" className="mt-2 text-sm text-bc-accent" onClick={() => setTab('badges')}>
-              Alle Abzeichen anzeigen →
+              {locale === 'de' ? 'Alle Abzeichen anzeigen' : 'Show all badges'} →
             </button>
           </div>
           <div className="mt-6 rounded-2xl border border-bc-border bg-bc-elevated p-4 text-center">
-            <p className="text-sm text-bc-muted">Ihre Mitgliedskarte</p>
+            <p className="text-sm text-bc-muted">{t.gamification.memberCard}</p>
             <p className="font-mono text-xs text-bc-accent">{user.membershipId}</p>
             <div className="mt-4 flex justify-center rounded-xl bg-white p-3">
               <QRCodeSVG value={`BCCHARGE:${user.membershipId}`} size={140} level="M" />
@@ -91,7 +95,7 @@ export function LoyaltyPage() {
           </div>
           <h2 className="mt-8 flex items-center gap-2 font-display text-lg font-semibold">
             <Gift className="h-5 w-5 text-bc-accent" />
-            Prämien einlösen
+            {t.gamification.rewards}
           </h2>
           <div className="mt-3 space-y-3">
             {loyaltyRewards.map((reward) => {
@@ -101,8 +105,8 @@ export function LoyaltyPage() {
                 <div key={reward.id} className="rounded-2xl border border-bc-border bg-bc-elevated p-4">
                   <div className="flex items-start justify-between gap-2">
                     <div>
-                      <h3 className="font-semibold">{reward.title}</h3>
-                      <p className="mt-1 text-sm text-bc-muted">{reward.description}</p>
+                      <h3 className="font-semibold">{locale === 'de' ? reward.title : reward.titleEn ?? reward.title}</h3>
+                      <p className="mt-1 text-sm text-bc-muted">{locale === 'de' ? reward.description : reward.descriptionEn ?? reward.description}</p>
                     </div>
                     <span className="shrink-0 rounded-lg bg-bc-accent/15 px-2 py-1 text-xs font-bold text-bc-accent">
                       {formatPoints(reward.pointsCost)} P
@@ -117,15 +121,15 @@ export function LoyaltyPage() {
                     {done ? (
                       <>
                         <Check className="h-4 w-4 text-bc-accent" />
-                        Eingelöst
+                        {t.gamification.claimed}
                       </>
                     ) : !canAfford ? (
                       <>
                         <Lock className="h-4 w-4" />
-                        Zu wenig Points
+                        {locale === 'de' ? 'Zu wenig Points' : 'Not enough points'}
                       </>
                     ) : (
-                      'Jetzt einlösen'
+                      t.gamification.claimReward
                     )}
                   </button>
                 </div>

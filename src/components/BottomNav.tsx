@@ -1,22 +1,26 @@
 import { BatteryCharging, Home, Map, QrCode, Sparkles, User } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
+import { useLocale } from '../i18n/LocaleContext';
 import { useAppStore } from '../store/appStore';
 
-const guestLinks = [
-  { to: '/karte', icon: Map, label: 'Karte', end: true },
-  { to: '/stationen', icon: Home, label: 'Liste' },
-  { to: '/anmelden', icon: User, label: 'Anmelden' },
-] as const;
+type NavKey = 'map' | 'list' | 'login' | 'home' | 'scan' | 'perks' | 'profile' | 'charging';
 
-const userLinks = [
-  { to: '/', icon: Home, label: 'Start', end: true },
-  { to: '/karte', icon: Map, label: 'Karte' },
-  { to: '/scan', icon: QrCode, label: 'Start', sessionTab: true },
-  { to: '/vorteile', icon: Sparkles, label: 'Vorteile' },
-  { to: '/profil', icon: User, label: 'Profil' },
-] as const;
+const guestLinks: { to: string; icon: typeof Map; labelKey: NavKey; end?: boolean }[] = [
+  { to: '/karte', icon: Map, labelKey: 'map', end: true },
+  { to: '/stationen', icon: Home, labelKey: 'list' },
+  { to: '/anmelden', icon: User, labelKey: 'login' },
+];
+
+const userLinks: { to: string; icon: typeof Map; labelKey: NavKey; end?: boolean; sessionTab?: boolean }[] = [
+  { to: '/', icon: Home, labelKey: 'home', end: true },
+  { to: '/karte', icon: Map, labelKey: 'map' },
+  { to: '/scan', icon: QrCode, labelKey: 'scan', sessionTab: true },
+  { to: '/vorteile', icon: Sparkles, labelKey: 'perks' },
+  { to: '/profil', icon: User, labelKey: 'profile' },
+];
 
 export function BottomNav() {
+  const { t } = useLocale();
   const user = useAppStore((s) => s.user);
   const activeSession = useAppStore((s) => s.activeSession);
   const links = user ? userLinks : guestLinks;
@@ -25,10 +29,11 @@ export function BottomNav() {
     <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-bc-border/80 glass safe-bottom">
       <div className="mx-auto flex max-w-lg items-center justify-around px-1 py-2">
         {links.map((link) => {
-          const { to, icon: Icon, label, ...rest } = link;
+          const { to, icon: Icon, labelKey, ...rest } = link;
           const isSessionTab = 'sessionTab' in link && link.sessionTab;
           const target = isSessionTab && activeSession ? '/laden' : to;
           const DisplayIcon = isSessionTab && activeSession ? BatteryCharging : Icon;
+          const label = t.nav[labelKey];
 
           return (
             <NavLink
@@ -58,7 +63,7 @@ export function BottomNav() {
                       </span>
                     )}
                   </span>
-                  <span className="truncate">{isSessionTab && activeSession ? 'Laden' : label}</span>
+                  <span className="truncate">{isSessionTab && activeSession ? t.nav.charging : label}</span>
                 </>
               )}
             </NavLink>

@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { getStations } from '../data/stations';
+import { useLocale } from '../i18n/LocaleContext';
 import { LanguageSwitcher } from '../components/LanguageSwitcher';
 import { StationCard } from '../components/StationCard';
 import { useAppStore } from '../store/appStore';
@@ -26,35 +27,54 @@ import { companyInfo } from '../data/company';
 import { tierThresholds } from '../data/rewards';
 import { getGeoConsent, revokeGeoConsent } from '../utils/geoConsent';
 
-const menuSections = [
+type MenuKey = 'vehicles' | 'payment' | 'history' | 'accessibility' | 'notifications' | 'tariffs' | 'privacy' | 'imprint' | 'terms' | 'support';
+
+interface MenuItem {
+  to: string;
+  icon: typeof Car;
+  labelKey: MenuKey;
+}
+
+interface MenuSection {
+  titleKey: 'charging' | 'app' | 'legal';
+  items: MenuItem[];
+}
+
+const menuSections: MenuSection[] = [
   {
-    title: 'Laden',
+    titleKey: 'charging',
     items: [
-      { to: '/fahrzeuge', icon: Car, label: 'Fahrzeuge' },
-      { to: '/zahlung', icon: CreditCard, label: 'Zahlung' },
-      { to: '/historie', icon: History, label: 'Ladehistorie' },
+      { to: '/fahrzeuge', icon: Car, labelKey: 'vehicles' },
+      { to: '/zahlung', icon: CreditCard, labelKey: 'payment' },
+      { to: '/historie', icon: History, labelKey: 'history' },
     ],
   },
   {
-    title: 'App',
+    titleKey: 'app',
     items: [
-      { to: '/barrierefreiheit', icon: Accessibility, label: 'Barrierefreiheit' },
-      { to: '/benachrichtigungen', icon: Bell, label: 'Benachrichtigungen' },
-      { to: '/tarife', icon: Receipt, label: 'Tarife & Preise' },
+      { to: '/barrierefreiheit', icon: Accessibility, labelKey: 'accessibility' },
+      { to: '/benachrichtigungen', icon: Bell, labelKey: 'notifications' },
+      { to: '/tarife', icon: Receipt, labelKey: 'tariffs' },
     ],
   },
   {
-    title: 'Rechtliches',
+    titleKey: 'legal',
     items: [
-      { to: '/datenschutz', icon: Shield, label: 'Datenschutz' },
-      { to: '/impressum', icon: FileText, label: 'Impressum' },
-      { to: '/nutzungsbedingungen', icon: Scale, label: 'Nutzungsbedingungen' },
-      { to: '/hilfe', icon: HelpCircle, label: 'Support' },
+      { to: '/datenschutz', icon: Shield, labelKey: 'privacy' },
+      { to: '/impressum', icon: FileText, labelKey: 'imprint' },
+      { to: '/nutzungsbedingungen', icon: Scale, labelKey: 'terms' },
+      { to: '/hilfe', icon: HelpCircle, labelKey: 'support' },
     ],
   },
 ];
 
+const sectionTitles = {
+  de: { charging: 'Laden', app: 'App', legal: 'Rechtliches' },
+  en: { charging: 'Charging', app: 'App', legal: 'Legal' },
+};
+
 export function ProfilePage() {
+  const { t, locale } = useLocale();
   const user = useAppStore((s) => s.user);
   const logout = useAppStore((s) => s.logout);
   const deleteAccount = useAppStore((s) => s.deleteAccount);
@@ -66,9 +86,9 @@ export function ProfilePage() {
   if (!user) {
     return (
       <div className="page-shell flex flex-col items-center text-center">
-        <p className="text-bc-muted">Melden Sie sich an, um Ihr Profil zu verwalten.</p>
+        <p className="text-bc-muted">{t.guest.hint}</p>
         <Link to="/anmelden" className="btn-primary mt-6 w-full max-w-xs text-center">
-          Anmelden
+          {t.auth.login}
         </Link>
       </div>
     );
@@ -85,7 +105,7 @@ export function ProfilePage() {
 
   return (
     <div className="page-shell pb-8">
-      <h1 className="font-display text-2xl font-bold">Profil</h1>
+      <h1 className="font-display text-2xl font-bold">{t.profile.title}</h1>
 
       <div className="mt-6 flex items-center gap-4">
         <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-accent-gradient font-display text-xl font-bold text-bc-ink">
@@ -98,14 +118,14 @@ export function ProfilePage() {
           </p>
           <p className="truncate text-sm text-bc-muted">{user.email}</p>
           <p className="text-xs text-bc-accent">
-            {tier.label} · {formatPoints(user.loyaltyPoints)} Points
+            {tier.label} · {formatPoints(user.loyaltyPoints)} {t.gamification.points}
           </p>
         </div>
       </div>
 
       <section className="mt-8">
         <p className="mb-2 px-1 text-xs font-semibold uppercase tracking-wider text-bc-muted">
-          Sprache
+          {t.profile.language}
         </p>
         <div className="rounded-2xl border border-bc-border bg-bc-elevated p-4">
           <LanguageSwitcher />
@@ -114,19 +134,17 @@ export function ProfilePage() {
 
       <section className="mt-8">
         <p className="mb-2 px-1 text-xs font-semibold uppercase tracking-wider text-bc-muted">
-          Ihre Daten
+          {t.profile.yourData}
         </p>
         <div className="space-y-2 rounded-2xl border border-bc-border bg-bc-elevated p-4">
-          <p className="text-sm text-bc-muted">
-            Datenexport (Art. 20 DSGVO) und Verwaltung der Standort-Einwilligung.
-          </p>
+          <p className="text-sm text-bc-muted">{t.profile.dataExport}</p>
           <button
             type="button"
             onClick={() => exportUserData()}
             className="btn-secondary flex w-full items-center justify-center gap-2 text-sm"
           >
             <Download className="h-4 w-4" />
-            Daten exportieren (JSON)
+            {t.profile.exportData}
           </button>
           {geoConsent === 'granted' ? (
             <button
@@ -135,24 +153,23 @@ export function ProfilePage() {
               className="btn-secondary flex w-full items-center justify-center gap-2 text-sm"
             >
               <MapPinOff className="h-4 w-4" />
-              Standort-Einwilligung widerrufen
+              {t.profile.revokeLocation}
             </button>
           ) : (
             <p className="text-xs text-bc-muted">
-              Standort: {geoConsent === 'denied' ? 'abgelehnt' : 'noch nicht festgelegt'} – Banner
-              erscheint bei Bedarf auf der Karte.
+              {geoConsent === 'denied' ? t.profile.locationDenied : t.profile.locationPending} – {t.profile.locationHint}
             </p>
           )}
         </div>
       </section>
 
       {menuSections.map((section) => (
-        <section key={section.title} className="mt-8">
+        <section key={section.titleKey} className="mt-8">
           <p className="mb-2 px-1 text-xs font-semibold uppercase tracking-wider text-bc-muted">
-            {section.title}
+            {sectionTitles[locale][section.titleKey]}
           </p>
           <nav className="overflow-hidden rounded-2xl border border-bc-border bg-bc-elevated">
-            {section.items.map(({ to, icon: Icon, label }, i) => (
+            {section.items.map(({ to, icon: Icon, labelKey }, i) => (
               <Link
                 key={to}
                 to={to}
@@ -162,7 +179,7 @@ export function ProfilePage() {
               >
                 <span className="flex items-center gap-3 text-sm">
                   <Icon className="h-5 w-5 text-bc-accent" />
-                  {label}
+                  {t.profile[labelKey]}
                 </span>
                 <ChevronRight className="h-4 w-4 text-bc-muted" />
               </Link>
@@ -175,7 +192,7 @@ export function ProfilePage() {
         <section className="mt-8">
           <h2 className="flex items-center gap-2 font-display font-semibold">
             <MapPin className="h-5 w-5 text-bc-accent" />
-            Favoriten
+            {t.stations.favorites}
           </h2>
           <div className="mt-3 space-y-3">
             {favorites.map((s) => (
@@ -194,17 +211,13 @@ export function ProfilePage() {
         className="btn-secondary mt-10 flex w-full items-center justify-center gap-2 text-bc-danger border-bc-danger/30"
       >
         <LogOut className="h-4 w-4" />
-        Abmelden
+        {t.auth.logout}
       </button>
 
       <button
         type="button"
         onClick={() => {
-          if (
-            window.confirm(
-              'Alle Kontodaten auf diesem Gerät unwiderruflich löschen? Gespeicherte Zahlungsmethoden werden mit entfernt.'
-            )
-          ) {
+          if (window.confirm(t.profile.deleteConfirm)) {
             deleteAccount();
             navigate('/anmelden');
           }
@@ -212,11 +225,11 @@ export function ProfilePage() {
         className="btn-secondary mt-3 flex w-full items-center justify-center gap-2 text-sm text-bc-muted"
       >
         <Trash2 className="h-4 w-4" />
-        Konto auf diesem Gerät löschen
+        {t.profile.deleteAccount}
       </button>
 
       <p className="mt-8 text-center text-xs text-bc-muted">
-        {companyInfo.brand} · Mitglied seit {formatDate(user.memberSince).split(' ')[0]}
+        {companyInfo.brand} · {t.profile.memberSince} {formatDate(user.memberSince).split(' ')[0]}
       </p>
     </div>
   );
