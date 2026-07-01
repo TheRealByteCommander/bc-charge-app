@@ -4,7 +4,9 @@ export const loyaltyRewards: LoyaltyReward[] = [
   {
     id: 'rw-free-fee',
     title: 'Gratis Startgebühr',
+    titleEn: 'Free Session Fee',
     description: 'Einmalig keine Session-Gebühr bei Ihrer nächsten Ladung ab 20 kWh.',
+    descriptionEn: 'No session fee on your next charge of 20+ kWh.',
     pointsCost: 400,
     category: 'charging',
     available: true,
@@ -12,7 +14,9 @@ export const loyaltyRewards: LoyaltyReward[] = [
   {
     id: 'rw-kwh-bonus',
     title: '5 % Rabatt auf Energie',
+    titleEn: '5% Energy Discount',
     description: 'Gilt für eine vollständige Ladesitzung an BC-Charge-Standorten.',
+    descriptionEn: 'Valid for one complete charging session at BC Charge locations.',
     pointsCost: 750,
     category: 'charging',
     available: true,
@@ -20,7 +24,9 @@ export const loyaltyRewards: LoyaltyReward[] = [
   {
     id: 'rw-coffee',
     title: 'Kaffee-Gutschein Partner',
+    titleEn: 'Coffee Voucher Partner',
     description: 'Gültig bei ausgewählten Café-Partnern in Machern und am Leipziger Hauptbahnhof.',
+    descriptionEn: 'Valid at selected café partners in Machern and Leipzig Main Station.',
     pointsCost: 300,
     category: 'partner',
     available: true,
@@ -28,7 +34,9 @@ export const loyaltyRewards: LoyaltyReward[] = [
   {
     id: 'rw-priority',
     title: 'Priority Support',
+    titleEn: 'Priority Support',
     description: 'Direkte Hotline mit verkürzter Wartezeit für 30 Tage.',
+    descriptionEn: 'Direct hotline with reduced wait time for 30 days.',
     pointsCost: 500,
     category: 'exclusive',
     available: true,
@@ -36,7 +44,9 @@ export const loyaltyRewards: LoyaltyReward[] = [
   {
     id: 'rw-night',
     title: 'Nachtladen Bonus',
+    titleEn: 'Night Charging Bonus',
     description: 'Doppelte BC Points bei Ladungen zwischen 22:00 und 06:00 Uhr.',
+    descriptionEn: 'Double BC Points for charges between 10 PM and 6 AM.',
     pointsCost: 600,
     category: 'charging',
     available: true,
@@ -44,7 +54,9 @@ export const loyaltyRewards: LoyaltyReward[] = [
   {
     id: 'rw-platinum',
     title: 'Exklusives BC Charge Hoodie',
+    titleEn: 'Exclusive BC Charge Hoodie',
     description: 'Premium Merchandise – Versand innerhalb Deutschlands.',
+    descriptionEn: 'Premium merchandise – shipping within Germany.',
     pointsCost: 2500,
     category: 'exclusive',
     available: true,

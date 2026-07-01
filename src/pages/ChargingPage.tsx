@@ -5,12 +5,14 @@ import { Link, useNavigate } from 'react-router-dom';
 import { ChargingEmergencyHelp } from '../components/ChargingEmergencyHelp';
 import { ConnectorLedStatus } from '../components/ConnectorLedStatus';
 import { getStationById } from '../data/stations';
+import { useLocale } from '../i18n/LocaleContext';
 import { useAppStore } from '../store/appStore';
 import { estimateRemainingChargeMinutes, vehicleTargetKwh } from '../utils/chargeEstimate';
 import { formatCurrency, formatDuration, formatKwh, formatPower } from '../utils/format';
 import { getChargingStateInfo } from '../utils/ocppStateMapping';
 
 export function ChargingPage() {
+  const { t, locale } = useLocale();
   const activeSession = useAppStore((s) => s.activeSession);
   const user = useAppStore((s) => s.user);
   const stopSession = useAppStore((s) => s.stopSession);
@@ -28,10 +30,14 @@ export function ChargingPage() {
     return (
       <div className="flex min-h-dvh flex-col items-center justify-center px-6 pb-28 text-center">
         <Zap className="h-16 w-16 text-bc-muted opacity-40" />
-        <h1 className="mt-6 font-display text-xl font-bold">Kein aktiver Ladevorgang</h1>
-        <p className="mt-2 text-bc-muted">Wählen Sie eine Station und starten Sie das Laden.</p>
+        <h1 className="mt-6 font-display text-xl font-bold">
+          {locale === 'de' ? 'Kein aktiver Ladevorgang' : 'No active charging session'}
+        </h1>
+        <p className="mt-2 text-bc-muted">
+          {locale === 'de' ? 'Wählen Sie eine Station und starten Sie das Laden.' : 'Select a station and start charging.'}
+        </p>
         <Link to="/scan" className="btn-primary mt-8">
-          Ladepunkt-ID eingeben
+          {locale === 'de' ? 'Ladepunkt-ID eingeben' : 'Enter charging point ID'}
         </Link>
       </div>
     );
@@ -66,13 +72,13 @@ export function ChargingPage() {
   return (
     <div className="flex min-h-dvh flex-col px-6 pb-28 pt-8">
       <p className="text-center text-xs font-semibold uppercase tracking-widest text-bc-accent">
-        Ladevorgang aktiv
+        {t.charging.active}
       </p>
       <h1 className="mt-2 text-center font-display text-lg font-semibold leading-snug">
         {activeSession.stationName}
       </h1>
       <p className="text-center text-sm text-bc-muted">
-        {evseNumber != null && <span className="font-medium text-bc-accent">Ladepunkt {evseNumber} · </span>}
+        {evseNumber != null && <span className="font-medium text-bc-accent">{locale === 'de' ? 'Ladepunkt' : 'Charging point'} {evseNumber} · </span>}
         {activeSession.connectorType} · {formatPower(activeSession.powerKw)}
       </p>
       {station?.hardwareModel === 'CityCharge H2' && (
@@ -84,12 +90,12 @@ export function ChargingPage() {
         <div className="mt-2 flex justify-center gap-2">
           {hasMidMeters && (
             <span className="flex items-center gap-1 rounded-full bg-bc-blue/10 px-2 py-0.5 text-xs text-bc-blue">
-              <Scale className="h-3 w-3" /> Eichrecht
+              <Scale className="h-3 w-3" /> {t.charging.eichrecht}
             </span>
           )}
           {hasDynamicLoad && (
             <span className="flex items-center gap-1 rounded-full bg-bc-elevated px-2 py-0.5 text-xs text-bc-muted">
-              <Gauge className="h-3 w-3" /> Lastmanagement
+              <Gauge className="h-3 w-3" /> {t.charging.loadManagement}
             </span>
           )}
         </div>
@@ -97,13 +103,13 @@ export function ChargingPage() {
 
       <div className="mt-4 flex justify-center gap-6">
         <div className="text-center">
-          <p className="text-xs text-bc-muted">Aktuelle Leistung</p>
+          <p className="text-xs text-bc-muted">{t.charging.chargingPower}</p>
           <p className="font-display text-2xl font-bold text-bc-accent">{formatPower(activeSession.powerKw)}</p>
         </div>
         <div className="text-center">
-          <p className="text-xs text-bc-muted">Restzeit (ca.)</p>
+          <p className="text-xs text-bc-muted">{t.charging.estimatedTime}</p>
           <p className="font-display text-2xl font-bold">
-            {remainingMin == null ? '—' : remainingMin <= 0 ? 'Fertig' : `~${remainingMin} Min.`}
+            {remainingMin == null ? '—' : remainingMin <= 0 ? (locale === 'de' ? 'Fertig' : 'Done') : `~${remainingMin} ${locale === 'de' ? 'Min.' : 'min'}`}
           </p>
         </div>
       </div>
@@ -154,31 +160,31 @@ export function ChargingPage() {
 
       <div className="mt-8 grid grid-cols-2 gap-4">
         <div className="rounded-2xl border border-bc-border bg-bc-elevated p-4 text-center">
-          <p className="text-xs text-bc-muted">Kosten</p>
+          <p className="text-xs text-bc-muted">{t.charging.cost}</p>
           <p className="mt-1 font-display text-xl font-bold">{formatCurrency(activeSession.costEur)}</p>
         </div>
         <div className="rounded-2xl border border-bc-border bg-bc-elevated p-4 text-center">
-          <p className="text-xs text-bc-muted">BC Points</p>
+          <p className="text-xs text-bc-muted">BC {t.gamification.points}</p>
           <p className="mt-1 font-display text-xl font-bold text-bc-accent">+{activeSession.pointsEarned}</p>
         </div>
       </div>
 
       <div className="mt-6 rounded-2xl border border-bc-border bg-bc-elevated p-4">
         <div className="flex justify-between text-sm">
-          <span className="text-bc-muted">Ziel</span>
+          <span className="text-bc-muted">{locale === 'de' ? 'Ziel' : 'Target'}</span>
           <span>{formatKwh(targetKwh)}</span>
         </div>
         <div className="mt-2 flex justify-between text-sm">
-          <span className="text-bc-muted">Preis</span>
+          <span className="text-bc-muted">{t.charging.pricePerKwh}</span>
           <span>{formatCurrency(activeSession.pricePerKwh)}/kWh</span>
         </div>
         <div className="mt-2 flex justify-between text-sm">
-          <span className="text-bc-muted">Startgebühr</span>
+          <span className="text-bc-muted">{t.charging.startPrice}</span>
           <span>{formatCurrency(activeSession.sessionFee)}</span>
         </div>
         <p className="mt-3 flex items-center gap-2 border-t border-bc-border pt-3 text-xs text-bc-accent">
           <Shield className="h-3.5 w-3.5 shrink-0" />
-          Keine Blockiergebühr bei BC Charge
+          {locale === 'de' ? 'Keine Blockiergebühr bei BC Charge' : 'No idle fee at BC Charge'}
         </p>
       </div>
 
@@ -192,7 +198,7 @@ export function ChargingPage() {
           disabled={stopping}
         >
           <Square className="h-4 w-4" />
-          {stopping ? 'Beende…' : 'Laden beenden'}
+          {stopping ? t.common.loading : t.charging.stop}
         </button>
       </div>
     </div>
