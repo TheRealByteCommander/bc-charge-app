@@ -48,7 +48,7 @@ export function BottomNav() {
                 }`
               }
             >
-              {({ isActive }) => (
+              {({ isActive }: { isActive: boolean }) => (
                 <>
                   <span className="relative">
                     <DisplayIcon
@@ -56,12 +56,12 @@ export function BottomNav() {
                         isActive || (isSessionTab && activeSession) ? 'text-bc-accent' : ''
                       } ${isSessionTab && activeSession ? 'animate-charge' : ''}`}
                     />
-                    {isSessionTab && activeSession && (
+                    {isSessionTab && activeSession ? (
                       <span className="absolute -right-1 -top-1 flex h-2.5 w-2.5">
                         <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-bc-accent opacity-60" />
                         <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-bc-accent" />
                       </span>
-                    )}
+                    ) : null}
                   </span>
                   <span className="truncate">{isSessionTab && activeSession ? t.nav.charging : label}</span>
                 </>

@@ -738,7 +738,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   startSession: async (stationId, connectorId, vehicleId, paymentMethodId) => {
-    const { user, activeSession, citrineosConnected, stripeReady } = get();
+    const { user, activeSession, citrineosConnected } = get();
     if (!user) return { ok: false, error: 'Bitte melden Sie sich an.' };
     if (activeSession) return { ok: false, error: 'Es läuft bereits eine Ladesitzung.' };
     if (user.paymentMethods.length === 0) {
