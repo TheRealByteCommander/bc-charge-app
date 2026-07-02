@@ -159,13 +159,84 @@ das Dashboard funktioniert auch ohne Karte.
 
 ## Updates deployen
 
+### Komplettes Server-Update (empfohlen)
+
+Ein Skript für alles: BC Charge (Frontend + BFF-API), CitrineOS-Docker, Operator-UI-Proxy:
+
+```bash
+cd /opt/bc-charge
+sudo git pull origin master
+sudo chmod +x scripts/deploy/update-production.sh
+sudo ./scripts/deploy/update-production.sh
+```
+
+Das Skript führt aus:
+
+| Schritt | Was passiert |
+|---------|----------------|
+| 1 | `git pull`, `npm ci`, `npm run build` |
+| 2 | **PM2 `bc-charge-api` neu starten** (BFF – legt DB-Tabellen an, z. B. `reward_fulfillments`) |
+| 3 | CitrineOS Docker-Container (`docker compose up -d`) |
+| 4 | Operator-UI Nginx-Fix (falls `/opt/citrineos-operator-ui` existiert) |
+| 5 | `nginx -t && reload` + Healthchecks |
+
+Ohne Operator-UI-Fix:
+
+```bash
+sudo RUN_OPERATOR_FIX=no ./scripts/deploy/update-production.sh
+```
+
+### Manuell (Schritt für Schritt)
+
+```bash
+# ── 1. BC Charge App + BFF-API ──────────────────────────────────────
+cd /opt/bc-charge
+sudo -u bccharge git pull origin master
+sudo -u bccharge npm ci --omit=dev
+sudo -u bccharge npm run build
+
+# BFF neu starten (wichtig: DB-Migrationen, Fulfillment-API, Stripe-Routen)
+sudo -u bccharge pm2 restart bc-charge-api
+sudo -u bccharge pm2 save
+
+# Status & API-Health
+sudo -u bccharge pm2 status
+curl -s http://127.0.0.1:3000/api/health   # Port ggf. aus .env: BC_SERVER_PORT
+
+# ── 2. CitrineOS (Core, Hasura, DB) ─────────────────────────────────
+docker compose -f /opt/citrineos/docker-compose.yml pull
+docker compose -f /opt/citrineos/docker-compose.yml up -d
+docker compose -f /opt/citrineos/docker-compose.yml ps
+
+# ── 3. Operator UI (falls installiert) ──────────────────────────────
+cd /opt/bc-charge
+sudo ./scripts/deploy/fix-operator-ui-connection.sh
+
+# ── 4. Nginx ────────────────────────────────────────────────────────
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+### Nur BC Charge (schnell)
+
 ```bash
 cd /opt/bc-charge
 sudo -u bccharge git pull origin master
 sudo -u bccharge npm ci --omit=dev
 sudo -u bccharge npm run build
-sudo -u bccharge pm2 restart all
+sudo -u bccharge pm2 restart bc-charge-api
 ```
+
+### Wichtige Ports (Standard-Setup)
+
+| Dienst | Port | Erreichbarkeit |
+|--------|------|----------------|
+| BC Charge BFF-API | `3000` (`.env`: `BC_SERVER_PORT`) | Nginx `/api` → `127.0.0.1:3000` |
+| Hasura | `8080` | nur localhost |
+| CitrineOS Core | `8081` | nur localhost |
+| Operator UI | `3000` | Nginx `operator.main.bc-charge.com` |
+| OCPP | `9000` | öffentlich (Ladesäulen) |
+
+**Hinweis:** `pm2 restart all` startet nur die BC-Charge-API neu. CitrineOS und Operator UI laufen in **Docker** bzw. eigenem Container – dafür die Schritte 2 und 3 oben.
 
 ## Troubleshooting
 
