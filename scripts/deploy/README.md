@@ -95,6 +95,49 @@ sudo systemctl status postgresql
 └── error.log          # Stderr
 ```
 
+## CitrineOS Operator UI (optional, Add-on)
+
+Das offizielle Betreiber-UI von CitrineOS lässt sich **separat** installieren, ohne die
+bestehende CitrineOS- oder BC-Charge-Installation zu verändern:
+
+```bash
+# Voraussetzung: setup-citrineos.sh wurde bereits ausgeführt
+sudo ./scripts/deploy/setup-citrineos-operator-ui.sh
+```
+
+Oder per curl:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/TheRealByteCommander/bc-charge-app/master/scripts/deploy/setup-citrineos-operator-ui.sh | sudo bash
+```
+
+| Was | Pfad / Name |
+|-----|-------------|
+| Operator UI | `/opt/citrineos-operator-ui` |
+| Container | `citrineos-operator-ui` (Port `127.0.0.1:3000`) |
+| Nginx-Site | `operator.main.bc-charge.com` |
+| Zugangsdaten | `/opt/citrineos-operator-ui/.bc-credentials.env` |
+
+**Unberührt bleiben:** `/opt/citrineos`, `/opt/bc-charge`, PM2, bestehende Nginx-Sites.
+
+GraphQL und Core-API werden über die Operator-Domain proxied (`/v1/graphql`, `/citrineos-api/`) –
+dadurch ist **kein Eingriff in die Hasura-CORS-Konfiguration** nötig.
+
+### Update nur Operator UI
+
+```bash
+sudo OPERATOR_REF=main /opt/bc-charge/scripts/deploy/setup-citrineos-operator-ui.sh
+```
+
+### Umgebungsvariablen (optional)
+
+| Variable | Standard | Beschreibung |
+|----------|----------|--------------|
+| `OPERATOR_DOMAIN` | `operator.main.bc-charge.com` | Öffentliche Domain |
+| `OPERATOR_UI_PORT` | `3000` | Lokaler Port (nur 127.0.0.1) |
+| `CITRINE_DIR` | `/opt/citrineos` | Bestehende CitrineOS-Installation |
+| `OPERATOR_REF` | `main` | Git-Branch des Operator-UI-Repos |
+
 ## Updates deployen
 
 ```bash
