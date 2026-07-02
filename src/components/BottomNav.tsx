@@ -1,14 +1,15 @@
-import { BatteryCharging, Home, Map, QrCode, Sparkles, User } from 'lucide-react';
+import { BatteryCharging, HelpCircle, Home, Map, QrCode, Sparkles, User } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 import { useLocale } from '../i18n/LocaleContext';
 import { useAppStore } from '../store/appStore';
 
-type NavKey = 'map' | 'list' | 'login' | 'home' | 'scan' | 'perks' | 'profile' | 'charging';
+type NavKey = 'map' | 'list' | 'login' | 'home' | 'scan' | 'perks' | 'profile' | 'charging' | 'help';
 
 const guestLinks: { to: string; icon: typeof Map; labelKey: NavKey; end?: boolean }[] = [
   { to: '/karte', icon: Map, labelKey: 'map', end: true },
   { to: '/stationen', icon: Home, labelKey: 'list' },
   { to: '/scan', icon: QrCode, labelKey: 'scan' },
+  { to: '/hilfe', icon: HelpCircle, labelKey: 'help' },
   { to: '/anmelden', icon: User, labelKey: 'login' },
 ];
 

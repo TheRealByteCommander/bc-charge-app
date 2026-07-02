@@ -13,6 +13,7 @@ export const messages = {
       profile: 'Profil',
       trip: 'Reise',
       login: 'Anmelden',
+      help: 'Hilfe',
     },
 
     // Auth
@@ -246,8 +247,32 @@ export const messages = {
 
     // Guest Banner
     guest: {
-      hint: 'Ohne Konto: Karte & Stationen nutzen. Zum Laden bitte anmelden.',
+      hint: 'Ohne Konto: Karte & Stationen nutzen. Zum Laden bitte anmelden oder Ad-Hoc per QR.',
       login: 'Anmelden',
+      help: 'Hilfe anzeigen',
+    },
+
+    // Help & Support
+    help: {
+      title: 'Hilfe & Support',
+      subtitle: 'Anleitungen, Antworten und Kontakt – für alle Fahrerinnen und Fahrer.',
+      guidesTitle: 'Schritt für Schritt',
+      guidesHint: 'Die wichtigsten Abläufe in BC Charge.',
+      contactTitle: 'Direkt kontaktieren',
+      faqTitle: 'Häufige Fragen',
+      faqHint: 'Schnelle Antworten zu Laden, Zahlung und App.',
+      faqFilterLabel: 'Themen filtern',
+      quickNavLabel: 'Hilfe-Themen',
+      jumpAccount: 'Mit Konto',
+      jumpGuest: 'Ad-Hoc',
+      jumpQr: 'QR-Code',
+      jumpFaq: 'FAQ',
+      jumpContact: 'Kontakt',
+      jumpAccessibility: 'Barrierefreiheit',
+      needHelp: 'Hilfe benötigt?',
+      backToMap: 'Zur Karte',
+      backToProfile: 'Zum Profil',
+      websiteCta: 'Website main.bc-charge.com',
     },
 
     // Common
@@ -329,6 +354,7 @@ export const messages = {
       profile: 'Profile',
       trip: 'Trip',
       login: 'Sign in',
+      help: 'Help',
     },
 
     // Auth
@@ -562,8 +588,32 @@ export const messages = {
 
     // Guest Banner
     guest: {
-      hint: 'Without account: use map & stations. Sign in to charge.',
+      hint: 'Without account: use map & stations. Sign in to charge or use ad-hoc QR.',
       login: 'Sign in',
+      help: 'View help',
+    },
+
+    // Help & Support
+    help: {
+      title: 'Help & Support',
+      subtitle: 'Guides, answers and contact – for all drivers.',
+      guidesTitle: 'Step by step',
+      guidesHint: 'The main flows in BC Charge.',
+      contactTitle: 'Contact us',
+      faqTitle: 'Frequently asked questions',
+      faqHint: 'Quick answers about charging, payment and the app.',
+      faqFilterLabel: 'Filter topics',
+      quickNavLabel: 'Help topics',
+      jumpAccount: 'With account',
+      jumpGuest: 'Ad-hoc',
+      jumpQr: 'QR code',
+      jumpFaq: 'FAQ',
+      jumpContact: 'Contact',
+      jumpAccessibility: 'Accessibility',
+      needHelp: 'Need help?',
+      backToMap: 'Back to map',
+      backToProfile: 'Back to profile',
+      websiteCta: 'Website main.bc-charge.com',
     },
 
     // Common

@@ -15,6 +15,7 @@ import {
   stopAdhocSession,
 } from '../api/adhoc/client';
 import { StripeAdhocPayment } from '../components/StripeAdhocPayment';
+import { HelpHintLink } from '../components/help/HelpHintLink';
 import { getStationById } from '../data/stations';
 import { isStripeConfigured } from '../config/stripe';
 import { formatCurrency, formatDuration, formatKwh } from '../utils/format';
@@ -364,6 +365,10 @@ export function GuestChargePage() {
           )}
         </div>
       )}
+
+      <div className="mt-10 border-t border-bc-border pt-6 text-center">
+        <HelpHintLink hash="#hilfe-guest-charge" />
+      </div>
     </div>
   );
 }

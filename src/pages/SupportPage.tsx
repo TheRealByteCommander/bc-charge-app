@@ -1,90 +1,54 @@
-import { Mail, MapPin, Phone } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { LegalFooterLinks } from '../components/LegalPageLayout';
 import { companyInfo } from '../data/company';
+import { helpGuides } from '../data/helpContent';
+import { HelpContactCards } from '../components/help/HelpContactCards';
+import { HelpFaqList } from '../components/help/HelpFaqList';
+import { HelpGuideList } from '../components/help/HelpGuideList';
+import { HelpQuickNav } from '../components/help/HelpQuickNav';
+import { LegalFooterLinks } from '../components/LegalPageLayout';
+import { useLocale } from '../i18n/LocaleContext';
+import { useAppStore } from '../store/appStore';
 
 export function SupportPage() {
-  return (
-    <div className="page-shell">
-      <Link to="/profil" className="text-sm text-bc-accent">
-        ← Profil
-      </Link>
-      <h1 className="mt-4 font-display text-2xl font-bold">Hilfe & Support</h1>
-      <p className="mt-2 text-bc-muted">
-        Unser Team der Byte Commander GmbH unterstützt Sie bei allen Fragen zu BC Charge.
-      </p>
+  const { t } = useLocale();
+  const user = useAppStore((s) => s.user);
 
-      <div className="mt-8 space-y-4">
-        <a
-          href={`tel:${companyInfo.phoneTel}`}
-          className="flex items-center gap-4 rounded-2xl border border-bc-border bg-bc-elevated p-4"
-        >
-          <Phone className="h-6 w-6 text-bc-accent" />
-          <div>
-            <p className="font-medium">Hotline</p>
-            <p className="text-sm text-bc-muted">{companyInfo.phoneDisplay}</p>
-            <p className="text-xs text-bc-muted">{companyInfo.supportHours}</p>
-          </div>
-        </a>
-        <a
-          href={`mailto:${companyInfo.emailSupport}`}
-          className="flex items-center gap-4 rounded-2xl border border-bc-border bg-bc-elevated p-4"
-        >
-          <Mail className="h-6 w-6 text-bc-accent" />
-          <div>
-            <p className="font-medium">E-Mail</p>
-            <p className="text-sm text-bc-accent">{companyInfo.emailSupport}</p>
-          </div>
-        </a>
-        <div className="flex items-start gap-4 rounded-2xl border border-bc-border bg-bc-elevated p-4">
-          <MapPin className="h-6 w-6 shrink-0 text-bc-accent" />
-          <div>
-            <p className="font-medium">{companyInfo.legalName}</p>
-            <p className="text-sm text-bc-muted">{companyInfo.street}</p>
-            <p className="text-sm text-bc-muted">
-              {companyInfo.zip} {companyInfo.city}
-            </p>
-          </div>
-        </div>
+  return (
+    <div className="page-shell pb-28">
+      <Link
+        to={user ? '/profil' : '/karte'}
+        className="text-sm text-bc-accent"
+      >
+        ← {user ? t.help.backToProfile : t.help.backToMap}
+      </Link>
+
+      <h1 className="mt-4 font-display text-2xl font-bold">{t.help.title}</h1>
+      <p className="mt-2 text-sm leading-relaxed text-bc-muted">{t.help.subtitle}</p>
+
+      <div className="mt-6">
+        <HelpQuickNav />
       </div>
 
-      <h2 className="mt-10 font-display font-semibold">Häufige Fragen</h2>
-      <div className="mt-4 space-y-3">
-        {[
-          {
-            q: 'Wie starte ich eine Ladung?',
-            a: 'Station in der App öffnen, freien Anschluss wählen und „Laden starten“ tippen – oder QR-Code am Ladepunkt scannen.',
-          },
-          {
-            q: 'Wie sammle ich BC Points?',
-            a: 'Automatisch bei jeder abgeschlossenen Ladung. Höhere Mitgliedsstufen bringen Multiplikatoren.',
-          },
-          {
-            q: 'Welche Zahlungsarten werden akzeptiert?',
-            a: 'Kredit-/Debitkarte und SEPA-Lastschrift – unter Profil → Zahlung hinterlegen.',
-          },
-          {
-            q: 'Größere Schrift oder einfachere Bedienung?',
-            a: 'Unter Profil → Barrierefreiheit (oder /barrierefreiheit): Schriftgröße, hoher Kontrast und einfache Ansicht einstellbar.',
-          },
-          {
-            q: 'Fallen Blockiergebühren an?',
-            a: 'Nein. BC Charge erhebt keine Blockier- oder Standgebühren nach dem Laden. Abgerechnet wird nur die geladene Energie (kWh) – transparent vor dem Ladevorgang.',
-          },
-          {
-            q: 'Rechnung stimmt nicht?',
-            a: 'In der Ladehistorie „Rechnung prüfen / Support“ wählen – Ihre Session-Daten werden automatisch an unser Team übermittelt.',
-          },
-          {
-            q: 'Laden lässt sich nicht beenden?',
-            a: 'Auf der Ladevorgangs-Seite „Problem beim Beenden?“ nutzen: Hotline mit Session-ID oder Notfall-E-Mail. Wir stoppen den Vorgang remote.',
-          },
-        ].map((faq) => (
-          <details key={faq.q} className="rounded-xl border border-bc-border bg-bc-elevated group">
-            <summary className="cursor-pointer px-4 py-3 font-medium">{faq.q}</summary>
-            <p className="border-t border-bc-border px-4 py-3 text-sm text-bc-muted">{faq.a}</p>
-          </details>
-        ))}
+      <section className="mt-8">
+        <h2 className="font-display font-semibold">{t.help.guidesTitle}</h2>
+        <p className="mt-1 text-sm text-bc-muted">{t.help.guidesHint}</p>
+        <div className="mt-4">
+          <HelpGuideList guides={helpGuides} />
+        </div>
+      </section>
+
+      <section id="hilfe-kontakt" className="mt-10 scroll-mt-24">
+        <h2 className="font-display font-semibold">{t.help.contactTitle}</h2>
+        <p className="mt-1 text-sm text-bc-muted">
+          {companyInfo.brand} · {companyInfo.supportHours}
+        </p>
+        <div className="mt-4">
+          <HelpContactCards />
+        </div>
+      </section>
+
+      <div className="mt-10">
+        <HelpFaqList />
       </div>
 
       <a
@@ -93,7 +57,7 @@ export function SupportPage() {
         rel="noreferrer"
         className="btn-secondary mt-8 block w-full text-center"
       >
-        Website main.bc-charge.com
+        {t.help.websiteCta}
       </a>
 
       <LegalFooterLinks className="mt-8 border-t border-bc-border pt-6" />

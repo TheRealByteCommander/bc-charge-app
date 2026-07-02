@@ -1,14 +1,16 @@
-import { BatteryCharging, ChevronRight, Route, Search, Zap } from 'lucide-react';
+import { BatteryCharging, ChevronRight, HelpCircle, Route, Search, Zap } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { ChargingPlannerCard } from '../components/ChargingPlannerCard';
 import { LoyaltyCard } from '../components/LoyaltyCard';
 import { StationCard } from '../components/StationCard';
 import { useAccessibility } from '../context/AccessibilityContext';
+import { useLocale } from '../i18n/LocaleContext';
 import { useNearbyStations } from '../hooks/useStationLists';
 import { useAppStore } from '../store/appStore';
 import { formatCurrency, formatDuration, formatKwh } from '../utils/format';
 
 export function HomePage() {
+  const { t } = useLocale();
   const user = useAppStore((s) => s.user)!;
   const { prefs: a11y } = useAccessibility();
   const nearby = useNearbyStations(a11y.simpleMode ? 2 : 4);
@@ -31,6 +33,17 @@ export function HomePage() {
           <BatteryCharging className={`h-6 w-6 ${activeSession ? 'animate-charge' : ''}`} />
         </Link>
       </header>
+
+      <Link
+        to="/hilfe"
+        className="mt-3 flex items-center justify-between rounded-xl border border-bc-border bg-bc-elevated px-4 py-3 text-sm text-bc-muted transition hover:border-bc-accent/30"
+      >
+        <span className="flex items-center gap-2">
+          <HelpCircle className="h-4 w-4 text-bc-accent" />
+          {t.help.title}
+        </span>
+        <ChevronRight className="h-4 w-4" />
+      </Link>
 
       {activeSession ? (
         <Link

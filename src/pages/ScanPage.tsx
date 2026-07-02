@@ -2,6 +2,7 @@ import { Camera, Keyboard, QrCode } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { QRScanner } from '../components/QRScanner';
+import { HelpHintLink } from '../components/help/HelpHintLink';
 import { getStationByEvseCode } from '../data/stations';
 import { useAppStore } from '../store/appStore';
 import { buildGuestChargePath, parseChargeDeepLink } from '../utils/qrDeepLink';
@@ -133,6 +134,10 @@ export function ScanPage() {
             Ladepunkt-ID manuell ein oder erlauben Sie den Kamerazugriff.
           </p>
         )}
+
+        <div className="mt-8 border-t border-bc-border pt-6 text-center">
+          <HelpHintLink hash="#hilfe-qr-scan" />
+        </div>
       </div>
     </>
   );
