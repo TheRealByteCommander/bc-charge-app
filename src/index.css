@@ -212,6 +212,12 @@ html[data-a11y-font='xlarge'] .a11y-nav-link {
     overflow-x: hidden;
     -webkit-overflow-scrolling: touch;
     padding: 1rem 1rem 2rem;
+    padding-bottom: max(8rem, calc(8rem + env(safe-area-inset-bottom)));
+  }
+
+  .page-shell.station-detail-with-action {
+    padding-bottom: max(16rem, calc(16rem + env(safe-area-inset-bottom)));
+    scroll-padding-bottom: 16rem;
   }
 }
 

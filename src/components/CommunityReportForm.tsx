@@ -165,7 +165,11 @@ export function CommunityReportForm({ stationId, onSubmitted }: { stationId: str
         )}
       </div>
       
-      <button type="button" className="btn-primary mt-3 w-full py-2.5 text-sm" onClick={submit}>
+      <button
+        type="button"
+        className="btn-primary mt-3 w-full scroll-mb-36 py-2.5 text-sm"
+        onClick={submit}
+      >
         {locale === 'de' ? 'Meldung senden' : 'Submit report'}
       </button>
       {done && (

@@ -145,7 +145,7 @@ export function StationDetailPage() {
   };
 
   return (
-    <div className="page-shell">
+    <div className={`page-shell${user ? ' station-detail-with-action' : ''}`}>
       <GuestBanner />
       <button
         type="button"
@@ -321,22 +321,40 @@ export function StationDetailPage() {
 
       {error && <p className="mt-4 text-sm text-bc-danger">{error}</p>}
 
-      <div className="fixed bottom-20 left-0 right-0 z-40 mx-auto max-w-lg px-4 safe-bottom">
-        <button
-          type="button"
-          className="btn-primary w-full shadow-glow"
-          onClick={openConfirm}
-          disabled={
-            starting ||
-            !selectedConnector ||
-            !user ||
-            user.vehicles.length === 0 ||
-            user.paymentMethods.length === 0
-          }
-        >
-          Laden starten
-        </button>
-      </div>
+      {station.amenities.length > 0 && (
+        <>
+          <h2 className="mt-8 font-display font-semibold">Am Standort</h2>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {station.amenities.map((a) => (
+              <span key={a} className="rounded-lg border border-bc-border px-3 py-1 text-sm text-bc-muted">
+                {a}
+              </span>
+            ))}
+          </div>
+        </>
+      )}
+
+      <CommunityReportForm stationId={station.id} />
+
+      {user && <div className="h-28 shrink-0" aria-hidden="true" />}
+
+      {user && (
+        <div className="fixed bottom-20 left-0 right-0 z-40 mx-auto max-w-lg px-4 safe-bottom">
+          <button
+            type="button"
+            className="btn-primary w-full shadow-glow"
+            onClick={openConfirm}
+            disabled={
+              starting ||
+              !selectedConnector ||
+              user.vehicles.length === 0 ||
+              user.paymentMethods.length === 0
+            }
+          >
+            Laden starten
+          </button>
+        </div>
+      )}
 
       {selectedConnectorData && (
         <ChargeStartConfirmSheet
@@ -352,20 +370,6 @@ export function StationDetailPage() {
         />
       )}
 
-      {station.amenities.length > 0 && (
-        <>
-          <h2 className="mt-8 font-display font-semibold">Am Standort</h2>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {station.amenities.map((a) => (
-              <span key={a} className="rounded-lg border border-bc-border px-3 py-1 text-sm text-bc-muted">
-                {a}
-              </span>
-            ))}
-          </div>
-        </>
-      )}
-
-      <CommunityReportForm stationId={station.id} />
     </div>
   );
 }
