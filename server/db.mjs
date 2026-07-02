@@ -365,3 +365,65 @@ export async function setRedeemed(userId, rewardIds) {
   });
   tx(rewardIds);
 }
+
+function computeTier(points) {
+  if (points >= 8000) return 'platinum';
+  if (points >= 4000) return 'gold';
+  if (points >= 1500) return 'silver';
+  return 'bronze';
+}
+
+const tierLabels = {
+  bronze: 'Bronze',
+  silver: 'Silber',
+  gold: 'Gold',
+  platinum: 'Platin',
+};
+
+export async function getLeaderboardData(limit = 20) {
+  if (isPostgres()) {
+    const { rows } = await pgPool.query(
+      `SELECT id, email, profile_json
+       FROM users
+       ORDER BY (profile_json->>'loyaltyPoints')::int DESC NULLS LAST
+       LIMIT $1`,
+      [limit]
+    );
+    return rows.map((row) => {
+      const profile = parseJson(row.profile_json);
+      const points = profile.loyaltyPoints ?? 0;
+      const tier = computeTier(points);
+      const firstName = profile.firstName ?? 'Nutzer';
+      const lastName = profile.lastName ?? '';
+      return {
+        userId: row.id,
+        displayName: `${firstName} ${lastName.charAt(0) || ''}.`.trim(),
+        points,
+        tier: tierLabels[tier] ?? 'Bronze',
+      };
+    });
+  }
+
+  const rows = sqliteDb
+    .prepare(
+      `SELECT id, email, profile_json
+       FROM users
+       ORDER BY json_extract(profile_json, '$.loyaltyPoints') DESC
+       LIMIT ?`
+    )
+    .all(limit);
+
+  return rows.map((row) => {
+    const profile = JSON.parse(row.profile_json ?? '{}');
+    const points = profile.loyaltyPoints ?? 0;
+    const tier = computeTier(points);
+    const firstName = profile.firstName ?? 'Nutzer';
+    const lastName = profile.lastName ?? '';
+    return {
+      userId: row.id,
+      displayName: `${firstName} ${lastName.charAt(0) || ''}.`.trim(),
+      points,
+      tier: tierLabels[tier] ?? 'Bronze',
+    };
+  });
+}

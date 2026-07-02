@@ -335,6 +335,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           console.log(`[BC Charge] ${cached.stations.length} Stationen aus Offline-Cache geladen (${cached.source}, ${cached.savedAt})`);
         }
       }
+      void saveStationsOfflineCache(getStations(), getStationDataSource());
 
       const sessions = user ? await fetchSessions() : [];
       const redeemedRewardIds = user ? await fetchRedeemedRewards() : [];
@@ -387,6 +388,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         console.log(`[BC Charge] ${cached.stations.length} Stationen aus Offline-Cache geladen (${cached.source}, ${cached.savedAt})`);
       }
     }
+    void saveStationsOfflineCache(getStations(), getStationDataSource());
 
     const user = resolveCurrentUser() ?? get().user;
 
