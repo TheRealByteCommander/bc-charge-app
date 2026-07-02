@@ -165,8 +165,16 @@ Ein Skript für alles: BC Charge (Frontend + BFF-API), CitrineOS-Docker, Operato
 
 ```bash
 cd /opt/bc-charge
-sudo git pull origin master
 sudo chmod +x scripts/deploy/update-production.sh
+sudo ./scripts/deploy/update-production.sh
+```
+
+**Nicht** vorher separat `sudo git pull` ausführen – das Skript übernimmt `git pull` und setzt die Dateirechte für `bccharge` danach zurück.
+
+Falls `.git` bereits root gehört (Permission denied):
+
+```bash
+sudo chown -R bccharge:bccharge /opt/bc-charge
 sudo ./scripts/deploy/update-production.sh
 ```
 

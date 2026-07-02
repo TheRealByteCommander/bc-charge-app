@@ -36,20 +36,33 @@ fi
 [[ -d "$APP_DIR" ]] || err "App-Verzeichnis nicht gefunden: $APP_DIR"
 id "$APP_USER" &>/dev/null || err "Benutzer $APP_USER fehlt."
 
+fix_app_ownership() {
+  chown -R "$APP_USER:$APP_USER" "$APP_DIR"
+}
+
 #-------------------------------------------------------------------------------
 # 1. BC Charge – Code, Build, API (BFF)
 #-------------------------------------------------------------------------------
 log "1/4 – BC Charge App wird aktualisiert…"
 
 cd "$APP_DIR"
-sudo -u "$APP_USER" git fetch origin "$GIT_BRANCH"
-sudo -u "$APP_USER" git pull origin "$GIT_BRANCH"
+
+# Git als root (sudo-Skript); danach Besitz für bccharge wiederherstellen.
+# Vermeidet „Permission denied“ wenn zuvor „sudo git pull“ .git auf root gesetzt hat.
+if [[ -d .git ]]; then
+  git fetch origin "$GIT_BRANCH"
+  git pull origin "$GIT_BRANCH"
+  fix_app_ownership
+else
+  err "Kein Git-Repository in $APP_DIR"
+fi
 
 log "Abhängigkeiten installieren…"
 sudo -u "$APP_USER" npm ci --omit=dev
 
 log "Frontend & TypeScript bauen…"
 sudo -u "$APP_USER" npm run build
+fix_app_ownership
 
 log "BFF-API (PM2) neu starten – legt DB-Tabellen an (z. B. reward_fulfillments)…"
 sudo -u "$APP_USER" pm2 restart bc-charge-api 2>/dev/null || sudo -u "$APP_USER" pm2 restart all
