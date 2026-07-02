@@ -7,7 +7,7 @@ export function PrivacyPage() {
   return (
     <LegalPageLayout
       title="Datenschutzerklärung"
-      subtitle={`${companyInfo.brand} · Stand Juni 2026 · Art. 13/14 DSGVO`}
+      subtitle={`${companyInfo.brand} · Stand Juli 2026 · Art. 13/14 DSGVO`}
     >
       <LegalSection title="1. Verantwortlicher">
         <p>

@@ -6,7 +6,7 @@ export function TermsPage() {
   return (
     <LegalPageLayout
       title="Nutzungsbedingungen"
-      subtitle={`${companyInfo.brand} · Stand Juni 2026`}
+      subtitle={`${companyInfo.brand} · Stand Juli 2026`}
     >
       <LegalSection title="1. Geltungsbereich">
         <p>
@@ -38,7 +38,7 @@ export function TermsPage() {
       <LegalSection title="4. Preise & Zahlung">
         <p>
           Es gelten die am Ladepunkt bzw. in der App angezeigten Preise inkl. ausgewiesener
-          Bestandteile (z. B. kWh-Preis, Startgebühr). Die Zahlung erfolgt über hinterlegte
+          Bestandteile (z. B. kWh-Preis). Die Zahlung erfolgt über hinterlegte
           Zahlungsmittel (Karte/SEPA) über unseren Zahlungsdienstleister (siehe Datenschutzerklärung).
         </p>
       </LegalSection>

@@ -7,7 +7,7 @@ export const citrineosIntegrationContract = {
   operator: {
     brand: 'BC Charge',
     company: 'Byte Commander GmbH',
-    website: 'https://bc-charge.com',
+    website: 'https://main.bc-charge.com',
     email: 'hello@bc-charge.com',
     phone: '+49 (0) 34292 43340',
     address: 'Grüner Weg 3, 04827 Machern, Deutschland',
