@@ -5,28 +5,23 @@
  * Generates PNG icons from the SVG source for all required sizes.
  * Requires: sharp (npm install sharp)
  * 
- * Usage: node scripts/generate-icons.js
+ * Usage: node scripts/generate-icons.mjs
  */
 
-const fs = require('fs');
-const path = require('path');
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import sharp from 'sharp';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 async function generateIcons() {
-  let sharp;
-  try {
-    sharp = require('sharp');
-  } catch {
-    console.log('Sharp not installed. Installing...');
-    const { execSync } = require('child_process');
-    execSync('npm install sharp --save-dev', { stdio: 'inherit' });
-    sharp = require('sharp');
-  }
-
   const inputSvg = path.join(__dirname, '../public/bc-icon.svg');
   const outputDir = path.join(__dirname, '../public/icons');
 
   if (!fs.existsSync(inputSvg)) {
-    console.error('SVG not found:', inputSvg);
+    console.error('SVG nicht gefunden:', inputSvg);
     process.exit(1);
   }
 
@@ -37,7 +32,7 @@ async function generateIcons() {
   const sizes = [16, 32, 72, 96, 128, 144, 152, 167, 180, 192, 384, 512];
   const maskableSizes = [192, 512];
 
-  console.log('Generating icons...');
+  console.log('Generiere Icons aus BC Charge Logo...\n');
 
   for (const size of sizes) {
     const outputPath = path.join(outputDir, `icon-${size}.png`);
@@ -45,7 +40,7 @@ async function generateIcons() {
       .resize(size, size)
       .png()
       .toFile(outputPath);
-    console.log(`  Created: icon-${size}.png`);
+    console.log(`  ✓ icon-${size}.png`);
   }
 
   for (const size of maskableSizes) {
@@ -65,7 +60,7 @@ async function generateIcons() {
       .composite([{ input: icon, top: padding, left: padding }])
       .png()
       .toFile(outputPath);
-    console.log(`  Created: icon-maskable-${size}.png`);
+    console.log(`  ✓ icon-maskable-${size}.png`);
   }
 
   const appleTouchIcon = path.join(outputDir, 'apple-touch-icon.png');
@@ -73,7 +68,7 @@ async function generateIcons() {
     .resize(180, 180)
     .png()
     .toFile(appleTouchIcon);
-  console.log('  Created: apple-touch-icon.png');
+  console.log('  ✓ apple-touch-icon.png');
 
   const shortcutIcons = ['map', 'scan', 'charge'];
   for (const name of shortcutIcons) {
@@ -82,10 +77,10 @@ async function generateIcons() {
       .resize(96, 96)
       .png()
       .toFile(outputPath);
-    console.log(`  Created: shortcut-${name}.png`);
+    console.log(`  ✓ shortcut-${name}.png`);
   }
 
-  console.log('\nDone! Icons generated in:', outputDir);
+  console.log('\n✅ Fertig! Icons generiert in:', outputDir);
 }
 
 generateIcons().catch(console.error);
