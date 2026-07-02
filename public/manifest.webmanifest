@@ -1,19 +1,136 @@
 {
-  "name": "BC Charge",
+  "name": "BC Charge – Laden mit Stil",
   "short_name": "BC Charge",
-  "description": "Laden mit Stil – Karte, Roaming, Reiseplanung und Zahlung",
+  "description": "Ladestationen finden, laden und Prämien sammeln. Karte, QR-Scanner, Routenplanung und sichere Zahlung.",
   "start_url": "/",
+  "scope": "/",
+  "id": "/",
   "display": "standalone",
-  "background_color": "#06080c",
-  "theme_color": "#06080c",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "background_color": "#0f1419",
+  "theme_color": "#10b981",
   "orientation": "portrait-primary",
   "lang": "de",
+  "dir": "ltr",
+  "categories": ["lifestyle", "navigation", "utilities"],
   "icons": [
     {
       "src": "/bc-icon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-72.png",
+      "sizes": "72x72",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-96.png",
+      "sizes": "96x96",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-128.png",
+      "sizes": "128x128",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-144.png",
+      "sizes": "144x144",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-152.png",
+      "sizes": "152x152",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-384.png",
+      "sizes": "384x384",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
-  ]
+  ],
+  "shortcuts": [
+    {
+      "name": "Karte öffnen",
+      "short_name": "Karte",
+      "description": "Ladestationen in der Nähe anzeigen",
+      "url": "/karte",
+      "icons": [{"src": "/icons/shortcut-map.png", "sizes": "96x96"}]
+    },
+    {
+      "name": "QR scannen",
+      "short_name": "Scannen",
+      "description": "Ladepunkt per QR-Code finden",
+      "url": "/scan",
+      "icons": [{"src": "/icons/shortcut-scan.png", "sizes": "96x96"}]
+    },
+    {
+      "name": "Ladevorgang",
+      "short_name": "Laden",
+      "description": "Aktuellen Ladevorgang anzeigen",
+      "url": "/laden",
+      "icons": [{"src": "/icons/shortcut-charge.png", "sizes": "96x96"}]
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/screenshots/home.png",
+      "sizes": "390x844",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "BC Charge Startseite"
+    },
+    {
+      "src": "/screenshots/map.png",
+      "sizes": "390x844",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Ladestationen Karte"
+    },
+    {
+      "src": "/screenshots/station.png",
+      "sizes": "390x844",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Stationsdetails"
+    }
+  ],
+  "related_applications": [],
+  "prefer_related_applications": false,
+  "handle_links": "preferred",
+  "launch_handler": {
+    "client_mode": "navigate-existing"
+  }
 }
