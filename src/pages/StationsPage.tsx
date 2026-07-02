@@ -60,16 +60,6 @@ export function StationsPage() {
             <p className="text-sm text-bc-muted">
               {noStationsConfigured ? t.stations.noStationsConfigured : t.stations.noResults}
             </p>
-            {noStationsConfigured && (
-              <a
-                href="https://hasura.main.bc-charge.com/console"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-3 inline-block text-xs text-bc-accent hover:underline"
-              >
-                → Hasura Console
-              </a>
-            )}
           </div>
         ) : (
           stations.map((s, i) => <StationCard key={s.id} station={s} index={i} />)
