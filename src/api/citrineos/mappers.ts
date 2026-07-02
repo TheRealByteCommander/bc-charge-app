@@ -104,13 +104,12 @@ export function mapHasuraStationToApp(
   tariffCatalog?: TariffCatalog
 ): Station | null {
   const coords = row.coordinates?.coordinates;
-  if (!coords || coords.length < 2) return null;
-
-  const [lng, lat] = coords;
-  const loc = row.location;
+  const stationId = row.ocppConnectionName || String(row.id);
+  
+  const loc = row.Location;
   const name =
     loc?.name ??
-    `${row.chargePointVendor ?? 'BC Charge'} ${row.chargePointModel ?? row.id}`.trim();
+    `${row.chargePointVendor ?? 'BC Charge'} ${row.chargePointModel ?? stationId}`.trim();
 
   const { hardwareModel, hardwareFeatures } = detectHardwareFeatures(
     row.chargePointModel,
@@ -118,16 +117,17 @@ export function mapHasuraStationToApp(
   );
 
   const connectors: Connector[] = [];
-  for (const evse of row.evses ?? []) {
-    for (const conn of evse.connectors ?? []) {
-      const pricing = mapTariffToConnectorPricing(conn.tariff, tariffCatalog);
+  for (const evse of row.Evses ?? []) {
+    for (const conn of evse.Connectors ?? []) {
+      const tariff = conn.Tariff ?? (conn.tariffId ? tariffCatalog?.get(conn.tariffId) : undefined) ?? null;
+      const pricing = mapTariffToConnectorPricing(tariff, tariffCatalog);
       const powerKw = conn.maximumPowerWatts ? Math.round(conn.maximumPowerWatts / 1000) : 22;
       connectors.push({
         id: connectorId(evse.evseId, conn.connectorId),
         type: mapConnectorType(conn.type),
         powerKw: powerKw > 0 ? powerKw : 22,
-        status: mapConnectorStatus(conn.status, row.isOnline, hardwareFeatures.ocppVersion),
-        evseId: `DE*BCC*${row.id}*${evse.evseId}*${conn.connectorId}`,
+        status: mapConnectorStatus(conn.status, row.isOnline ?? false, hardwareFeatures.ocppVersion),
+        evseId: `DE*BCC*${stationId}*${evse.evseId}*${conn.connectorId}`,
         evseNumber: evse.evseId,
         connectorNumber: conn.connectorId,
         ...pricing,
@@ -137,9 +137,11 @@ export function mapHasuraStationToApp(
 
   if (connectors.length === 0) return null;
 
+  const [lng, lat] = coords ?? [0, 0];
+
   return {
-    id: row.id,
-    evseCode: row.id.toUpperCase(),
+    id: stationId,
+    evseCode: stationId.toUpperCase(),
     name,
     address: loc?.address ?? '—',
     city: loc?.city ?? '—',

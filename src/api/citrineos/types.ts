@@ -32,37 +32,40 @@ export interface CitrineosTariff {
 export interface CitrineosTransaction {
   transactionId: string;
   stationId: string;
-  evseId?: number | null;
-  connectorId?: number | null;
+  evseDatabaseId?: number | null;
   isActive?: boolean;
   totalKwh?: number | null;
   totalCost?: number;
-  startTime?: string;
-  endTime?: string;
+  timeSpentCharging?: number | null;
   chargingState?: string | null;
 }
 
 export interface HasuraChargingStationRow {
-  id: string;
+  id: number;
+  ocppConnectionName: string;
   isOnline: boolean;
   chargePointVendor?: string | null;
   chargePointModel?: string | null;
   coordinates?: { type: 'Point'; coordinates: [number, number] } | null;
-  location?: {
+  Location?: {
+    id?: number;
     name?: string | null;
     address?: string | null;
     city?: string | null;
     postalCode?: string | null;
     country?: string | null;
   } | null;
-  evses?: Array<{
+  Evses?: Array<{
+    id: number;
     evseId: number;
-    connectors?: Array<{
+    Connectors?: Array<{
+      id: number;
       connectorId: number;
       status: string;
       type?: string | null;
       maximumPowerWatts?: number | null;
-      tariff?: CitrineosTariff | null;
+      tariffId?: number | null;
+      Tariff?: CitrineosTariff | null;
     }> | null;
   }> | null;
 }
