@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { QRScanner } from '../components/QRScanner';
 import { getStationByEvseCode } from '../data/stations';
 import { useAppStore } from '../store/appStore';
+import { buildGuestChargePath, parseChargeDeepLink } from '../utils/qrDeepLink';
 
 export function ScanPage() {
   const [code, setCode] = useState('');
@@ -13,6 +14,18 @@ export function ScanPage() {
   const user = useAppStore((s) => s.user);
 
   const lookup = (raw: string) => {
+    const deepLink = parseChargeDeepLink(raw);
+    if (deepLink) {
+      if (deepLink.adhoc) {
+        navigate(buildGuestChargePath(deepLink.stationId, deepLink.connectorId));
+        return true;
+      }
+      navigate(
+        `/station/${deepLink.stationId}${deepLink.connectorId ? `?connector=${encodeURIComponent(deepLink.connectorId)}` : ''}`
+      );
+      return true;
+    }
+
     let searchCode = raw.trim().toUpperCase();
     
     if (searchCode.startsWith('HTTP')) {
@@ -76,12 +89,11 @@ export function ScanPage() {
         )}
 
         {!user && (
-          <p className="mt-4 rounded-xl border border-bc-warn/30 bg-bc-warn/10 px-4 py-3 text-sm text-bc-warn">
-            Zum Starten einer Ladung ist eine{' '}
-            <Link to="/anmelden" className="font-medium underline">
-              Anmeldung
-            </Link>{' '}
-            erforderlich. Die Karte können Sie auch ohne Konto nutzen.
+          <p className="mt-4 rounded-xl border border-bc-accent/30 bg-bc-accent/10 px-4 py-3 text-sm text-bc-muted">
+            Ohne Konto können Sie Ad-Hoc-QR-Codes direkt laden. Für registrierte Nutzer:{' '}
+            <Link to="/anmelden" className="font-medium text-bc-accent underline">
+              Anmelden
+            </Link>
           </p>
         )}
 

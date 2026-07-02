@@ -8,6 +8,7 @@ type NavKey = 'map' | 'list' | 'login' | 'home' | 'scan' | 'perks' | 'profile' |
 const guestLinks: { to: string; icon: typeof Map; labelKey: NavKey; end?: boolean }[] = [
   { to: '/karte', icon: Map, labelKey: 'map', end: true },
   { to: '/stationen', icon: Home, labelKey: 'list' },
+  { to: '/scan', icon: QrCode, labelKey: 'scan' },
   { to: '/anmelden', icon: User, labelKey: 'login' },
 ];
 

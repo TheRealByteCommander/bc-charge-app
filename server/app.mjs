@@ -12,6 +12,7 @@ import citrineosRouter from './routes/citrineos.mjs';
 import invoicesRouter from './routes/invoices.mjs';
 import webhooksRouter from './routes/webhooks.mjs';
 import gamificationRouter from './routes/gamification.mjs';
+import adhocRouter from './routes/adhoc.mjs';
 
 const PORT = Number(process.env.BC_SERVER_PORT ?? process.env.STRIPE_SERVER_PORT ?? 4242);
 
@@ -44,6 +45,7 @@ app.use('/api/stripe', stripeRouter);
 app.use('/api/citrineos', citrineosRouter);
 app.use('/api/invoices', invoicesRouter);
 app.use('/api/gamification', gamificationRouter);
+app.use('/api/adhoc', adhocRouter);
 app.use(
   '/api/webhooks/stripe',
   express.raw({ type: 'application/json' }),

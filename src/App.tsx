@@ -28,6 +28,9 @@ const SupportPage = lazy(() => import('./pages/SupportPage').then((m) => ({ defa
 const PrivacyPage = lazy(() => import('./pages/PrivacyPage').then((m) => ({ default: m.PrivacyPage })));
 const ImpressumPage = lazy(() => import('./pages/ImpressumPage').then((m) => ({ default: m.ImpressumPage })));
 const TermsPage = lazy(() => import('./pages/TermsPage').then((m) => ({ default: m.TermsPage })));
+const GuestChargePage = lazy(() =>
+  import('./pages/GuestChargePage').then((m) => ({ default: m.GuestChargePage }))
+);
 const AccessibilityPage = lazy(() =>
   import('./pages/AccessibilityPage').then((m) => ({ default: m.AccessibilityPage }))
 );
@@ -36,6 +39,8 @@ const PUBLIC_PATHS = [
   '/karte',
   '/stationen',
   '/station/',
+  '/laden/gast',
+  '/scan',
   '/hilfe',
   '/datenschutz',
   '/impressum',
@@ -109,6 +114,8 @@ export default function App() {
               <Route path="/karte" element={<MapPage />} />
               <Route path="/stationen" element={<StationsPage />} />
               <Route path="/station/:id" element={<StationDetailPage />} />
+              <Route path="/laden/gast" element={<GuestChargePage />} />
+              <Route path="/scan" element={<ScanPage />} />
               <Route path="/hilfe" element={<SupportPage />} />
               <Route path="/datenschutz" element={<PrivacyPage />} />
               <Route path="/impressum" element={<ImpressumPage />} />
@@ -117,7 +124,6 @@ export default function App() {
 
               <Route element={<RequireAuth />}>
                 <Route path="/" element={<HomePage />} />
-                <Route path="/scan" element={<ScanPage />} />
                 <Route path="/vorteile" element={<LoyaltyPage />} />
                 <Route path="/profil" element={<ProfilePage />} />
                 <Route path="/laden" element={<ChargingPage />} />

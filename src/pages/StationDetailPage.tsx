@@ -11,8 +11,8 @@ import {
   Star,
   Zap,
 } from 'lucide-react';
-import { useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ChargingSetupChecklist } from '../components/ChargingSetupChecklist';
 import { ChargePriceEstimate } from '../components/ChargePriceEstimate';
 import { ChargeStartConfirmSheet } from '../components/ChargeStartConfirmSheet';
@@ -25,6 +25,7 @@ import { getAvailableCount, getStationById } from '../data/stations';
 import { computePlugScore } from '../services/community';
 import { useAppStore } from '../store/appStore';
 import type { Connector } from '../types';
+import { buildGuestChargePath } from '../utils/qrDeepLink';
 
 const statusLabel: Record<string, string> = {
   available: 'Verfügbar',
@@ -56,6 +57,7 @@ function formatEvseLabel(connector: { evseNumber?: number; connectorNumber?: num
 
 export function StationDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const [searchParams] = useSearchParams();
   const station = getStationById(id ?? '');
   const user = useAppStore((s) => s.user);
   const distance = useAppStore((s) => s.distanceKm);
@@ -64,7 +66,9 @@ export function StationDetailPage() {
   const stationDataSource = useAppStore((s) => s.stationDataSource);
   const citrineosConnected = useAppStore((s) => s.citrineosConnected);
   const navigate = useNavigate();
-  const [selectedConnector, setSelectedConnector] = useState<string | null>(null);
+  const [selectedConnector, setSelectedConnector] = useState<string | null>(
+    searchParams.get('connector')
+  );
   const [selectedVehicle, setSelectedVehicle] = useState(user?.vehicles[0]?.id ?? '');
   const [selectedPayment, setSelectedPayment] = useState(
     user?.paymentMethods.find((p) => p.isDefault)?.id ?? user?.paymentMethods[0]?.id ?? ''
@@ -74,6 +78,13 @@ export function StationDetailPage() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [startSoc, setStartSoc] = useState(30);
   const [targetSoc, setTargetSoc] = useState(80);
+
+  useEffect(() => {
+    if (searchParams.get('adhoc') === '1' && station) {
+      const connector = searchParams.get('connector') ?? selectedConnector ?? undefined;
+      navigate(buildGuestChargePath(station.id, connector ?? undefined), { replace: true });
+    }
+  }, [searchParams, station, selectedConnector, navigate]);
 
   if (!station) {
     return (
@@ -320,6 +331,21 @@ export function StationDetailPage() {
       )}
 
       {error && <p className="mt-4 text-sm text-bc-danger">{error}</p>}
+
+      {!user && selectedConnector && (
+        <div className="mt-6 rounded-2xl border border-bc-accent/30 bg-bc-accent/5 p-4">
+          <p className="text-sm text-bc-muted">
+            Laden ohne Konto – per Karte bezahlen und sofort starten.
+          </p>
+          <Link
+            to={buildGuestChargePath(station.id, selectedConnector)}
+            className="btn-primary mt-3 flex w-full items-center justify-center gap-2"
+          >
+            <Zap className="h-4 w-4" />
+            Ad-Hoc laden
+          </Link>
+        </div>
+      )}
 
       {station.amenities.length > 0 && (
         <>

@@ -58,6 +58,20 @@ export async function initDb() {
         redeemed_at TIMESTAMPTZ NOT NULL,
         PRIMARY KEY (user_id, reward_id)
       );
+
+      CREATE TABLE IF NOT EXISTS adhoc_sessions (
+        id TEXT PRIMARY KEY,
+        access_token TEXT NOT NULL,
+        station_id TEXT NOT NULL,
+        connector_id TEXT NOT NULL,
+        status TEXT NOT NULL,
+        payment_intent_id TEXT,
+        data_json JSONB NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_adhoc_sessions_station ON adhoc_sessions(station_id);
     `);
     return pgPool;
   }
@@ -96,6 +110,20 @@ export async function initDb() {
       redeemed_at TEXT NOT NULL,
       PRIMARY KEY (user_id, reward_id)
     );
+
+    CREATE TABLE IF NOT EXISTS adhoc_sessions (
+      id TEXT PRIMARY KEY,
+      access_token TEXT NOT NULL,
+      station_id TEXT NOT NULL,
+      connector_id TEXT NOT NULL,
+      status TEXT NOT NULL,
+      payment_intent_id TEXT,
+      data_json TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_adhoc_sessions_station ON adhoc_sessions(station_id);
   `);
   return sqliteDb;
 }
@@ -379,6 +407,92 @@ const tierLabels = {
   gold: 'Gold',
   platinum: 'Platin',
 };
+
+export async function insertAdhocSession(session) {
+  const now = new Date().toISOString();
+  const dataJson = JSON.stringify(session);
+  if (isPostgres()) {
+    await pgPool.query(
+      `INSERT INTO adhoc_sessions (id, access_token, station_id, connector_id, status, payment_intent_id, data_json, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9)`,
+      [
+        session.id,
+        session.accessToken,
+        session.stationId,
+        session.connectorId,
+        session.status,
+        session.paymentIntentId ?? null,
+        dataJson,
+        now,
+        now,
+      ]
+    );
+    return session;
+  }
+  sqliteDb
+    .prepare(
+      `INSERT INTO adhoc_sessions (id, access_token, station_id, connector_id, status, payment_intent_id, data_json, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    )
+    .run(
+      session.id,
+      session.accessToken,
+      session.stationId,
+      session.connectorId,
+      session.status,
+      session.paymentIntentId ?? null,
+      dataJson,
+      now,
+      now
+    );
+  return session;
+}
+
+export async function updateAdhocSession(session) {
+  const now = new Date().toISOString();
+  const dataJson = JSON.stringify(session);
+  if (isPostgres()) {
+    await pgPool.query(
+      `UPDATE adhoc_sessions
+       SET status = $1,
+           payment_intent_id = COALESCE($2, payment_intent_id),
+           data_json = $3::jsonb,
+           updated_at = $4
+       WHERE id = $5 AND access_token = $6`,
+      [session.status, session.paymentIntentId ?? null, dataJson, now, session.id, session.accessToken]
+    );
+    return session;
+  }
+  sqliteDb
+    .prepare(
+      `UPDATE adhoc_sessions
+       SET status = ?, payment_intent_id = COALESCE(?, payment_intent_id), data_json = ?, updated_at = ?
+       WHERE id = ? AND access_token = ?`
+    )
+    .run(
+      session.status,
+      session.paymentIntentId ?? null,
+      dataJson,
+      now,
+      session.id,
+      session.accessToken
+    );
+  return session;
+}
+
+export async function findAdhocSession(id, accessToken) {
+  if (isPostgres()) {
+    const { rows } = await pgPool.query(
+      'SELECT data_json FROM adhoc_sessions WHERE id = $1 AND access_token = $2',
+      [id, accessToken]
+    );
+    return rows[0] ? parseJson(rows[0].data_json) : null;
+  }
+  const row = sqliteDb
+    .prepare('SELECT data_json FROM adhoc_sessions WHERE id = ? AND access_token = ?')
+    .get(id, accessToken);
+  return row ? JSON.parse(row.data_json) : null;
+}
 
 export async function getLeaderboardData(limit = 20) {
   if (isPostgres()) {
