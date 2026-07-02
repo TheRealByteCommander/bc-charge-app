@@ -209,15 +209,9 @@ html[data-a11y-font='xlarge'] .a11y-nav-link {
     min-height: 0;
     flex: 1;
     overflow-y: auto;
+    overflow-x: hidden;
     -webkit-overflow-scrolling: touch;
-    padding: 1rem 1rem 12rem;
-    padding-bottom: max(12rem, calc(12rem + env(safe-area-inset-bottom)));
-  }
-
-  @supports (padding-bottom: constant(safe-area-inset-bottom)) {
-    .page-shell {
-      padding-bottom: max(12rem, calc(12rem + constant(safe-area-inset-bottom)));
-    }
+    padding: 1rem 1rem 2rem;
   }
 }
 
