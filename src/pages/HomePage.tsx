@@ -17,7 +17,7 @@ export function HomePage() {
     activeSession ? Math.floor((Date.now() - new Date(activeSession.startedAt).getTime()) / 1000) : 0;
 
   return (
-    <div className="page-shell pb-4">
+    <div className="page-shell">
       <header className="flex items-center justify-between">
         <div>
           <p className="text-sm text-bc-muted">Hallo, {user.firstName}</p>

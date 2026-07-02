@@ -145,7 +145,7 @@ export function StationDetailPage() {
   };
 
   return (
-    <div className="page-shell pb-44">
+    <div className="page-shell pb-56">
       <GuestBanner />
       <button
         type="button"
