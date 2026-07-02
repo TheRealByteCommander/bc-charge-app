@@ -145,7 +145,7 @@ export function planTrip(input: TripPlanInput): TripPlanResult | null {
       if (suggestion) {
         const kwh = battery * 0.45;
         const price = suggestion.connector.pricePerKwh || 0.49;
-        estCost += kwh * price + (suggestion.connector.sessionFee ?? 0);
+        estCost += kwh * price;
         chargeStationIds.push(suggestion.station.id);
         routeLine.push([suggestion.station.lat, suggestion.station.lng]);
 

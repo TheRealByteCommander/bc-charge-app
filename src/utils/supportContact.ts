@@ -19,7 +19,6 @@ export function buildSessionSupportText(session: ChargingSession, topic: Support
     `Energie: ${formatKwh(session.energyKwh)}`,
     `Kosten: ${formatCurrency(session.costEur)}`,
     `Tarif: ${formatCurrency(session.pricePerKwh)}/kWh`,
-    session.sessionFee ? `Startgebühr: ${formatCurrency(session.sessionFee)}` : null,
     `Rechnung: ${displayInvoiceNumber(session)}`,
     session.paymentStatus ? `Zahlungsstatus: ${session.paymentStatus}` : null,
     session.stripePaymentIntentId ? `Stripe: ${session.stripePaymentIntentId}` : null,

@@ -34,9 +34,9 @@ export function estimateChargeSession(
   const estMinutes =
     effectivePowerKw > 0 ? Math.ceil((kwh / (effectivePowerKw * CHARGE_EFFICIENCY)) * 60) : 0;
 
-  let totalEur = connector.sessionFee ?? 0;
+  let totalEur = 0;
   if (connectorHasKnownPrice(connector)) {
-    totalEur += kwh * connector.pricePerKwh;
+    totalEur = kwh * connector.pricePerKwh;
     if (connector.pricePerMin) totalEur += estMinutes * connector.pricePerMin;
   }
 
