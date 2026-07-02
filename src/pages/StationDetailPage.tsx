@@ -40,19 +40,18 @@ const statusColor: Record<string, string> = {
   reserved: 'text-bc-blue',
 };
 
-/** Prüft ob Station Multi-Connector-Support hat (z.B. H2 mit 2 EVSEs) */
+/** Prüft ob Station Multi-Connector-Support hat (z.B. H2 mit 2 Ladepunkten) */
 function isMultiConnectorStation(station: ReturnType<typeof getStationById>): boolean {
   if (!station) return false;
-  const uniqueEvses = new Set(station.connectors.map((c) => c.evseNumber).filter(Boolean));
-  return uniqueEvses.size > 1 || station.hardwareFeatures?.multiConnector === true;
+  return station.connectors.length > 1 || station.hardwareFeatures?.multiConnector === true;
 }
 
-/** Formatiert EVSE-Anzeige für Multi-Connector-Stationen */
-function formatEvseLabel(connector: { evseNumber?: number; connectorNumber?: number }): string {
-  if (connector.evseNumber != null) {
-    return `Ladepunkt ${connector.evseNumber}`;
+/** Formatiert Ladepunkt-Anzeige - nutzt connectorNumber für die Nummerierung */
+function formatEvseLabel(connector: { evseNumber?: number; connectorNumber?: number }, index: number): string {
+  if (connector.connectorNumber != null) {
+    return `Ladepunkt ${connector.connectorNumber}`;
   }
-  return '';
+  return `Ladepunkt ${index + 1}`;
 }
 
 export function StationDetailPage() {
@@ -146,7 +145,7 @@ export function StationDetailPage() {
   };
 
   return (
-    <div className="page-shell pb-36">
+    <div className="page-shell pb-44">
       <GuestBanner />
       <button
         type="button"
@@ -233,8 +232,8 @@ export function StationDetailPage() {
         </p>
       )}
       <div className="mt-3 space-y-3">
-        {station.connectors.map((c: Connector) => {
-          const evseLabel = formatEvseLabel(c);
+        {station.connectors.map((c: Connector, index: number) => {
+          const evseLabel = formatEvseLabel(c, index);
           return (
             <button
               key={c.id}
