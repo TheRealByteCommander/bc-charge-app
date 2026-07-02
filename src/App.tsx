@@ -1,6 +1,7 @@
-import { lazy, useEffect } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import { BrowserRouter, Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom';
 import { AppShell } from './components/AppShell';
+import { UpdateNotification } from './components/UpdateNotification';
 import { LoginPage, RegisterPage } from './pages/AuthPage';
 import { OnboardingPage } from './pages/OnboardingPage';
 import { useAppStore } from './store/appStore';
@@ -60,7 +61,14 @@ function Bootstrap({ children }: { children: React.ReactNode }) {
     );
   }
 
-  return <>{children}</>;
+  return (
+    <>
+      {children}
+      <Suspense fallback={null}>
+        <UpdateNotification />
+      </Suspense>
+    </>
+  );
 }
 
 function RequireOnboarding() {

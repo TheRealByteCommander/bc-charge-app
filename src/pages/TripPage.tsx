@@ -60,7 +60,7 @@ export function TripPage() {
   );
 
   return (
-    <div className="page-shell pb-8">
+    <div className="page-shell">
       <h1 className="font-display text-2xl font-bold">{t.trip.title}</h1>
       <p className="mt-2 text-sm text-bc-muted leading-relaxed">
         {locale === 'de'

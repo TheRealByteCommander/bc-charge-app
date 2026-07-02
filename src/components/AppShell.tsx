@@ -80,7 +80,12 @@ export function AppShell() {
         </Suspense>
       </main>
       <GeoConsentBanner />
-      {showNav && <BottomNav />}
+      {showNav && (
+        <>
+          <div className="h-20 shrink-0" aria-hidden="true" />
+          <BottomNav />
+        </>
+      )}
       <InstallPrompt />
       <AnimatePresence>
         {message && (

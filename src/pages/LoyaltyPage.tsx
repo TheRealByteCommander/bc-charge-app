@@ -50,7 +50,7 @@ export function LoyaltyPage() {
   ];
 
   return (
-    <div className="page-shell pb-8">
+    <div className="page-shell">
       <h1 className="font-display text-2xl font-bold">{t.gamification.title}</h1>
       <p className="mt-1 text-bc-muted">
         {locale === 'de' ? 'Points, Abzeichen, Aufgaben und Bestenliste.' : 'Points, badges, challenges and leaderboard.'}

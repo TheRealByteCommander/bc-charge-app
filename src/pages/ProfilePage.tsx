@@ -104,7 +104,7 @@ export function ProfilePage() {
   };
 
   return (
-    <div className="page-shell pb-8">
+    <div className="page-shell">
       <h1 className="font-display text-2xl font-bold">{t.profile.title}</h1>
 
       <div className="mt-6 flex items-center gap-4">

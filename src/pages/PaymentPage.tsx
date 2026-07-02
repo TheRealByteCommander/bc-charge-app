@@ -56,7 +56,7 @@ export function PaymentPage() {
   };
 
   return (
-    <div className="page-shell pb-8">
+    <div className="page-shell">
       {returnTo ? (
         <Link to={returnTo} className="text-sm text-bc-accent">
           ← Zurück zur Station

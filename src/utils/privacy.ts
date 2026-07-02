@@ -7,7 +7,7 @@ export const LOCAL_STORAGE_DISCLOSURE = [
   { key: 'bc_sessions', purpose: 'Ladehistorie', legal: 'Art. 6 Abs. 1 lit. b DSGVO' },
   { key: 'bc_redeemed', purpose: 'Eingelöste Prämien', legal: 'Art. 6 Abs. 1 lit. b DSGVO' },
   { key: 'bc_onboarding_done', purpose: 'App-Einführung abgeschlossen', legal: 'Art. 6 Abs. 1 lit. f DSGVO' },
-  { key: 'bc_geo_consent', purpose: 'Einwilligung Standort', legal: 'Art. 6 Abs. 1 lit. a DSGVO' },
+  { key: 'bc_geo_consent', purpose: 'Einwilligung Standort', legal: 'Art. 6 Abs. 1 lit. a DSGVO, § 25 Abs. 1 TDDDG' },
   { key: 'bc_locale', purpose: 'Spracheinstellung', legal: 'Art. 6 Abs. 1 lit. f DSGVO' },
   { key: 'bc_stations_offline_v1', purpose: 'Offline-Karte (technisch)', legal: 'Art. 6 Abs. 1 lit. f DSGVO' },
   { key: 'bc_station_reports', purpose: 'Community-Meldungen zu Stationen', legal: 'Art. 6 Abs. 1 lit. f DSGVO' },

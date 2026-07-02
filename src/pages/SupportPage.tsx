@@ -93,7 +93,7 @@ export function SupportPage() {
         rel="noreferrer"
         className="btn-secondary mt-8 block w-full text-center"
       >
-        Website bc-charge.com
+        Website main.bc-charge.com
       </a>
 
       <LegalFooterLinks className="mt-8 border-t border-bc-border pt-6" />
