@@ -63,6 +63,7 @@ export function StationDetailPage() {
   const distance = useAppStore((s) => s.distanceKm);
   const toggleFavorite = useAppStore((s) => s.toggleFavorite);
   const startSession = useAppStore((s) => s.startSession);
+  const selectedChargingFulfillmentId = useAppStore((s) => s.selectedChargingFulfillmentId);
   const stationDataSource = useAppStore((s) => s.stationDataSource);
   const citrineosConnected = useAppStore((s) => s.citrineosConnected);
   const navigate = useNavigate();
@@ -136,7 +137,13 @@ export function StationDetailPage() {
         setError('Bitte hinterlegen Sie eine Zahlungsmethode (siehe Checkliste oben).');
         return;
       }
-      const res = await startSession(station.id, selectedConnector, selectedVehicle, selectedPayment);
+      const res = await startSession(
+        station.id,
+        selectedConnector,
+        selectedVehicle,
+        selectedPayment,
+        selectedChargingFulfillmentId
+      );
       if (res.ok) {
         setShowConfirm(false);
         navigate('/laden');

@@ -36,9 +36,9 @@ import {
 } from '../services/stripeService';
 import type {
   ChargingSession,
-  Connector,
   NotificationPrefs,
   PaymentMethod,
+  RewardFulfillment,
   Station,
   UserProfile,
   Vehicle,
@@ -56,6 +56,7 @@ import {
   registerUser,
 } from '../api/backend/auth';
 import { fetchRedeemedRewards, patchProfile, redeemRewardRemote } from '../api/backend/profile';
+import { fetchRewardFulfillments } from '../api/backend/rewards';
 import {
   completeSessionRemote,
   fetchSessions,
@@ -66,15 +67,28 @@ import { isBackendMode } from '../services/backendMode';
 import {
   getCurrentUserId,
   isOnboardingDone,
+  loadFulfillments,
   loadRedeemed,
   loadSessions,
   loadUsers,
+  saveFulfillments,
   saveRedeemed,
   saveSessions,
   saveUsers,
   setCurrentUserId,
   setOnboardingDone,
 } from '../utils/storage';
+import {
+  applyChargingFulfillment,
+  buildFulfillmentRecord,
+  findFulfillmentById,
+  getNightPointsMultiplier,
+  isFulfillmentActive,
+  listActiveChargingFulfillments,
+  profilePatchFromFulfillment,
+  shouldConsumeFulfillment,
+} from '../services/rewardFulfillment';
+import { findRewardById } from '../data/rewards';
 
 interface AppState {
   initialized: boolean;
@@ -83,6 +97,9 @@ interface AppState {
   sessions: ChargingSession[];
   activeSession: ChargingSession | null;
   redeemedRewardIds: string[];
+  rewardFulfillments: RewardFulfillment[];
+  selectedChargingFulfillmentId: string | null;
+  lastRedeemedFulfillment: RewardFulfillment | null;
   userLocation: { lat: number; lng: number } | null;
   searchQuery: string;
   stationFilters: StationFilterState;
@@ -135,12 +152,15 @@ interface AppState {
     stationId: string,
     connectorId: string,
     vehicleId: string,
-    paymentMethodId: string
+    paymentMethodId: string,
+    fulfillmentId?: string | null
   ) => Promise<{ ok: boolean; error?: string }>;
   tickSession: () => Promise<void>;
   stopSession: () => Promise<void>;
 
   redeemReward: (rewardId: string, pointsCost: number) => { ok: boolean; error?: string };
+  syncRewardFulfillments: () => Promise<void>;
+  setSelectedChargingFulfillment: (id: string | null) => void;
   recordCommunityReport: () => void;
   claimWeeklyChallenge: (challengeId: string) => { ok: boolean; error?: string };
   syncGamification: () => void;
@@ -260,12 +280,6 @@ function notifyIfSessionComplete(user: UserProfile, session: ChargingSession): v
   }
 }
 
-function calcCost(energyKwh: number, connector: Connector, minutes: number): number {
-  let cost = energyKwh * connector.pricePerKwh + (connector.sessionFee ?? 0);
-  if (connector.pricePerMin) cost += minutes * connector.pricePerMin;
-  return Math.round(cost * 100) / 100;
-}
-
 function calcPoints(energyKwh: number, tier: UserProfile['loyaltyTier']): number {
   return Math.round(energyKwh * 1.2 * tierThresholds[tier].multiplier);
 }
@@ -295,6 +309,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   sessions: [],
   activeSession: null,
   redeemedRewardIds: [],
+  rewardFulfillments: [],
+  selectedChargingFulfillmentId: null,
+  lastRedeemedFulfillment: null,
   userLocation: null,
   searchQuery: '',
   stationFilters: defaultStationFilters(),
@@ -339,6 +356,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       const sessions = user ? await fetchSessions() : [];
       const redeemedRewardIds = user ? await fetchRedeemedRewards() : [];
+      const rewardFulfillments = user ? await fetchRewardFulfillments() : [];
 
       set({
         initialized: true,
@@ -347,6 +365,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         sessions,
         activeSession: sessions.find((s) => s.status === 'active') ?? null,
         redeemedRewardIds,
+        rewardFulfillments,
+        selectedChargingFulfillmentId: listActiveChargingFulfillments(rewardFulfillments)[0]?.id ?? null,
         citrineosConnected,
         citrineosSyncError,
         stationDataSource,
@@ -399,6 +419,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       sessions: user ? loadSessions(user.id) : [],
       activeSession: user ? loadSessions(user.id).find((s) => s.status === 'active') ?? null : null,
       redeemedRewardIds: user ? loadRedeemed(user.id) : [],
+      rewardFulfillments: user ? loadFulfillments(user.id) : [],
+      selectedChargingFulfillmentId: user
+        ? listActiveChargingFulfillments(loadFulfillments(user.id))[0]?.id ?? null
+        : null,
       citrineosConnected,
       citrineosSyncError,
       stationDataSource,
@@ -653,7 +677,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   logout: () => {
     if (isBackendMode()) void logoutUser();
     setCurrentUserId(null);
-    set({ user: null, sessions: [], activeSession: null, redeemedRewardIds: [] });
+    set({ user: null, sessions: [], activeSession: null, redeemedRewardIds: [], rewardFulfillments: [], selectedChargingFulfillmentId: null, lastRedeemedFulfillment: null });
   },
 
   updateProfile: (patch) => {
@@ -739,8 +763,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
   },
 
-  startSession: async (stationId, connectorId, vehicleId, paymentMethodId) => {
-    const { user, activeSession, citrineosConnected } = get();
+  startSession: async (stationId, connectorId, vehicleId, paymentMethodId, fulfillmentId) => {
+    const { user, activeSession, citrineosConnected, rewardFulfillments, selectedChargingFulfillmentId } =
+      get();
     if (!user) return { ok: false, error: 'Bitte melden Sie sich an.' };
     if (activeSession) return { ok: false, error: 'Es läuft bereits eine Ladesitzung.' };
     if (user.paymentMethods.length === 0) {
@@ -752,6 +777,18 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!connector) return { ok: false, error: 'Anschluss nicht gefunden.' };
     if (connector.status !== 'available') {
       return { ok: false, error: 'Dieser Anschluss ist derzeit nicht verfügbar.' };
+    }
+
+    const appliedFulfillmentId =
+      fulfillmentId !== undefined ? fulfillmentId : selectedChargingFulfillmentId;
+    let rewardLabel: string | undefined;
+    if (appliedFulfillmentId) {
+      const fulfillment = findFulfillmentById(rewardFulfillments, appliedFulfillmentId);
+      if (!fulfillment || !isFulfillmentActive(fulfillment)) {
+        return { ok: false, error: 'Die gewählte Prämie ist nicht mehr gültig.' };
+      }
+      const reward = findRewardById(fulfillment.rewardId);
+      rewardLabel = reward?.title;
     }
 
     let session: ChargingSession = {
@@ -769,11 +806,14 @@ export const useAppStore = create<AppState>((set, get) => ({
       costEur: connector.sessionFee ?? 0,
       pricePerKwh: connector.pricePerKwh,
       sessionFee: connector.sessionFee ?? 0,
+      pricePerMin: connector.pricePerMin,
       pointsEarned: 0,
       citrineosBacked: false,
       midCertified: station.hardwareFeatures?.midCertifiedMeters ?? false,
       chargePointModel: station.chargePointModel,
       evseNumber: connector.evseNumber,
+      appliedFulfillmentId: appliedFulfillmentId ?? undefined,
+      rewardLabel,
     };
 
     if (citrineosConnected && getStationDataSource() === 'citrineos') {
@@ -807,22 +847,39 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   tickSession: async () => {
-    const { activeSession, user } = get();
+    const { activeSession, user, rewardFulfillments } = get();
     if (!activeSession || !user || activeSession.status !== 'active') return;
     const station = getStationById(activeSession.stationId);
     const connector = station?.connectors.find((c) => c.id === activeSession.connectorId);
     if (!connector) return;
 
     let updated: ChargingSession = { ...activeSession };
+    const fulfillment = findFulfillmentById(rewardFulfillments, activeSession.appliedFulfillmentId);
 
     if (activeSession.citrineosBacked) {
       try {
         const patch = await pollCitrineosSession(activeSession);
         if (patch) {
+          const energyKwh = patch.energyKwh ?? updated.energyKwh;
+          const elapsedMin = (Date.now() - new Date(activeSession.startedAt).getTime()) / 60000;
+          const applied = applyChargingFulfillment({
+            energyKwh,
+            pricePerKwh: connector.pricePerKwh,
+            sessionFee: connector.sessionFee ?? 0,
+            pricePerMin: connector.pricePerMin ?? 0,
+            minutes: elapsedMin,
+            fulfillment,
+          });
+          const nightMult = getNightPointsMultiplier(rewardFulfillments, activeSession.startedAt);
           updated = {
             ...updated,
             ...patch,
-            pointsEarned: calcPoints(patch.energyKwh ?? updated.energyKwh, user.loyaltyTier),
+            baseCostEur: applied.baseCostEur,
+            costEur: applied.costEur,
+            rewardDiscountEur: applied.rewardDiscountEur,
+            appliedFulfillmentId: applied.appliedFulfillmentId ?? undefined,
+            rewardLabel: applied.rewardLabel ?? updated.rewardLabel,
+            pointsEarned: Math.round(calcPoints(energyKwh, user.loyaltyTier) * nightMult),
           };
         }
       } catch {
@@ -835,15 +892,45 @@ export const useAppStore = create<AppState>((set, get) => ({
       const efficiency = 0.85;
       const maxKwh = (connector.powerKw * efficiency * elapsedMin) / 60;
       const energyKwh = Math.min(maxKwh, 80);
-      const costEur = calcCost(energyKwh, connector, elapsedMin);
+      const applied = applyChargingFulfillment({
+        energyKwh,
+        pricePerKwh: connector.pricePerKwh,
+        sessionFee: connector.sessionFee ?? 0,
+        pricePerMin: connector.pricePerMin ?? 0,
+        minutes: elapsedMin,
+        fulfillment,
+      });
+      const nightMult = getNightPointsMultiplier(rewardFulfillments, activeSession.startedAt);
       updated = {
         ...updated,
         energyKwh: Math.round(energyKwh * 100) / 100,
-        costEur,
-        pointsEarned: calcPoints(energyKwh, user.loyaltyTier),
+        baseCostEur: applied.baseCostEur,
+        costEur: applied.costEur,
+        rewardDiscountEur: applied.rewardDiscountEur,
+        appliedFulfillmentId: applied.appliedFulfillmentId ?? undefined,
+        rewardLabel: applied.rewardLabel ?? updated.rewardLabel,
+        pointsEarned: Math.round(calcPoints(energyKwh, user.loyaltyTier) * nightMult),
       };
-    } else if (updated.energyKwh > 0) {
-      updated.pointsEarned = calcPoints(updated.energyKwh, user.loyaltyTier);
+    } else if (updated.energyKwh > 0 && !updated.rewardDiscountEur) {
+      const elapsedMin = (Date.now() - new Date(activeSession.startedAt).getTime()) / 60000;
+      const applied = applyChargingFulfillment({
+        energyKwh: updated.energyKwh,
+        pricePerKwh: connector.pricePerKwh,
+        sessionFee: connector.sessionFee ?? 0,
+        pricePerMin: connector.pricePerMin ?? 0,
+        minutes: elapsedMin,
+        fulfillment,
+      });
+      const nightMult = getNightPointsMultiplier(rewardFulfillments, activeSession.startedAt);
+      updated = {
+        ...updated,
+        baseCostEur: applied.baseCostEur,
+        costEur: applied.costEur,
+        rewardDiscountEur: applied.rewardDiscountEur,
+        appliedFulfillmentId: applied.appliedFulfillmentId ?? undefined,
+        rewardLabel: applied.rewardLabel ?? updated.rewardLabel,
+        pointsEarned: Math.round(calcPoints(updated.energyKwh, user.loyaltyTier) * nightMult),
+      };
     }
 
     const sessions = get().sessions.map((s) => (s.id === updated.id ? updated : s));
@@ -941,10 +1028,12 @@ export const useAppStore = create<AppState>((set, get) => ({
           user: mergedUser,
           sessions: sessions.map((s) => (s.id === result.session.id ? result.session : s)),
           activeSession: null,
+          selectedChargingFulfillmentId: null,
           toast: `Laden beendet · ${formatGamificationToast(gam, 'de')}${invoiceHint}`,
         });
         notifyIfSessionComplete(mergedUser, result.session);
         recordStationSuccess(result.session.stationId);
+        void get().syncRewardFulfillments();
         return;
       } catch (e) {
         set({ toast: e instanceof Error ? e.message : 'Sitzung konnte nicht abgeschlossen werden.' });
@@ -955,11 +1044,30 @@ export const useAppStore = create<AppState>((set, get) => ({
     const users = loadUsers().map((u) => (u.id === user.id ? updatedUser : u));
     saveUsers(users);
     saveSessions(user.id, sessions);
+
+    let rewardFulfillments = get().rewardFulfillments;
+    if (ended.appliedFulfillmentId) {
+      rewardFulfillments = rewardFulfillments.map((f) =>
+        f.id === ended.appliedFulfillmentId && shouldConsumeFulfillment(f)
+          ? {
+              ...f,
+              status: 'used' as const,
+              usedAt: new Date().toISOString(),
+              sessionId: ended.id,
+              isActive: false,
+            }
+          : f
+      );
+      saveFulfillments(user.id, rewardFulfillments);
+    }
+
     const toastMsg = `Laden beendet · ${formatGamificationToast(gam, 'de')}`;
     set({
       user: updatedUser,
       sessions,
       activeSession: null,
+      rewardFulfillments,
+      selectedChargingFulfillmentId: listActiveChargingFulfillments(rewardFulfillments)[0]?.id ?? null,
       toast: toastMsg,
     });
     notifyIfSessionComplete(updatedUser, ended);
@@ -1041,7 +1149,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   redeemReward: (rewardId, pointsCost) => {
-    const { user, redeemedRewardIds } = get();
+    const { user, redeemedRewardIds, rewardFulfillments } = get();
     if (!user) return { ok: false, error: 'Bitte anmelden.' };
     if (redeemedRewardIds.includes(rewardId)) {
       return { ok: false, error: 'Prämie wurde bereits eingelöst.' };
@@ -1051,24 +1159,78 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
     if (isBackendMode()) {
       void redeemRewardRemote(rewardId, pointsCost)
-        .then((res) =>
+        .then(async (res) => {
+          const fulfillments = await fetchRewardFulfillments();
           set({
             user: enrichUser(res.user),
             redeemedRewardIds: res.rewardIds,
-            toast: 'Prämie erfolgreich eingelöst!',
-          })
-        )
+            rewardFulfillments: fulfillments,
+            lastRedeemedFulfillment: res.fulfillment,
+            selectedChargingFulfillmentId:
+              listActiveChargingFulfillments(fulfillments)[0]?.id ?? get().selectedChargingFulfillmentId,
+            toast:
+              res.fulfillment?.type === 'voucher'
+                ? `Gutscheincode: ${String(res.fulfillment.payload.voucherCode)}`
+                : 'Prämie erfolgreich eingelöst!',
+          });
+        })
         .catch((e) =>
           set({ toast: e instanceof Error ? e.message : 'Einlösung fehlgeschlagen.' })
         );
       return { ok: true };
     }
+    const fulfillment = buildFulfillmentRecord({ userId: user.id, rewardId });
     const newPoints = user.loyaltyPoints - pointsCost;
-    get().updateProfile({ loyaltyPoints: newPoints, loyaltyTier: computeTier(newPoints) });
+    const profilePatch = profilePatchFromFulfillment(fulfillment);
+    get().updateProfile({
+      loyaltyPoints: newPoints,
+      loyaltyTier: computeTier(newPoints),
+      ...profilePatch,
+    });
     const ids = [...redeemedRewardIds, rewardId];
+    const nextFulfillments = [...rewardFulfillments, fulfillment];
     saveRedeemed(user.id, ids);
-    set({ redeemedRewardIds: ids, toast: 'Prämie erfolgreich eingelöst!' });
+    saveFulfillments(user.id, nextFulfillments);
+    const chargingPerks = listActiveChargingFulfillments(nextFulfillments);
+    set({
+      redeemedRewardIds: ids,
+      rewardFulfillments: nextFulfillments,
+      lastRedeemedFulfillment: fulfillment,
+      selectedChargingFulfillmentId: chargingPerks[0]?.id ?? null,
+      toast:
+        fulfillment.type === 'voucher'
+          ? `Gutscheincode: ${String(fulfillment.payload.voucherCode)}`
+          : 'Prämie erfolgreich eingelöst!',
+    });
     return { ok: true };
+  },
+
+  syncRewardFulfillments: async () => {
+    const { user } = get();
+    if (!user) return;
+    if (isBackendMode()) {
+      try {
+        const fulfillments = await fetchRewardFulfillments();
+        set({
+          rewardFulfillments: fulfillments,
+          selectedChargingFulfillmentId:
+            listActiveChargingFulfillments(fulfillments)[0]?.id ?? get().selectedChargingFulfillmentId,
+        });
+      } catch {
+        /* ignore */
+      }
+      return;
+    }
+    const fulfillments = loadFulfillments(user.id);
+    set({
+      rewardFulfillments: fulfillments,
+      selectedChargingFulfillmentId:
+        listActiveChargingFulfillments(fulfillments)[0]?.id ?? get().selectedChargingFulfillmentId,
+    });
+  },
+
+  setSelectedChargingFulfillment: (id) => {
+    set({ selectedChargingFulfillmentId: id });
   },
 
   getFilteredStations: () => {

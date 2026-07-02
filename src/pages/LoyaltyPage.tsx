@@ -6,6 +6,7 @@ import { ChallengesPanel } from '../components/gamification/ChallengesPanel';
 import { LeaderboardPanel } from '../components/gamification/LeaderboardPanel';
 import { StreakBanner } from '../components/gamification/StreakBanner';
 import { LoyaltyCard } from '../components/LoyaltyCard';
+import { RewardFulfillmentPanel } from '../components/RewardFulfillmentPanel';
 import { useLocale } from '../i18n/LocaleContext';
 import { loyaltyRewards } from '../data/rewards';
 import { badges } from '../data/badges';
@@ -20,6 +21,7 @@ export function LoyaltyPage() {
   const user = useAppStore((s) => s.user);
   const redeemed = useAppStore((s) => s.redeemedRewardIds);
   const redeemReward = useAppStore((s) => s.redeemReward);
+  const rewardFulfillments = useAppStore((s) => s.rewardFulfillments);
   const syncGamification = useAppStore((s) => s.syncGamification);
   const [tab, setTab] = useState<Tab>('overview');
 
@@ -136,6 +138,7 @@ export function LoyaltyPage() {
               );
             })}
           </div>
+          <RewardFulfillmentPanel fulfillments={rewardFulfillments} />
         </>
       )}
 

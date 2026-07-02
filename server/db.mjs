@@ -59,6 +59,22 @@ export async function initDb() {
         PRIMARY KEY (user_id, reward_id)
       );
 
+      CREATE TABLE IF NOT EXISTS reward_fulfillments (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        reward_id TEXT NOT NULL,
+        type TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'active',
+        payload_json JSONB NOT NULL,
+        redeemed_at TIMESTAMPTZ NOT NULL,
+        expires_at TIMESTAMPTZ,
+        used_at TIMESTAMPTZ,
+        session_id TEXT
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_reward_fulfillments_user ON reward_fulfillments(user_id);
+      CREATE INDEX IF NOT EXISTS idx_reward_fulfillments_user_status ON reward_fulfillments(user_id, status);
+
       CREATE TABLE IF NOT EXISTS adhoc_sessions (
         id TEXT PRIMARY KEY,
         access_token TEXT NOT NULL,
@@ -110,6 +126,22 @@ export async function initDb() {
       redeemed_at TEXT NOT NULL,
       PRIMARY KEY (user_id, reward_id)
     );
+
+    CREATE TABLE IF NOT EXISTS reward_fulfillments (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      reward_id TEXT NOT NULL,
+      type TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active',
+      payload_json TEXT NOT NULL,
+      redeemed_at TEXT NOT NULL,
+      expires_at TEXT,
+      used_at TEXT,
+      session_id TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_reward_fulfillments_user ON reward_fulfillments(user_id);
+    CREATE INDEX IF NOT EXISTS idx_reward_fulfillments_user_status ON reward_fulfillments(user_id, status);
 
     CREATE TABLE IF NOT EXISTS adhoc_sessions (
       id TEXT PRIMARY KEY,
@@ -540,4 +572,112 @@ export async function getLeaderboardData(limit = 20) {
       tier: tierLabels[tier] ?? 'Bronze',
     };
   });
+}
+
+function rowToFulfillment(row) {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    rewardId: row.reward_id,
+    type: row.type,
+    status: row.status,
+    payload: parseJson(row.payload_json) ?? {},
+    redeemedAt: row.redeemed_at,
+    expiresAt: row.expires_at ?? null,
+    usedAt: row.used_at ?? null,
+    sessionId: row.session_id ?? null,
+  };
+}
+
+export async function insertFulfillment(fulfillment) {
+  const payloadJson = JSON.stringify(fulfillment.payload ?? {});
+  if (isPostgres()) {
+    await pgPool.query(
+      `INSERT INTO reward_fulfillments
+        (id, user_id, reward_id, type, status, payload_json, redeemed_at, expires_at, used_at, session_id)
+       VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10)`,
+      [
+        fulfillment.id,
+        fulfillment.userId,
+        fulfillment.rewardId,
+        fulfillment.type,
+        fulfillment.status ?? 'active',
+        payloadJson,
+        fulfillment.redeemedAt,
+        fulfillment.expiresAt ?? null,
+        fulfillment.usedAt ?? null,
+        fulfillment.sessionId ?? null,
+      ]
+    );
+    return fulfillment;
+  }
+  sqliteDb
+    .prepare(
+      `INSERT INTO reward_fulfillments
+        (id, user_id, reward_id, type, status, payload_json, redeemed_at, expires_at, used_at, session_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    )
+    .run(
+      fulfillment.id,
+      fulfillment.userId,
+      fulfillment.rewardId,
+      fulfillment.type,
+      fulfillment.status ?? 'active',
+      payloadJson,
+      fulfillment.redeemedAt,
+      fulfillment.expiresAt ?? null,
+      fulfillment.usedAt ?? null,
+      fulfillment.sessionId ?? null
+    );
+  return fulfillment;
+}
+
+export async function listFulfillments(userId, { status } = {}) {
+  if (isPostgres()) {
+    const query = status
+      ? `SELECT * FROM reward_fulfillments WHERE user_id = $1 AND status = $2 ORDER BY redeemed_at DESC`
+      : `SELECT * FROM reward_fulfillments WHERE user_id = $1 ORDER BY redeemed_at DESC`;
+    const params = status ? [userId, status] : [userId];
+    const { rows } = await pgPool.query(query, params);
+    return rows.map(rowToFulfillment);
+  }
+  const query = status
+    ? `SELECT * FROM reward_fulfillments WHERE user_id = ? AND status = ? ORDER BY redeemed_at DESC`
+    : `SELECT * FROM reward_fulfillments WHERE user_id = ? ORDER BY redeemed_at DESC`;
+  const stmt = sqliteDb.prepare(query);
+  const rows = status ? stmt.all(userId, status) : stmt.all(userId);
+  return rows.map(rowToFulfillment);
+}
+
+export async function getFulfillmentById(userId, fulfillmentId) {
+  if (isPostgres()) {
+    const { rows } = await pgPool.query(
+      `SELECT * FROM reward_fulfillments WHERE user_id = $1 AND id = $2 LIMIT 1`,
+      [userId, fulfillmentId]
+    );
+    return rows[0] ? rowToFulfillment(rows[0]) : null;
+  }
+  const row = sqliteDb
+    .prepare(`SELECT * FROM reward_fulfillments WHERE user_id = ? AND id = ? LIMIT 1`)
+    .get(userId, fulfillmentId);
+  return row ? rowToFulfillment(row) : null;
+}
+
+export async function markFulfillmentUsed(userId, fulfillmentId, sessionId) {
+  const usedAt = new Date().toISOString();
+  if (isPostgres()) {
+    await pgPool.query(
+      `UPDATE reward_fulfillments
+       SET status = 'used', used_at = $3, session_id = $4
+       WHERE user_id = $1 AND id = $2`,
+      [userId, fulfillmentId, usedAt, sessionId ?? null]
+    );
+    return getFulfillmentById(userId, fulfillmentId);
+  }
+  sqliteDb
+    .prepare(
+      `UPDATE reward_fulfillments SET status = 'used', used_at = ?, session_id = ? WHERE user_id = ? AND id = ?`
+    )
+    .run(usedAt, sessionId ?? null, userId, fulfillmentId);
+  return getFulfillmentById(userId, fulfillmentId);
 }

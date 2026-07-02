@@ -84,3 +84,7 @@ export function nextTierInfo(tier: LoyaltyTier, points: number): { next: Loyalty
   const next = order[idx + 1];
   return { next, remaining: Math.max(0, tierThresholds[next].minPoints - points) };
 }
+
+export function findRewardById(rewardId: string): LoyaltyReward | undefined {
+  return loyaltyRewards.find((r) => r.id === rewardId);
+}

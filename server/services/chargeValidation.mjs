@@ -3,7 +3,15 @@ const MAX_SESSION_FEE = 4;
 const MAX_MINUTE_RATE = 0.15;
 const TOLERANCE = 1.12;
 
-export function validateSessionCost({ energyKwh, costEur, pricePerKwh, sessionFee = 0, minutes = 0 }) {
+export function validateSessionCost({
+  energyKwh,
+  costEur,
+  pricePerKwh,
+  sessionFee = 0,
+  minutes = 0,
+  baseCostEur,
+  rewardDiscountEur = 0,
+}) {
   const kwh = Number(energyKwh);
   const cost = Number(costEur);
   if (!Number.isFinite(kwh) || kwh < 0 || kwh > 200) {
@@ -12,6 +20,26 @@ export function validateSessionCost({ energyKwh, costEur, pricePerKwh, sessionFe
   if (!Number.isFinite(cost) || cost < 0) {
     return 'Ungültiger Betrag';
   }
+
+  if (baseCostEur != null && Number(rewardDiscountEur) > 0) {
+    const base = Number(baseCostEur);
+    const discount = Number(rewardDiscountEur);
+    const baseError = validateSessionCost({
+      energyKwh,
+      costEur: base,
+      pricePerKwh,
+      sessionFee,
+      minutes,
+    });
+    if (baseError) return baseError;
+    const fee = Number(sessionFee) || 0;
+    const expected = Math.max(fee, Math.round((base - discount) * 100) / 100);
+    if (Math.abs(cost - expected) > 0.03) {
+      return 'Betrag stimmt nicht mit Prämienrabatt überein';
+    }
+    return null;
+  }
+
   const rate = Number(pricePerKwh);
   const fee = Number(sessionFee);
   const min = Math.max(0, fee * 0.5);
