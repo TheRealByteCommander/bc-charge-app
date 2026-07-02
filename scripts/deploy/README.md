@@ -129,6 +129,17 @@ dadurch ist **kein Eingriff in die Hasura-CORS-Konfiguration** nötig.
 sudo OPERATOR_REF=main /opt/bc-charge/scripts/deploy/setup-citrineos-operator-ui.sh
 ```
 
+Das Skript wendet einen BC-Charge-Patch an, damit Steckertypen im Dropdown lesbar sind
+(z. B. **„Type 2 AC (IEC62196T2)“** statt nur `IEC62196T2`). OCPP kennt keinen Wert „Type2“.
+
+### Steckertyp für Elinta H2
+
+| Anschluss | Operator UI (OCPP) | Power Type |
+|-----------|-------------------|------------|
+| Type 2 AC | `IEC62196T2`      | `AC_3_PHASE` |
+
+Alternativ Connectors per Skript: `scripts/citrineos/seed-h2-connectors.sh <STATION_ID> [TARIFF_ID]`
+
 ### Umgebungsvariablen (optional)
 
 | Variable | Standard | Beschreibung |

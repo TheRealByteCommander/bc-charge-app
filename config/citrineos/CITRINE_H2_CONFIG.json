@@ -12,7 +12,8 @@
     "maxPowerPerConnector": 22000,
     "maxCurrentPerConnector": 32,
     "numberOfConnectors": 2,
-    "connectorType": "Type 2",
+    "connectorType": "IEC62196T2",
+    "connectorTypeLabel": "Type 2 AC",
     "supportedPowerSystems": ["TNC-S", "TNS", "TT"],
     "phase": 3,
     "voltage": 400

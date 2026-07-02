@@ -49,6 +49,29 @@ chmod +x *.sh
 ./list-tariffs.sh
 ```
 
+## Steckertypen (Operator UI)
+
+CitrineOS speichert OCPP-2.0.1-Enum-Werte – **nicht** die Kurzbezeichnungen aus der App:
+
+| In der App (BC Charge) | Operator UI / OCPP (CitrineOS) | Suche im Dropdown |
+|------------------------|--------------------------------|-------------------|
+| Type 2 (AC)            | `IEC62196T2`                   | „Type 2“ (nach Patch) oder `IEC62196` |
+| CCS                    | `IEC62196T2COMBO`              | „CCS“ oder `COMBO` |
+| CHAdeMO                | `CHAdeMO`                      | `CHAdeMO` |
+
+**Häufiger Fehler:** „Type2“, „Type 2“ oder „cType2“ existieren in CitrineOS nicht. Für die Elinta H2 (AC, 22 kW) wählen Sie **`IEC62196T2`** und als Power Type **`AC_3_PHASE`**.
+
+Nach `setup-citrineos-operator-ui.sh` zeigt das Dropdown lesbare Labels (z. B. „Type 2 AC (IEC62196T2)“). Ohne Patch: im Feld **Type** nach `IEC62196T2` suchen.
+
+### H2-Connectors automatisch anlegen
+
+```bash
+# Station-ID aus list-connectors.sh oder Hasura Console
+./seed-h2-connectors.sh <STATION_DATABASE_ID> [TARIFF_ID]
+```
+
+Legt zwei EVSEs mit je einem Type-2-Connector (32 A, 400 V, 22 kW) an.
+
 ## Alternative: Hasura Console
 
 Du kannst Tarife auch direkt über die Hasura Console verwalten:
