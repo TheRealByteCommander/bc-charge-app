@@ -356,11 +356,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       return;
     }
 
-    let users = loadUsers();
-    if (!users.some((u) => u.email === 'demo@bc-charge.com')) {
-      users = [...users, seedDemoUser()];
-      saveUsers(users);
-      const demo = users.find((u) => u.email === 'demo@bc-charge.com')!;
+    const users = loadUsers();
+    if (import.meta.env.DEV && !users.some((u) => u.email === 'demo@bc-charge.com')) {
+      const demoUsers = [...users, seedDemoUser()];
+      saveUsers(demoUsers);
+      const demo = demoUsers.find((u) => u.email === 'demo@bc-charge.com')!;
       if (!loadSessions(demo.id).length) saveSessions(demo.id, seedDemoSessions());
     }
 

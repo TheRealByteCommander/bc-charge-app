@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { BottomSheet } from '../components/BottomSheet';
 import { StationCard } from '../components/StationCard';
 import { StationFiltersPanel } from '../components/StationFiltersPanel';
+import { getStations } from '../data/stationRegistry';
 import { useFilteredStations } from '../hooks/useStationLists';
 import { useLocale } from '../i18n/LocaleContext';
 import { useAppStore } from '../store/appStore';
@@ -12,6 +13,7 @@ import { loadStationsOfflineCache } from '../utils/offlineCache';
 export function StationsPage() {
   const { t, locale } = useLocale();
   const stations = useFilteredStations();
+  const allStations = getStations();
   const searchQuery = useAppStore((s) => s.searchQuery);
   const setSearchQuery = useAppStore((s) => s.setSearchQuery);
   const stationFilters = useAppStore((s) => s.stationFilters);
@@ -19,6 +21,7 @@ export function StationsPage() {
   const [showFilters, setShowFilters] = useState(false);
   const offline = loadStationsOfflineCache();
   const activeFilterCount = countActiveFilters(stationFilters);
+  const noStationsConfigured = allStations.length === 0;
 
   return (
     <div className="page-shell">
@@ -53,9 +56,21 @@ export function StationsPage() {
 
       <div className="mt-4 space-y-3">
         {stations.length === 0 ? (
-          <p className="rounded-2xl border border-bc-border bg-bc-elevated p-6 text-center text-sm text-bc-muted">
-            {t.stations.noResults}
-          </p>
+          <div className="rounded-2xl border border-bc-border bg-bc-elevated p-6 text-center">
+            <p className="text-sm text-bc-muted">
+              {noStationsConfigured ? t.stations.noStationsConfigured : t.stations.noResults}
+            </p>
+            {noStationsConfigured && (
+              <a
+                href="https://hasura.main.bc-charge.com/console"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-3 inline-block text-xs text-bc-accent hover:underline"
+              >
+                → Hasura Console
+              </a>
+            )}
+          </div>
         ) : (
           stations.map((s, i) => <StationCard key={s.id} station={s} index={i} />)
         )}
