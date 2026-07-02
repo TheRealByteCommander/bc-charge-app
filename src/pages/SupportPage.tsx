@@ -69,7 +69,7 @@ export function SupportPage() {
           },
           {
             q: 'Fallen Blockiergebühren an?',
-            a: 'Nein. BC Charge erhebt keine Blockier- oder Standgebühren nach dem Laden. Abgerechnet werden nur die geladene Energie (kWh) und ggf. eine Startgebühr – transparent vor dem Ladevorgang.',
+            a: 'Nein. BC Charge erhebt keine Blockier- oder Standgebühren nach dem Laden. Abgerechnet wird nur die geladene Energie (kWh) – transparent vor dem Ladevorgang.',
           },
           {
             q: 'Rechnung stimmt nicht?',

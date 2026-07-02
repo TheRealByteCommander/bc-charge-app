@@ -13,7 +13,6 @@ export function minKnownPricePerKwh(connectors: Connector[]): number | null {
 export function formatConnectorPriceSummary(c: Connector): string {
   if (!connectorHasKnownPrice(c)) return 'Aktueller Tarif nicht verfügbar';
   const parts = [`${formatCurrency(c.pricePerKwh)}/kWh`];
-  if (c.sessionFee) parts.push(`Start ${formatCurrency(c.sessionFee)}`);
   if (c.pricePerMin) parts.push(`${formatCurrency(c.pricePerMin)}/Min`);
   return parts.join(' · ');
 }

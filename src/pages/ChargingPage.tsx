@@ -178,10 +178,6 @@ export function ChargingPage() {
           <span className="text-bc-muted">{t.charging.pricePerKwh}</span>
           <span>{formatCurrency(activeSession.pricePerKwh)}/kWh</span>
         </div>
-        <div className="mt-2 flex justify-between text-sm">
-          <span className="text-bc-muted">{t.charging.startPrice}</span>
-          <span>{formatCurrency(activeSession.sessionFee)}</span>
-        </div>
         <p className="mt-3 flex items-center gap-2 border-t border-bc-border pt-3 text-xs text-bc-accent">
           <Shield className="h-3.5 w-3.5 shrink-0" />
           {locale === 'de' ? 'Keine Blockiergebühr bei BC Charge' : 'No idle fee at BC Charge'}

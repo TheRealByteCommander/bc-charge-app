@@ -84,7 +84,7 @@ export function ChargeStartConfirmSheet({
             <p className="font-medium text-bc-text">Keine Blockiergebühr</p>
             <p className="mt-1 text-bc-muted">
               BC Charge erhebt keine Blockier- oder Standgebühren nach dem Laden. Sie zahlen nur für
-              verbrauchte kWh und ggf. die Startgebühr.
+              verbrauchte kWh.
             </p>
           </div>
         </div>

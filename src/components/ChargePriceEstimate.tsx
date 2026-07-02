@@ -105,7 +105,7 @@ export function ChargePriceEstimate({
 
           <p className="mt-3 flex items-start gap-2 text-xs text-bc-muted">
             <Shield className="mt-0.5 h-3.5 w-3.5 shrink-0 text-bc-accent" />
-            Keine Blockiergebühr – Sie zahlen nur kWh und ggf. Startgebühr.
+            Keine Blockiergebühr – Sie zahlen nur kWh.
           </p>
 
           {hardwareFeatures?.dynamicLoadManagement && (
