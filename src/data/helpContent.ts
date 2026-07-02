@@ -40,10 +40,10 @@ export const helpGuides: HelpGuide[] = [
       de: [
         'Konto anlegen oder anmelden.',
         'Unter Profil → Fahrzeuge ein Fahrzeug hinzufügen.',
-        'Unter Profil → Zahlung Apple Pay, Kreditkarte oder SEPA-Lastschrift hinterlegen.',
+        'Unter Profil → Zahlung eine Zahlungsmethode hinterlegen: Apple Pay, Kreditkarte oder SEPA-Lastschrift.',
         'Station auf der Karte öffnen, freien Anschluss wählen.',
         '„Laden starten“ tippen und den Vorgang bestätigen.',
-        'Nach dem Laden „Laden beenden“ – die Zahlung erfolgt automatisch.',
+        'Nach dem Laden „Laden beenden“ – danach erfolgt die Abrechnung automatisch.',
       ],
       en: [
         'Create an account or sign in.',
@@ -51,7 +51,7 @@ export const helpGuides: HelpGuide[] = [
         'Add Apple Pay, credit card or SEPA direct debit under Profile → Payment.',
         'Open a station on the map and pick an available connector.',
         'Tap “Start charging” and confirm.',
-        'When finished, tap “Stop charging” – payment is automatic.',
+        'When finished, tap “Stop charging” – billing then happens automatically.',
       ],
     },
     link: { to: '/scan', label: { de: 'Zur Stationssuche', en: 'Find a station' } },
@@ -70,18 +70,18 @@ export const helpGuides: HelpGuide[] = [
       de: [
         'QR-Code an der Ladesäule scannen (oder Ladepunkt-ID eingeben).',
         'Anschluss wählen, falls die Station mehrere Ladepunkte hat.',
-        '„Ad-Hoc laden“ oder „Weiter zur Zahlung“ wählen.',
-        'Kartendaten eingeben – es wird eine Vorautorisierung vorgenommen.',
-        'Nach erfolgreicher Zahlung startet der Ladevorgang.',
-        'Zum Beenden „Laden beenden“ tippen – der tatsächliche Betrag wird abgebucht.',
+        'Auf der Stationsseite „Ad-Hoc laden“ wählen oder im Ad-Hoc-Flow „Weiter zur Zahlung“.',
+        'Optional E-Mail für den Beleg angeben, dann Kartendaten eingeben – es wird eine Vorautorisierung vorgenommen (noch keine Endabrechnung).',
+        'Nach erfolgreicher Vorautorisierung startet der Ladevorgang.',
+        'Zum Beenden „Laden beenden“ tippen – danach wird der tatsächliche Betrag abgebucht.',
       ],
       en: [
         'Scan the QR code on the charger (or enter the charging point ID).',
         'Select a connector if the station has multiple outlets.',
-        'Choose “Ad-hoc charge” or “Continue to payment”.',
-        'Enter card details – a pre-authorization is placed on your card.',
-        'After successful payment, charging starts.',
-        'Tap “Stop charging” when done – the final amount is captured.',
+        'On the station page choose “Ad-hoc charge” or “Continue to payment” in the ad-hoc flow.',
+        'Optionally add an email for the receipt, then enter card details – a pre-authorization is placed (not the final charge yet).',
+        'After successful authorization, charging starts.',
+        'Tap “Stop charging” when done – the final amount is then captured.',
       ],
     },
     link: { to: '/scan', label: { de: 'QR scannen', en: 'Scan QR code' } },
@@ -98,15 +98,15 @@ export const helpGuides: HelpGuide[] = [
     },
     steps: {
       de: [
-        'Unten „Start“ (QR-Symbol) öffnen oder auf der Startseite „Ladepunkt-ID eingeben“.',
-        'Kamera erlauben und den QR-Code an der Säule scannen.',
-        'Alternativ die Ladepunkt-ID von der Beschriftung manuell eingeben.',
+        'Unten in der Navigation „Start“ (QR-Symbol) öffnen.',
+        'QR-Code an der Säule scannen (Kamera-Zugriff erlauben) oder Ladepunkt-ID von der Beschriftung eingeben.',
+        'Mit Konto geht das auch über die Startseite → „Ladepunkt-ID eingeben“.',
         'Die App öffnet die Stationsseite mit Tarif und Verfügbarkeit.',
       ],
       en: [
-        'Open “Start” (QR icon) in the bottom bar or “Enter charging point ID” on home.',
-        'Allow camera access and scan the QR code on the charger.',
-        'Or enter the charging point ID from the label manually.',
+        'Open “Start” (QR icon) in the bottom navigation.',
+        'Scan the QR code on the charger (allow camera access) or enter the charging point ID from the label.',
+        'With an account you can also use Home → “Enter charging point ID”.',
         'The app opens the station page with tariff and availability.',
       ],
     },
@@ -125,15 +125,17 @@ export const helpGuides: HelpGuide[] = [
     steps: {
       de: [
         'Zahlungsmethode unter Profil → Zahlung hinterlegen (Apple Pay, Kreditkarte, SEPA-Lastschrift).',
-        'Nach jedem Ladevorgang wird der Betrag automatisch abgebucht.',
-        'Details finden Sie unter Profil → Ladehistorie.',
-        'Bei Unstimmigkeiten: „Rechnung prüfen / Support“ in der Historie.',
+        'Der Tarif pro kWh ist vor dem Start auf der Stationsseite sichtbar.',
+        'Nach Ladeende wird der Betrag automatisch abgebucht – auf Basis der tatsächlich geladenen Energie.',
+        'Rechnung und Details finden Sie unter Profil → Ladehistorie (PDF-Download).',
+        'Bei Unstimmigkeiten: „Rechnung prüfen / Support“ in der Historie – Session-Daten werden für die E-Mail vorausgefüllt.',
       ],
       en: [
         'Add a payment method under Profile → Payment (Apple Pay, credit card, SEPA direct debit).',
-        'After each session the amount is charged automatically.',
-        'See details under Profile → Charging history.',
-        'If something looks wrong: “Check invoice / Support” in history.',
+        'The price per kWh is shown on the station page before you start.',
+        'After charging ends, the amount is charged automatically based on energy actually delivered.',
+        'Invoice and details are available under Profile → Charging history (PDF download).',
+        'If something looks wrong: “Check invoice / Support” in history – session data is pre-filled in the email.',
       ],
     },
     link: { to: '/zahlung', label: { de: 'Zahlung einrichten', en: 'Set up payment' } },
@@ -212,8 +214,8 @@ export const helpFaqs: HelpFaq[] = [
       en: 'The station has two connectors – which one do I pick?',
     },
     answer: {
-      de: 'Wählen Sie den Anschluss, an dem Ihr Fahrzeug physisch angeschlossen ist (Ladepunkt 1 oder 2). Bei Unsicherheit: LED-Status in der App prüfen – „Verfügbar“ bedeutet frei.',
-      en: 'Pick the connector where your vehicle is physically plugged in (outlet 1 or 2). If unsure, check the LED status in the app – “Available” means free.',
+      de: 'Wählen Sie den Anschluss, an dem Ihr Fahrzeug physisch angeschlossen ist (Ladepunkt 1 oder 2). Bei Unsicherheit: Anschlussstatus in der App prüfen – „Verfügbar“ bedeutet frei.',
+      en: 'Pick the connector where your vehicle is physically plugged in (outlet 1 or 2). If unsure, check connector status in the app – “Available” means free.',
     },
   },
   {
@@ -244,12 +246,12 @@ export const helpFaqs: HelpFaq[] = [
     id: 'adhoc-preauth',
     category: 'payment',
     question: {
-      de: 'Warum wird bei Ad-Hoc eine Vorautorisierung abgebucht?',
+      de: 'Warum wird bei Ad-Hoc eine Vorautorisierung vorgenommen?',
       en: 'Why is ad-hoc charging pre-authorized?',
     },
     answer: {
-      de: 'Zur Sicherheit wird vor dem Laden ein Betrag auf Ihrer Karte reserviert (Vorautorisierung). Nach Ladeende wird nur der tatsächliche Verbrauch abgebucht, der Rest der Reservierung wird freigegeben.',
-      en: 'For security, an amount is reserved on your card before charging (pre-authorization). After charging, only the actual usage is captured; the rest of the hold is released.',
+      de: 'Zur Sicherheit wird vor dem Laden ein Betrag auf Ihrer Karte reserviert (Vorautorisierung) – das ist noch keine Endabrechnung. Nach Ladeende wird nur der tatsächliche Verbrauch abgebucht, der Rest der Reservierung wird freigegeben.',
+      en: 'For security, an amount is reserved on your card before charging (pre-authorization) – this is not the final charge. After charging, only the actual usage is captured; the rest of the hold is released.',
     },
   },
   {
@@ -272,8 +274,8 @@ export const helpFaqs: HelpFaq[] = [
       en: 'Invoice amount incorrect?',
     },
     answer: {
-      de: 'In der Ladehistorie „Rechnung prüfen / Support“ wählen – Ihre Session-Daten werden automatisch an unser Team übermittelt.',
-      en: 'In charging history choose “Check invoice / Support” – your session data is sent to our team automatically.',
+      de: 'In der Ladehistorie „Rechnung prüfen / Support“ wählen – Ihre Session-Daten werden für die E-Mail an unser Team vorausgefüllt.',
+      en: 'In charging history choose “Check invoice / Support” – your session data is pre-filled in the email to our team.',
     },
   },
   {
@@ -284,8 +286,8 @@ export const helpFaqs: HelpFaq[] = [
       en: 'Are idle/blocking fees charged?',
     },
     answer: {
-      de: 'Nein. BC Charge erhebt keine Blockier- oder Standgebühren nach dem Laden. Abgerechnet wird die geladene Energie (kWh) – transparent vor dem Ladevorgang.',
-      en: 'No. BC Charge does not charge idle or blocking fees after charging. You pay for energy (kWh) – shown transparently before you start.',
+      de: 'Nein. BC Charge erhebt keine Blockier- oder Standgebühren nach dem Laden. Der Tarif pro kWh ist vor dem Start sichtbar; abgerechnet wird nach Ladeende nur die tatsächlich geladene Energie (kWh).',
+      en: 'No. BC Charge does not charge idle or blocking fees after charging. The price per kWh is shown before you start; you are billed after charging for the energy actually delivered (kWh).',
     },
   },
   {
