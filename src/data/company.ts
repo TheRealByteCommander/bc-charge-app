@@ -15,6 +15,9 @@ export const companyInfo = {
   emailSupport: 'info@byte-commander.de',
   emailPrivacy: 'info@byte-commander.de',
   website: 'https://main.bc-charge.com',
+  /** Öffentliche Marketing-Domain (Support, Impressum-Anzeige) */
+  websitePublic: 'https://bc-charge.com',
+  websiteDisplay: 'bc-charge.com',
   websiteByteCommander: 'https://byte-commander.de',
   supportHours: 'Mo–Fr 08:00–17:00 Uhr',
   /** DDG § 5 */
@@ -31,6 +34,16 @@ export const companyAddressLines = [
   companyInfo.street,
   `${companyInfo.zip} ${companyInfo.city}`,
 ] as const;
+
+/** Akzeptierte Zahlungsmethoden (Anzeige in Hilfe, Zahlung, FAQ). */
+export const acceptedPaymentMethods = {
+  de: ['Apple Pay', 'Kreditkarte', 'SEPA-Lastschrift'] as const,
+  en: ['Apple Pay', 'Credit card', 'SEPA direct debit'] as const,
+};
+
+export function formatAcceptedPaymentMethods(locale: 'de' | 'en'): string {
+  return acceptedPaymentMethods[locale].join(', ');
+}
 
 /** Beschwerdestelle Datenschutz (Sachsen). */
 export const dataProtectionAuthority = {

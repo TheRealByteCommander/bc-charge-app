@@ -272,7 +272,7 @@ export const messages = {
       needHelp: 'Hilfe benötigt?',
       backToMap: 'Zur Karte',
       backToProfile: 'Zum Profil',
-      websiteCta: 'Website main.bc-charge.com',
+      websiteCta: 'Website bc-charge.com',
     },
 
     // Common
@@ -613,7 +613,7 @@ export const messages = {
       needHelp: 'Need help?',
       backToMap: 'Back to map',
       backToProfile: 'Back to profile',
-      websiteCta: 'Website main.bc-charge.com',
+      websiteCta: 'Website bc-charge.com',
     },
 
     // Common

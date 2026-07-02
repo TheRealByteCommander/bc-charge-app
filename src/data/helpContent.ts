@@ -40,7 +40,7 @@ export const helpGuides: HelpGuide[] = [
       de: [
         'Konto anlegen oder anmelden.',
         'Unter Profil → Fahrzeuge ein Fahrzeug hinzufügen.',
-        'Unter Profil → Zahlung Karte oder SEPA hinterlegen.',
+        'Unter Profil → Zahlung Apple Pay, Kreditkarte oder SEPA-Lastschrift hinterlegen.',
         'Station auf der Karte öffnen, freien Anschluss wählen.',
         '„Laden starten“ tippen und den Vorgang bestätigen.',
         'Nach dem Laden „Laden beenden“ – die Zahlung erfolgt automatisch.',
@@ -48,7 +48,7 @@ export const helpGuides: HelpGuide[] = [
       en: [
         'Create an account or sign in.',
         'Add a vehicle under Profile → Vehicles.',
-        'Add a card or SEPA under Profile → Payment.',
+        'Add Apple Pay, credit card or SEPA direct debit under Profile → Payment.',
         'Open a station on the map and pick an available connector.',
         'Tap “Start charging” and confirm.',
         'When finished, tap “Stop charging” – payment is automatic.',
@@ -124,13 +124,13 @@ export const helpGuides: HelpGuide[] = [
     },
     steps: {
       de: [
-        'Zahlungsmethode unter Profil → Zahlung hinterlegen (Karte oder SEPA).',
+        'Zahlungsmethode unter Profil → Zahlung hinterlegen (Apple Pay, Kreditkarte, SEPA-Lastschrift).',
         'Nach jedem Ladevorgang wird der Betrag automatisch abgebucht.',
         'Details finden Sie unter Profil → Ladehistorie.',
         'Bei Unstimmigkeiten: „Rechnung prüfen / Support“ in der Historie.',
       ],
       en: [
-        'Add a payment method under Profile → Payment (card or SEPA).',
+        'Add a payment method under Profile → Payment (Apple Pay, credit card, SEPA direct debit).',
         'After each session the amount is charged automatically.',
         'See details under Profile → Charging history.',
         'If something looks wrong: “Check invoice / Support” in history.',
@@ -176,13 +176,13 @@ export const helpGuides: HelpGuide[] = [
     },
     steps: {
       de: [
-        'Website main.bc-charge.com im Browser öffnen (Chrome, Safari, …).',
+        'Website bc-charge.com im Browser öffnen (Chrome, Safari, …).',
         'Android/Chrome: Menü → „Zum Startbildschirm hinzufügen“.',
         'iPhone/Safari: Teilen-Symbol → „Zum Home-Bildschirm“.',
         'Die App funktioniert auch offline eingeschränkt (Karte, zwischengespeicherte Stationen).',
       ],
       en: [
-        'Open main.bc-charge.com in your browser (Chrome, Safari, …).',
+        'Open bc-charge.com in your browser (Chrome, Safari, …).',
         'Android/Chrome: Menu → “Add to Home screen”.',
         'iPhone/Safari: Share icon → “Add to Home Screen”.',
         'The app works with limited offline features (map, cached stations).',
@@ -260,8 +260,8 @@ export const helpFaqs: HelpFaq[] = [
       en: 'Which payment methods are accepted?',
     },
     answer: {
-      de: 'Mit Konto: Kredit-/Debitkarte und SEPA-Lastschrift unter Profil → Zahlung. Ad-Hoc: Karte über Stripe Payment Element (kein Konto nötig).',
-      en: 'With account: credit/debit card and SEPA under Profile → Payment. Ad-hoc: card via Stripe (no account needed).',
+      de: 'Wir akzeptieren Apple Pay, Kreditkarte und SEPA-Lastschrift. Mit Konto unter Profil → Zahlung hinterlegen. Ad-Hoc ohne Konto: Apple Pay oder Kreditkarte beim QR-Laden.',
+      en: 'We accept Apple Pay, credit card and SEPA direct debit. With an account, add them under Profile → Payment. Ad-hoc without account: Apple Pay or credit card when charging via QR.',
     },
   },
   {

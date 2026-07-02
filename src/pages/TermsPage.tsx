@@ -39,7 +39,7 @@ export function TermsPage() {
         <p>
           Es gelten die am Ladepunkt bzw. in der App angezeigten Preise inkl. ausgewiesener
           Bestandteile (z. B. kWh-Preis). Die Zahlung erfolgt über hinterlegte
-          Zahlungsmittel (Karte/SEPA) über unseren Zahlungsdienstleister (siehe Datenschutzerklärung).
+          Zahlungsmittel (Apple Pay, Kreditkarte, SEPA-Lastschrift) über unseren Zahlungsdienstleister (siehe Datenschutzerklärung).
         </p>
       </LegalSection>
 

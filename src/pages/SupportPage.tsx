@@ -52,7 +52,7 @@ export function SupportPage() {
       </div>
 
       <a
-        href={companyInfo.website}
+        href={companyInfo.websitePublic}
         target="_blank"
         rel="noreferrer"
         className="btn-secondary mt-8 block w-full text-center"
