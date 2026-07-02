@@ -22,9 +22,42 @@ OPERATOR_DIR="${OPERATOR_DIR:-/opt/citrineos-operator-ui}"
 OPERATOR_UI_PORT="${OPERATOR_UI_PORT:-3000}"
 OPERATOR_REPO="${OPERATOR_REPO:-https://github.com/citrineos/citrineos-operator-ui.git}"
 OPERATOR_REF="${OPERATOR_REF:-main}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 HASURA_HOST_PORT="${HASURA_HOST_PORT:-8080}"
 CORE_HOST_PORT="${CORE_HOST_PORT:-8081}"
+
+detect_hasura_port() {
+  local port
+  port="$(docker port citrineos-hasura 8080 2>/dev/null | head -1 | awk -F: '{print $NF}')"
+  if [[ -n "$port" ]]; then
+    echo "$port"
+    return
+  fi
+  for p in "${HASURA_HOST_PORT}" 8080 8090; do
+    if curl -sf "http://127.0.0.1:${p}/healthz" >/dev/null 2>&1; then
+      echo "$p"
+      return
+    fi
+  done
+  echo "8080"
+}
+
+detect_core_port() {
+  local port
+  port="$(docker port citrineos-core 8080 2>/dev/null | head -1 | awk -F: '{print $NF}')"
+  if [[ -n "$port" ]]; then
+    echo "$port"
+    return
+  fi
+  for p in "${CORE_HOST_PORT}" 8081 8080; do
+    if curl -sf "http://127.0.0.1:${p}/health" >/dev/null 2>&1; then
+      echo "$p"
+      return
+    fi
+  done
+  echo "8081"
+}
 
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -54,6 +87,10 @@ if ! docker compose -f "$CITRINE_DIR/docker-compose.yml" ps --status running 2>/
   warn "CitrineOS-Container scheinen nicht zu laufen. Start mit:"
   warn "  docker compose -f $CITRINE_DIR/docker-compose.yml up -d"
 fi
+
+HASURA_HOST_PORT="$(detect_hasura_port)"
+CORE_HOST_PORT="$(detect_core_port)"
+log "Erkannte Ports: Hasura=${HASURA_HOST_PORT}, CitrineOS Core=${CORE_HOST_PORT}"
 
 # Hasura erreichbar?
 if ! curl -sf "http://127.0.0.1:${HASURA_HOST_PORT}/healthz" >/dev/null 2>&1; then
@@ -196,51 +233,40 @@ log "5/5 – Nginx Reverse Proxy (nur neue Site)…"
 
 if command -v nginx >/dev/null 2>&1; then
   NGINX_SITE="/etc/nginx/sites-available/citrineos-operator"
+  SNIPPET_DST="/etc/nginx/snippets/citrineos-operator-locations.conf"
+  mkdir -p /etc/nginx/snippets
+  sed \
+    -e "s/__HASURA_PORT__/${HASURA_HOST_PORT}/g" \
+    -e "s/__CORE_PORT__/${CORE_HOST_PORT}/g" \
+    -e "s/__OPERATOR_PORT__/${OPERATOR_UI_PORT}/g" \
+    "${SCRIPT_DIR}/snippets/citrineos-operator-nginx-locations.conf" > "$SNIPPET_DST"
+
+  SSL_CERT="/etc/letsencrypt/live/${OPERATOR_DOMAIN}/fullchain.pem"
+  SSL_KEY="/etc/letsencrypt/live/${OPERATOR_DOMAIN}/privkey.pem"
+  SSL_BLOCK=""
+  if [[ -f "$SSL_CERT" && -f "$SSL_KEY" ]]; then
+    SSL_BLOCK="
+    listen 443 ssl http2;
+    ssl_certificate ${SSL_CERT};
+    ssl_certificate_key ${SSL_KEY};
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;"
+    log "TLS-Zertifikat gefunden – HTTPS-Serverblock mit Proxy-Regeln wird erstellt."
+  fi
+
   cat > "$NGINX_SITE" << EOF
 # CitrineOS Operator UI – BC Charge add-on
 # GraphQL/Core werden unter derselben Domain proxied (kein CORS-Update an Hasura nötig)
+# WICHTIG: /v1/ und /citrineos-api/ MÜSSEN vor location / stehen (via Snippet)
 
 server {
     listen 80;
     server_name ${OPERATOR_DOMAIN};
+${SSL_BLOCK}
 
     client_max_body_size 20m;
 
-    # Operator UI (Next.js)
-    location / {
-        proxy_pass http://127.0.0.1:${OPERATOR_UI_PORT};
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_read_timeout 300s;
-    }
-
-    # Hasura GraphQL (Browser → gleiche Origin)
-    location /v1/ {
-        proxy_pass http://127.0.0.1:${HASURA_HOST_PORT}/v1/;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-    }
-
-    # CitrineOS Core REST API
-    location /citrineos-api/ {
-        proxy_pass http://127.0.0.1:${CORE_HOST_PORT}/;
-        proxy_http_version 1.1;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_read_timeout 300s;
-    }
+    include ${SNIPPET_DST};
 }
 EOF
 
@@ -289,6 +315,8 @@ echo "  A-Record: ${OPERATOR_DOMAIN} → ${SERVER_IP}"
 echo ""
 echo -e "${YELLOW}TLS (optional):${NC}"
 echo "  certbot --nginx -d ${OPERATOR_DOMAIN}"
+echo "  # Nach certbot ggf. Proxy-Regeln reparieren:"
+echo "  sudo ${SCRIPT_DIR}/fix-operator-ui-connection.sh"
 echo ""
 echo "Nützliche Befehle:"
 echo "  cd $OPERATOR_DIR"

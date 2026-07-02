@@ -138,6 +138,25 @@ sudo OPERATOR_REF=main /opt/bc-charge/scripts/deploy/setup-citrineos-operator-ui
 | `CITRINE_DIR` | `/opt/citrineos` | Bestehende CitrineOS-Installation |
 | `OPERATOR_REF` | `main` | Git-Branch des Operator-UI-Repos |
 
+### Verbindung reparieren (GraphQL 404)
+
+Wenn das Dashboard **„Error loading data“** oder **„Route POST:/v1/graphql not found“** zeigt,
+landen GraphQL-Anfragen nicht bei Hasura (häufig nach `certbot`, weil HTTPS-Proxy-Regeln fehlen):
+
+```bash
+cd /opt/bc-charge
+sudo git pull origin master
+sudo ./scripts/deploy/fix-operator-ui-connection.sh
+```
+
+Das Skript:
+- setzt Nginx-Proxy für `/v1/` (Hasura) und `/citrineos-api/` (CitrineOS Core) in HTTP **und** HTTPS
+- prüft/korrigiert `NEXT_PUBLIC_API_URL` in `/opt/citrineos-operator-ui/.env.local`
+- baut den Operator-UI-Container bei Bedarf neu
+
+**Karten-Fehler (Google Maps):** Optional `GOOGLE_MAPS_API_KEY` in `.env.local` setzen und neu bauen –
+das Dashboard funktioniert auch ohne Karte.
+
 ## Updates deployen
 
 ```bash
