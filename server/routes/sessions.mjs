@@ -6,11 +6,20 @@ import {
   rowToProfile,
   updateUserProfile,
   upsertSession,
+  listFulfillments,
+  getFulfillmentById,
+  markFulfillmentUsed,
 } from '../db.mjs';
 import { requireAuth } from '../middleware/auth.mjs';
 import { validateSessionCost } from '../services/chargeValidation.mjs';
 import { issueInvoiceForSession } from '../services/invoices.mjs';
 import { applySessionStats } from '../services/loyalty.mjs';
+import {
+  applyChargingFulfillment,
+  getNightPointsMultiplier,
+  isFulfillmentActive,
+  shouldConsumeFulfillment,
+} from '../services/rewardFulfillment.mjs';
 
 const router = Router();
 
@@ -55,14 +64,42 @@ router.post('/:id/complete', requireAuth, async (req, res) => {
     return;
   }
 
+  const minutes =
+    session.endedAt && session.startedAt
+      ? (new Date(session.endedAt) - new Date(session.startedAt)) / 60000
+      : 0;
+
+  let baseCostEur = session.baseCostEur;
+  let rewardDiscountEur = session.rewardDiscountEur ?? 0;
+  let costEur = session.costEur;
+
+  if (session.appliedFulfillmentId) {
+    const fulfillment = await getFulfillmentById(req.userId, session.appliedFulfillmentId);
+    if (!fulfillment || !isFulfillmentActive(fulfillment)) {
+      res.status(400).json({ error: 'Die gewählte Prämie ist nicht mehr gültig.' });
+      return;
+    }
+    const applied = applyChargingFulfillment({
+      energyKwh: session.energyKwh,
+      pricePerKwh: session.pricePerKwh,
+      sessionFee: session.sessionFee,
+      pricePerMin: session.pricePerMin,
+      minutes,
+      fulfillment,
+    });
+    baseCostEur = applied.baseCostEur;
+    rewardDiscountEur = applied.rewardDiscountEur;
+    costEur = applied.costEur;
+  }
+
   const costError = validateSessionCost({
     energyKwh: session.energyKwh,
-    costEur: session.costEur,
+    costEur,
     pricePerKwh: session.pricePerKwh,
     sessionFee: session.sessionFee,
-    minutes: session.endedAt && session.startedAt
-      ? (new Date(session.endedAt) - new Date(session.startedAt)) / 60000
-      : 0,
+    minutes,
+    baseCostEur,
+    rewardDiscountEur,
   });
   if (costError) {
     res.status(400).json({ error: costError });
@@ -77,7 +114,10 @@ router.post('/:id/complete', requireAuth, async (req, res) => {
 
   const profile = rowToProfile(row);
   const gamificationPatch = req.body?.gamification;
-  let updatedProfile = applySessionStats(profile, session);
+  const fulfillments = await listFulfillments(req.userId);
+  const nightPointsMultiplier = getNightPointsMultiplier(fulfillments, session.startedAt);
+
+  let updatedProfile = applySessionStats(profile, session, { nightPointsMultiplier });
   if (gamificationPatch && typeof gamificationPatch === 'object') {
     updatedProfile = { ...updatedProfile, gamification: gamificationPatch };
   }
@@ -86,7 +126,18 @@ router.post('/:id/complete', requireAuth, async (req, res) => {
     ...session,
     status: 'completed',
     endedAt: session.endedAt ?? new Date().toISOString(),
+    baseCostEur,
+    rewardDiscountEur,
+    costEur,
+    rewardLabel: session.rewardLabel,
   };
+
+  if (session.appliedFulfillmentId) {
+    const fulfillment = await getFulfillmentById(req.userId, session.appliedFulfillmentId);
+    if (fulfillment && shouldConsumeFulfillment(fulfillment)) {
+      await markFulfillmentUsed(req.userId, fulfillment.id, completed.id);
+    }
+  }
 
   await upsertSession(req.userId, completed);
   await updateUserProfile(req.userId, updatedProfile);

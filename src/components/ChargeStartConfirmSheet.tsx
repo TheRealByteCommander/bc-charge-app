@@ -1,5 +1,7 @@
 import { Check, Gauge, Scale, Shield } from 'lucide-react';
 import { BottomSheet } from './BottomSheet';
+import { ActiveChargingPerkSelect } from './RewardFulfillmentPanel';
+import { useAppStore } from '../store/appStore';
 import type { Connector, Station, Vehicle } from '../types';
 import { estimateChargeSession } from '../utils/chargeEstimate';
 import { formatConnectorPriceSummary } from '../utils/pricing';
@@ -37,6 +39,9 @@ export function ChargeStartConfirmSheet({
     startSocPercent: startSoc,
     targetSocPercent: targetSoc,
   });
+  const rewardFulfillments = useAppStore((s) => s.rewardFulfillments);
+  const selectedChargingFulfillmentId = useAppStore((s) => s.selectedChargingFulfillmentId);
+  const setSelectedChargingFulfillment = useAppStore((s) => s.setSelectedChargingFulfillment);
 
   return (
     <BottomSheet open={open} onClose={onClose} title="Preis bestätigen">
@@ -77,6 +82,12 @@ export function ChargeStartConfirmSheet({
             </>
           )}
         </div>
+
+        <ActiveChargingPerkSelect
+          fulfillments={rewardFulfillments}
+          selectedId={selectedChargingFulfillmentId}
+          onChange={setSelectedChargingFulfillment}
+        />
 
         <div className="flex items-start gap-3 rounded-xl border border-bc-accent/25 bg-bc-accent/5 p-3 text-sm">
           <Shield className="mt-0.5 h-4 w-4 shrink-0 text-bc-accent" />

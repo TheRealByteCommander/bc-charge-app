@@ -121,6 +121,8 @@ export interface UserProfile {
   termsAcceptedAt?: string;
   /** Marketing-Einwilligung (ISO), nur wenn erteilt */
   marketingConsentAt?: string | null;
+  /** Priority Support aktiv bis (ISO) */
+  prioritySupportUntil?: string;
 }
 
 export type LoyaltyTier = 'bronze' | 'silver' | 'gold' | 'platinum';
@@ -178,6 +180,36 @@ export interface ChargingSession {
   evseNumber?: number;
   /** OCPP Charging State (Idle, EVConnected, Charging, SuspendedEVSE, SuspendedEV) */
   chargingState?: string | null;
+  /** Angewendete Prämie (Fulfillment-ID) */
+  appliedFulfillmentId?: string;
+  /** Kosten vor Prämienrabatt */
+  baseCostEur?: number;
+  /** Rabatt durch Prämie in EUR */
+  rewardDiscountEur?: number;
+  /** Anzeige-Label der Prämie */
+  rewardLabel?: string;
+  pricePerMin?: number;
+}
+
+export type RewardFulfillmentType =
+  | 'voucher'
+  | 'energy_discount'
+  | 'free_kwh'
+  | 'night_points'
+  | 'priority_support';
+
+export interface RewardFulfillment {
+  id: string;
+  userId: string;
+  rewardId: string;
+  type: RewardFulfillmentType;
+  status: 'active' | 'used' | 'expired';
+  payload: Record<string, unknown>;
+  redeemedAt: string;
+  expiresAt: string | null;
+  usedAt: string | null;
+  sessionId: string | null;
+  isActive?: boolean;
 }
 
 export interface LoyaltyReward {

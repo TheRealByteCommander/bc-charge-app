@@ -17,8 +17,8 @@ export function calcPoints(energyKwh, tier) {
   return Math.round(energyKwh * 1.2 * mult);
 }
 
-export function applySessionStats(profile, session) {
-  const points = calcPoints(session.energyKwh, profile.loyaltyTier);
+export function applySessionStats(profile, session, { nightPointsMultiplier = 1 } = {}) {
+  const points = Math.round(calcPoints(session.energyKwh, profile.loyaltyTier) * nightPointsMultiplier);
   const loyaltyPoints = profile.loyaltyPoints + points;
   return {
     ...profile,

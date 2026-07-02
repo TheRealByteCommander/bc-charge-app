@@ -178,6 +178,12 @@ export function ChargingPage() {
           <span className="text-bc-muted">{t.charging.pricePerKwh}</span>
           <span>{formatCurrency(activeSession.pricePerKwh)}/kWh</span>
         </div>
+        {activeSession.rewardDiscountEur != null && activeSession.rewardDiscountEur > 0 && (
+          <div className="mt-2 flex justify-between text-sm text-bc-accent">
+            <span>{activeSession.rewardLabel ?? (locale === 'de' ? 'Prämienrabatt' : 'Reward discount')}</span>
+            <span>-{formatCurrency(activeSession.rewardDiscountEur)}</span>
+          </div>
+        )}
         <p className="mt-3 flex items-center gap-2 border-t border-bc-border pt-3 text-xs text-bc-accent">
           <Shield className="h-3.5 w-3.5 shrink-0" />
           {locale === 'de' ? 'Keine Blockiergebühr bei BC Charge' : 'No idle fee at BC Charge'}

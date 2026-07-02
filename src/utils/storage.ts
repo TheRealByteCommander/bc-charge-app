@@ -1,4 +1,4 @@
-import type { ChargingSession, UserProfile } from '../types';
+import type { ChargingSession, RewardFulfillment, UserProfile } from '../types';
 
 const KEYS = {
   users: 'bc_users',
@@ -6,6 +6,7 @@ const KEYS = {
   sessions: 'bc_sessions',
   onboarding: 'bc_onboarding_done',
   redeemedRewards: 'bc_redeemed',
+  rewardFulfillments: 'bc_reward_fulfillments',
 } as const;
 
 export function loadUsers(): UserProfile[] {
@@ -70,4 +71,21 @@ export function saveRedeemed(userId: string, ids: string[]): void {
   const all = raw ? (JSON.parse(raw) as Record<string, string[]>) : {};
   all[userId] = ids;
   localStorage.setItem(KEYS.redeemedRewards, JSON.stringify(all));
+}
+
+export function loadFulfillments(userId: string): RewardFulfillment[] {
+  try {
+    const raw = localStorage.getItem(KEYS.rewardFulfillments);
+    const all = raw ? (JSON.parse(raw) as Record<string, RewardFulfillment[]>) : {};
+    return all[userId] ?? [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveFulfillments(userId: string, fulfillments: RewardFulfillment[]): void {
+  const raw = localStorage.getItem(KEYS.rewardFulfillments);
+  const all = raw ? (JSON.parse(raw) as Record<string, RewardFulfillment[]>) : {};
+  all[userId] = fulfillments;
+  localStorage.setItem(KEYS.rewardFulfillments, JSON.stringify(all));
 }
