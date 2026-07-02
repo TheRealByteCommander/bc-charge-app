@@ -1,5 +1,5 @@
 import { SlidersHorizontal } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { BottomSheet } from '../components/BottomSheet';
 import { StationCard } from '../components/StationCard';
 import { StationFiltersPanel } from '../components/StationFiltersPanel';
@@ -19,16 +19,22 @@ export function StationsPage() {
   const stationFilters = useAppStore((s) => s.stationFilters);
   const setStationFilters = useAppStore((s) => s.setStationFilters);
   const [showFilters, setShowFilters] = useState(false);
-  const offline = loadStationsOfflineCache();
+  const [offlineSavedAt, setOfflineSavedAt] = useState<string | null>(null);
   const activeFilterCount = countActiveFilters(stationFilters);
   const noStationsConfigured = allStations.length === 0;
+
+  useEffect(() => {
+    void loadStationsOfflineCache().then((cache) => {
+      setOfflineSavedAt(cache?.savedAt ?? null);
+    });
+  }, []);
 
   return (
     <div className="page-shell">
       <h1 className="font-display text-2xl font-bold">{t.stations.title}</h1>
       <p className="mt-1 text-xs text-bc-muted">
         {stations.length} {locale === 'de' ? 'Ergebnisse' : 'results'}
-        {offline && ` · ${t.stations.cached} ${new Date(offline.savedAt).toLocaleDateString(locale === 'de' ? 'de-DE' : 'en-US')}`}
+        {offlineSavedAt && ` · ${t.stations.cached} ${new Date(offlineSavedAt).toLocaleDateString(locale === 'de' ? 'de-DE' : 'en-US')}`}
       </p>
       <input
         className="input-field mt-4"
