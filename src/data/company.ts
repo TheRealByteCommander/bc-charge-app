@@ -1,6 +1,7 @@
 /** Zentrale Kontakt- und Impressumsdaten (Byte Commander GmbH / BC Charge). */
 export const companyInfo = {
   legalName: 'Byte Commander GmbH',
+  legalForm: 'GmbH',
   brand: 'BC Charge',
   street: 'Grüner Weg 3',
   zip: '04827',
@@ -16,8 +17,9 @@ export const companyInfo = {
   website: 'https://main.bc-charge.com',
   websiteByteCommander: 'https://byte-commander.de',
   supportHours: 'Mo–Fr 08:00–17:00 Uhr',
-  /** TMG § 5 */
+  /** DDG § 5 */
   managingDirector: 'Matthias Schmitz',
+  registerType: 'Handelsregister',
   registerCourt: 'Amtsgericht Leipzig',
   registerNumber: 'HRB 38559',
   /** Wird auf Rechnungen ausgewiesen, sofern vorhanden */

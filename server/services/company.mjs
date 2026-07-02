@@ -1,6 +1,7 @@
 /** Anbieterdaten für Rechnungen (entspricht src/data/company.ts). */
 export const companyInfo = {
   legalName: 'Byte Commander GmbH',
+  legalForm: 'GmbH',
   brand: 'BC Charge',
   street: 'Grüner Weg 3',
   zip: '04827',

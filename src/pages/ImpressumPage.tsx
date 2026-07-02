@@ -3,10 +3,13 @@ import { LegalPageLayout, LegalSection } from '../components/LegalPageLayout';
 
 export function ImpressumPage() {
   return (
-    <LegalPageLayout title="Impressum" subtitle={`Angaben gemäß § 5 TMG · ${companyInfo.brand} · Stand Juli 2026`}>
+    <LegalPageLayout
+      title="Impressum"
+      subtitle={`Angaben gemäß § 5 DDG · ${companyInfo.brand} · Stand Juli 2026`}
+    >
       <LegalSection title="Anbieter">
         <p>
-          {companyInfo.legalName}
+          {companyInfo.legalName} ({companyInfo.legalForm})
           <br />
           {companyInfo.street}
           <br />
@@ -16,7 +19,7 @@ export function ImpressumPage() {
         </p>
       </LegalSection>
 
-      <LegalSection title="Vertreten durch">
+      <LegalSection title="Vertretungsberechtigte">
         <p>{companyInfo.managingDirector} (Geschäftsführer)</p>
       </LegalSection>
 
@@ -43,6 +46,8 @@ export function ImpressumPage() {
 
       <LegalSection title="Registereintrag">
         <p>
+          Eingetragen im {companyInfo.registerType}
+          <br />
           Registergericht: {companyInfo.registerCourt}
           <br />
           Registernummer: {companyInfo.registerNumber}

@@ -39,8 +39,8 @@ export function GeoConsentBanner() {
         <div>
           <p className="font-medium text-bc-text">Standort für „In der Nähe“</p>
           <p className="mt-1 text-sm text-bc-muted">
-            Nur mit Ihrer Einwilligung nutzen wir den Gerätestandort für Entfernungen – nicht für
-            Werbe-Tracking. Details in der{' '}
+            Nur mit Ihrer Einwilligung (Art. 6 Abs. 1 lit. a DSGVO, § 25 Abs. 1 TDDDG) nutzen wir den
+            Gerätestandort für Entfernungen – nicht für Werbe-Tracking. Details in der{' '}
             <Link to="/datenschutz" className="text-bc-accent underline">
               Datenschutzerklärung
             </Link>
