@@ -32,16 +32,6 @@ export const loyaltyRewards: LoyaltyReward[] = [
     available: true,
   },
   {
-    id: 'rw-priority',
-    title: 'Priority Support',
-    titleEn: 'Priority Support',
-    description: 'Direkte Hotline mit verkürzter Wartezeit für 30 Tage.',
-    descriptionEn: 'Direct hotline with reduced wait time for 30 days.',
-    pointsCost: 500,
-    category: 'exclusive',
-    available: true,
-  },
-  {
     id: 'rw-night',
     title: 'Nachtladen Bonus',
     titleEn: 'Night Charging Bonus',
@@ -49,16 +39,6 @@ export const loyaltyRewards: LoyaltyReward[] = [
     descriptionEn: 'Double BC Points for charges between 10 PM and 6 AM.',
     pointsCost: 600,
     category: 'charging',
-    available: true,
-  },
-  {
-    id: 'rw-partner-discount',
-    title: 'Partner-Rabatt 10%',
-    titleEn: '10% Partner Discount',
-    description: 'Rabatt bei teilnehmenden Partnershops und Restaurants.',
-    descriptionEn: 'Discount at participating partner shops and restaurants.',
-    pointsCost: 450,
-    category: 'partner',
     available: true,
   },
 ];
