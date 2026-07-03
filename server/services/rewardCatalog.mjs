@@ -32,14 +32,6 @@ export const rewardCatalog = {
     consumable: true,
     validityDays: 90,
   },
-  'rw-priority': {
-    id: 'rw-priority',
-    pointsCost: 500,
-    fulfillmentType: 'priority_support',
-    payload: { durationDays: 30 },
-    consumable: false,
-    validityDays: 30,
-  },
   'rw-night': {
     id: 'rw-night',
     pointsCost: 600,
@@ -47,23 +39,6 @@ export const rewardCatalog = {
     payload: { pointsMultiplier: 2, nightStartHour: 22, nightEndHour: 6 },
     consumable: false,
     validityDays: 30,
-  },
-  'rw-partner-discount': {
-    id: 'rw-partner-discount',
-    pointsCost: 450,
-    fulfillmentType: 'voucher',
-    payload: {
-      voucherPrefix: 'BCPR',
-      partnerName: 'BC Charge Partnernetz',
-      partnerAddress: 'Teilnehmende Shops in der Region Leipzig',
-      discountPercent: 10,
-      instructionsDe:
-        'Code beim Bezahlen nennen – 10 % Rabatt auf den Einkauf bei teilnehmenden Partnern (siehe bc-charge.com/partner).',
-      instructionsEn:
-        'Quote this code at checkout – 10% off at participating partners (see bc-charge.com/partner).',
-    },
-    consumable: true,
-    validityDays: 60,
   },
 };
 
