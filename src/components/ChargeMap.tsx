@@ -5,6 +5,7 @@ import { MapContainer, Marker, Polyline, Popup, TileLayer, useMap } from 'react-
 import { Link } from 'react-router-dom';
 import { getAvailableCount } from '../data/stations';
 import type { Station } from '../types';
+import { isValidStationPosition } from '../utils/geo';
 
 const iconAvailable = L.divIcon({
   className: '',
@@ -66,7 +67,7 @@ export function ChargeMap({
 
   const markers = useMemo(
     () =>
-      stations.map((s) => {
+      stations.filter((s) => isValidStationPosition(s.lat, s.lng)).map((s) => {
         const highlighted = highlightSet.has(s.id);
         const available = getAvailableCount(s) > 0;
         return {

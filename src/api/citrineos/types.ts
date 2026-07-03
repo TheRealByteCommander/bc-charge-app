@@ -54,6 +54,7 @@ export interface HasuraChargingStationRow {
     city?: string | null;
     postalCode?: string | null;
     country?: string | null;
+    coordinates?: { type: 'Point'; coordinates: [number, number] } | null;
   } | null;
   Evses?: Array<{
     id: number;

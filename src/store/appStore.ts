@@ -16,7 +16,7 @@ import {
 import { defaultStationFilters, type StationFilterState } from '../types/filters';
 import { applyStationFilters, searchStations } from '../utils/stationFilters';
 import { loadStationsOfflineCache, saveStationsOfflineCache } from '../utils/offlineCache';
-import { haversineKm } from '../utils/geo';
+import { haversineKm, isValidStationPosition } from '../utils/geo';
 import { notifySessionComplete } from '../services/browserNotifications';
 import { checkFavoriteAvailability } from '../services/favoriteAvailability';
 import { recordStationSuccess } from '../services/stationTrust';
@@ -1245,13 +1245,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     const list = get().getFilteredStations();
     if (!userLocation) return list.slice(0, limit);
     return [...list]
-      .sort((a, b) => haversineKm(userLocation.lat, userLocation.lng, a.lat, a.lng) - haversineKm(userLocation.lat, userLocation.lng, b.lat, b.lng))
+      .filter((s) => isValidStationPosition(s.lat, s.lng))
+      .sort((a, b) => haversineKm(userLocation.lat, userLocation.lng, a.lat, a.lng) - haversineKm(userLocation.lat, userLocation.lng, b.lat, a.lng))
       .slice(0, limit);
   },
 
   distanceKm: (station) => {
     const { userLocation } = get();
-    if (!userLocation) return null;
+    if (!userLocation || !isValidStationPosition(station.lat, station.lng)) return null;
     return Math.round(haversineKm(userLocation.lat, userLocation.lng, station.lat, station.lng) * 10) / 10;
   },
 }));

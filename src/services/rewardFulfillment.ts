@@ -35,9 +35,6 @@ export function buildFulfillmentRecord({
   if (def.fulfillmentType === 'voucher') {
     payload.voucherCode = generateVoucherCode(String(payload.voucherPrefix));
   }
-  if (def.fulfillmentType === 'priority_support') {
-    payload.prioritySupportUntil = addDays(redeemedAt, Number(payload.durationDays) || 30);
-  }
   if (def.fulfillmentType === 'night_points') {
     payload.nightPointsUntil = expiresAt;
   }

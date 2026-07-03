@@ -6,6 +6,7 @@ import type {
   KnownHardwareModel,
   Station,
 } from '../../types';
+import { parseGeoPoint } from '../../utils/geo';
 import { mapOcpp16StatusToApp, mapOcpp201StatusToApp } from '../../utils/ocppStateMapping';
 import { mapTariffToConnectorPricing, type TariffCatalog } from './tariffPricing';
 import type { HasuraChargingStationRow } from './types';
@@ -98,12 +99,19 @@ export function parseConnectorRef(
   return { evseId: Number(m[1]), connectorId: Number(m[2]) };
 }
 
+function resolveStationCoordinates(row: HasuraChargingStationRow): { lat: number; lng: number } {
+  // Operator UI: „Standort-Koordinaten verwenden“ → coordinates an der Station sind null,
+  // die Position liegt dann an der verknüpften Location.
+  const parsed =
+    parseGeoPoint(row.coordinates) ?? parseGeoPoint(row.Location?.coordinates ?? null);
+  return parsed ?? { lat: 0, lng: 0 };
+}
+
 export function mapHasuraStationToApp(
   row: HasuraChargingStationRow,
   index: number,
   tariffCatalog?: TariffCatalog
 ): Station | null {
-  const coords = row.coordinates?.coordinates;
   const stationId = row.ocppConnectionName || String(row.id);
   
   const loc = row.Location;
@@ -137,7 +145,7 @@ export function mapHasuraStationToApp(
 
   if (connectors.length === 0) return null;
 
-  const [lng, lat] = coords ?? [0, 0];
+  const { lat, lng } = resolveStationCoordinates(row);
 
   return {
     id: stationId,

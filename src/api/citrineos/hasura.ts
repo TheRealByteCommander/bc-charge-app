@@ -19,6 +19,7 @@ const STATIONS_QUERY = `
         city
         postalCode
         country
+        coordinates
       }
       Evses {
         id
