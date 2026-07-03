@@ -130,6 +130,18 @@ else
   git clone --depth 1 --branch "$OPERATOR_REF" "$OPERATOR_REPO" "$OPERATOR_DIR"
 fi
 
+# BC Charge: lesbare Steckertyp-Labels (Type 2 statt nur IEC62196T2)
+CONNECTOR_LABELS_PATCH="${SCRIPT_DIR}/patches/operator-ui-connector-type-labels.patch"
+if [[ -f "$CONNECTOR_LABELS_PATCH" ]]; then
+  if patch -p1 -N -r - --forward -d "$OPERATOR_DIR" < "$CONNECTOR_LABELS_PATCH" >/dev/null 2>&1; then
+    log "Patch angewendet: Steckertyp-Labels (Type 2 / CCS)"
+  else
+    warn "Steckertyp-Label-Patch bereits angewendet oder nicht anwendbar."
+  fi
+else
+  warn "Patch fehlt: $CONNECTOR_LABELS_PATCH"
+fi
+
 #-------------------------------------------------------------------------------
 # 2. Zugangsdaten & Umgebung
 #-------------------------------------------------------------------------------
