@@ -32,7 +32,7 @@ export interface CitrineosTariff {
 export interface CitrineosTransaction {
   transactionId: string;
   stationId: string;
-  evseDatabaseId?: number | null;
+  evseId?: number | null;
   isActive?: boolean;
   totalKwh?: number | null;
   totalCost?: number;

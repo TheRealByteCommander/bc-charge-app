@@ -59,7 +59,7 @@ const ACTIVE_TX_QUERY = `
     ) {
       transactionId
       stationId
-      evseDatabaseId
+      evseId
       isActive
       totalKwh
       totalCost
@@ -81,7 +81,7 @@ const TX_BY_REMOTE_START_QUERY = `
     ) {
       transactionId
       stationId
-      evseDatabaseId
+      evseId
       isActive
       totalKwh
       totalCost
