@@ -302,6 +302,32 @@ function resolveCurrentUser(): UserProfile | null {
 
 let initRun = 0;
 
+async function loadBackendUserBundles(user: UserProfile | null): Promise<{
+  sessions: ChargingSession[];
+  redeemedRewardIds: string[];
+  rewardFulfillments: RewardFulfillment[];
+}> {
+  if (!user) {
+    return { sessions: [], redeemedRewardIds: [], rewardFulfillments: [] };
+  }
+  try {
+    const [sessions, redeemedRewardIds, rewardFulfillments] = await Promise.all([
+      fetchSessions(),
+      fetchRedeemedRewards(),
+      fetchRewardFulfillments(),
+    ]);
+    return { sessions, redeemedRewardIds, rewardFulfillments };
+  } catch (e) {
+    console.warn('[BC Charge] Nutzerdaten beim Start nicht geladen:', e);
+    return { sessions: [], redeemedRewardIds: [], rewardFulfillments: [] };
+  }
+}
+
+function finishInit(runId: number, patch: Partial<AppState>): void {
+  if (runId !== initRun) return;
+  useAppStore.setState({ initialized: true, ...patch });
+}
+
 export const useAppStore = create<AppState>((set, get) => ({
   initialized: false,
   onboardingDone: false,
@@ -326,20 +352,74 @@ export const useAppStore = create<AppState>((set, get) => ({
   init: async () => {
     const runId = ++initRun;
 
-    if (isBackendMode()) {
-      const sync = await syncStationsFromCitrineos();
-      if (runId !== initRun) return;
+    try {
+      if (isBackendMode()) {
+        const sync = await syncStationsFromCitrineos();
+        if (runId !== initRun) return;
 
-      const userRaw = await fetchCurrentUser();
-      const user = userRaw ? enrichUser(userRaw) : null;
-      if (user) setCurrentUserId(user.id);
+        const userRaw = await fetchCurrentUser();
+        const user = userRaw ? enrichUser(userRaw) : null;
+        if (user) setCurrentUserId(user.id);
+
+        let citrineosConnected = false;
+        let citrineosSyncError: string | null = null;
+        let stationDataSource: StationDataSource = getStationDataSource();
+        if (sync.ok) {
+          citrineosConnected = true;
+          stationDataSource = 'citrineos';
+          void saveStationsOfflineCache(getStations(), 'citrineos');
+        } else {
+          if (sync.error && !sync.error.includes('nicht erreichbar')) {
+            citrineosSyncError = sync.error;
+          }
+          const cached = await loadStationsOfflineCache();
+          if (cached && cached.stations.length > 0) {
+            setStationsFromOfflineCache(cached.stations);
+            stationDataSource = 'offline-cache';
+            console.log(`[BC Charge] ${cached.stations.length} Stationen aus Offline-Cache geladen (${cached.source}, ${cached.savedAt})`);
+          }
+        }
+        void saveStationsOfflineCache(getStations(), getStationDataSource());
+
+        const { sessions, redeemedRewardIds, rewardFulfillments } = await loadBackendUserBundles(user);
+
+        finishInit(runId, {
+          onboardingDone: isOnboardingDone() || get().onboardingDone,
+          user,
+          sessions,
+          activeSession: sessions.find((s) => s.status === 'active') ?? null,
+          redeemedRewardIds,
+          rewardFulfillments,
+          selectedChargingFulfillmentId: listActiveChargingFulfillments(rewardFulfillments)[0]?.id ?? null,
+          citrineosConnected,
+          citrineosSyncError,
+          stationDataSource,
+          pricingSyncedAt: sync.ok ? (sync.pricingSyncedAt ?? null) : null,
+        });
+
+        if (user && runId === initRun) void get().syncStripePayments();
+        return;
+      }
+
+      const users = loadUsers();
+      if (import.meta.env.DEV && !users.some((u) => u.email === 'demo@bc-charge.com')) {
+        const demoUsers = [...users, seedDemoUser()];
+        saveUsers(demoUsers);
+        const demo = demoUsers.find((u) => u.email === 'demo@bc-charge.com')!;
+        if (!loadSessions(demo.id).length) saveSessions(demo.id, seedDemoSessions());
+      }
 
       let citrineosConnected = false;
       let citrineosSyncError: string | null = null;
       let stationDataSource: StationDataSource = getStationDataSource();
+
+      const sync = await syncStationsFromCitrineos();
+      if (runId !== initRun) return;
+
       if (sync.ok) {
         citrineosConnected = true;
         stationDataSource = 'citrineos';
+        citrineosSyncError = null;
         void saveStationsOfflineCache(getStations(), 'citrineos');
       } else {
         if (sync.error && !sync.error.includes('nicht erreichbar')) {
@@ -354,83 +434,31 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
       void saveStationsOfflineCache(getStations(), getStationDataSource());
 
-      const sessions = user ? await fetchSessions() : [];
-      const redeemedRewardIds = user ? await fetchRedeemedRewards() : [];
-      const rewardFulfillments = user ? await fetchRewardFulfillments() : [];
+      const user = resolveCurrentUser() ?? get().user;
+      const fulfillments = user ? loadFulfillments(user.id) : [];
 
-      set({
-        initialized: true,
+      finishInit(runId, {
         onboardingDone: isOnboardingDone() || get().onboardingDone,
         user,
-        sessions,
-        activeSession: sessions.find((s) => s.status === 'active') ?? null,
-        redeemedRewardIds,
-        rewardFulfillments,
-        selectedChargingFulfillmentId: listActiveChargingFulfillments(rewardFulfillments)[0]?.id ?? null,
+        sessions: user ? loadSessions(user.id) : [],
+        activeSession: user ? loadSessions(user.id).find((s) => s.status === 'active') ?? null : null,
+        redeemedRewardIds: user ? loadRedeemed(user.id) : [],
+        rewardFulfillments: fulfillments,
+        selectedChargingFulfillmentId: user
+          ? listActiveChargingFulfillments(fulfillments)[0]?.id ?? null
+          : null,
         citrineosConnected,
         citrineosSyncError,
         stationDataSource,
         pricingSyncedAt: sync.ok ? (sync.pricingSyncedAt ?? null) : null,
       });
 
-      if (user) await get().syncStripePayments();
-      return;
-    }
-
-    const users = loadUsers();
-    if (import.meta.env.DEV && !users.some((u) => u.email === 'demo@bc-charge.com')) {
-      const demoUsers = [...users, seedDemoUser()];
-      saveUsers(demoUsers);
-      const demo = demoUsers.find((u) => u.email === 'demo@bc-charge.com')!;
-      if (!loadSessions(demo.id).length) saveSessions(demo.id, seedDemoSessions());
-    }
-
-    let citrineosConnected = false;
-    let citrineosSyncError: string | null = null;
-    let stationDataSource: StationDataSource = getStationDataSource();
-
-    const sync = await syncStationsFromCitrineos();
-    if (runId !== initRun) return;
-
-    if (sync.ok) {
-      citrineosConnected = true;
-      stationDataSource = 'citrineos';
-      citrineosSyncError = null;
-      void saveStationsOfflineCache(getStations(), 'citrineos');
-    } else {
-      if (sync.error && !sync.error.includes('nicht erreichbar')) {
-        citrineosSyncError = sync.error;
+      if (user && runId === initRun) {
+        await get().syncStripePayments();
       }
-      const cached = await loadStationsOfflineCache();
-      if (cached && cached.stations.length > 0) {
-        setStationsFromOfflineCache(cached.stations);
-        stationDataSource = 'offline-cache';
-        console.log(`[BC Charge] ${cached.stations.length} Stationen aus Offline-Cache geladen (${cached.source}, ${cached.savedAt})`);
-      }
-    }
-    void saveStationsOfflineCache(getStations(), getStationDataSource());
-
-    const user = resolveCurrentUser() ?? get().user;
-
-    set({
-      initialized: true,
-      onboardingDone: isOnboardingDone() || get().onboardingDone,
-      user,
-      sessions: user ? loadSessions(user.id) : [],
-      activeSession: user ? loadSessions(user.id).find((s) => s.status === 'active') ?? null : null,
-      redeemedRewardIds: user ? loadRedeemed(user.id) : [],
-      rewardFulfillments: user ? loadFulfillments(user.id) : [],
-      selectedChargingFulfillmentId: user
-        ? listActiveChargingFulfillments(loadFulfillments(user.id))[0]?.id ?? null
-        : null,
-      citrineosConnected,
-      citrineosSyncError,
-      stationDataSource,
-      pricingSyncedAt: sync.ok ? (sync.pricingSyncedAt ?? null) : null,
-    });
-
-    if (user) {
-      await get().syncStripePayments();
+    } catch (e) {
+      console.error('[BC Charge] Init fehlgeschlagen:', e);
+      finishInit(runId, {});
     }
   },
 
