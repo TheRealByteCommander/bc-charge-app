@@ -1,6 +1,8 @@
 import { Router } from 'express';
-import { optionalAuth } from '../middleware/auth.mjs';
+import { findUserById, rowToProfile } from '../db.mjs';
+import { optionalAuth, requireAuth } from '../middleware/auth.mjs';
 import { citrineosIntegrationContract } from '../contracts/citrineosContract.mjs';
+import { ensureCitrineosAuthorization } from '../services/citrineosAuth.mjs';
 
 const router = Router();
 
@@ -55,6 +57,26 @@ router.get('/contract', (_req, res) => {
       hasuraUrl: process.env.CITRINEOS_HASURA_URL ?? null,
     },
   });
+});
+
+router.post('/ensure-authorization', requireAuth, async (req, res) => {
+  try {
+    const row = await findUserById(req.userId);
+    if (!row) {
+      res.status(404).json({ error: 'Nutzer nicht gefunden.' });
+      return;
+    }
+    const profile = rowToProfile(row);
+    const idToken = req.body?.idToken ?? profile.membershipId;
+    if (!idToken) {
+      res.status(400).json({ error: 'membershipId fehlt im Profil.' });
+      return;
+    }
+    const result = await ensureCitrineosAuthorization(idToken);
+    res.json(result);
+  } catch (e) {
+    res.status(502).json({ error: e instanceof Error ? e.message : 'Authorization fehlgeschlagen' });
+  }
 });
 
 router.post('/hasura', optionalAuth, async (req, res) => {
