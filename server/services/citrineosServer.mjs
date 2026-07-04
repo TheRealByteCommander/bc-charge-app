@@ -22,15 +22,51 @@ export function isCitrineosConfigured() {
   return Boolean(process.env.CITRINEOS_API_URL || process.env.CITRINEOS_HASURA_URL);
 }
 
-const STATION_BY_ID_QUERY = `
-  query BcAdhocStation($tenantId: Int!, $stationId: String!) {
+const STATION_BY_NAME_QUERY = `
+  query BcAdhocStationByName($tenantId: Int!, $connectionName: String!) {
     ChargingStations(
       where: {
         tenantId: { _eq: $tenantId }
-        _or: [
-          { ocppConnectionName: { _eq: $stationId } }
-          { id: { _eq: $stationId } }
-        ]
+        ocppConnectionName: { _eq: $connectionName }
+      }
+      limit: 1
+    ) {
+      id
+      ocppConnectionName
+      isOnline
+      chargePointVendor
+      chargePointModel
+      Location {
+        name
+        address
+        city
+        postalCode
+      }
+      Evses {
+        evseId
+        Connectors {
+          connectorId
+          status
+          type
+          maximumPowerWatts
+          Tariff {
+            pricePerKwh
+            pricePerMin
+            pricePerSession
+            currency
+          }
+        }
+      }
+    }
+  }
+`;
+
+const STATION_BY_DB_ID_QUERY = `
+  query BcAdhocStationByDbId($tenantId: Int!, $stationDbId: Int!) {
+    ChargingStations(
+      where: {
+        tenantId: { _eq: $tenantId }
+        id: { _eq: $stationDbId }
       }
       limit: 1
     ) {
@@ -65,7 +101,7 @@ const STATION_BY_ID_QUERY = `
 `;
 
 const TX_BY_REMOTE_START_QUERY = `
-  query BcAdhocTxByRemoteStart($stationId: String!, $tenantId: Int!, $remoteStartId: Int!) {
+  query BcAdhocTxByRemoteStart($stationId: Int!, $tenantId: Int!, $remoteStartId: Int!) {
     Transactions(
       where: {
         stationId: { _eq: $stationId }
@@ -85,7 +121,7 @@ const TX_BY_REMOTE_START_QUERY = `
 `;
 
 const TX_BY_ID_QUERY = `
-  query BcAdhocTxById($stationId: String!, $tenantId: Int!, $transactionId: String!) {
+  query BcAdhocTxById($stationId: Int!, $tenantId: Int!, $transactionId: String!) {
     Transactions(
       where: {
         stationId: { _eq: $stationId }
@@ -141,17 +177,35 @@ function parseConnectorRef(connectorAppId) {
   return { evseId: Number(m[1]), connectorId: Number(m[2]) };
 }
 
+function parseStationDbId(stationId) {
+  const parsed = Number(stationId);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+async function fetchStationRow(stationId) {
+  const tid = tenantId();
+  let data = await hasuraRequest(STATION_BY_NAME_QUERY, {
+    tenantId: tid,
+    connectionName: String(stationId),
+  });
+  let row = data.ChargingStations?.[0];
+  if (!row) {
+    const dbId = parseStationDbId(stationId);
+    if (dbId != null) {
+      data = await hasuraRequest(STATION_BY_DB_ID_QUERY, { tenantId: tid, stationDbId: dbId });
+      row = data.ChargingStations?.[0];
+    }
+  }
+  return row;
+}
+
 export async function resolveAdhocConnector(stationId, connectorAppId) {
   const ref = parseConnectorRef(connectorAppId);
   if (!ref) {
     throw Object.assign(new Error('Ungültige Anschluss-Referenz'), { status: 400 });
   }
 
-  const data = await hasuraRequest(STATION_BY_ID_QUERY, {
-    tenantId: tenantId(),
-    stationId,
-  });
-  const row = data.ChargingStations?.[0];
+  const row = await fetchStationRow(stationId);
   if (!row) {
     throw Object.assign(new Error('Station nicht gefunden'), { status: 404 });
   }
@@ -191,6 +245,7 @@ export async function resolveAdhocConnector(stationId, connectorAppId) {
   const loc = row.Location ?? {};
   return {
     stationId: resolvedStationId,
+    stationDatabaseId: row.id,
     stationName:
       loc.name ??
       `${row.chargePointVendor ?? 'BC Charge'} ${row.chargePointModel ?? resolvedStationId}`.trim(),
@@ -300,7 +355,11 @@ export async function startAdhocTransaction(stationId, evseId, connectorId, idTo
   let transactionId;
   for (let i = 0; i < 20; i++) {
     await sleep(1500);
-    const tx = await fetchTransactionByRemoteStartId(stationId, remoteStartId);
+    const tx = await fetchTransactionByRemoteStartId(
+      stationId,
+      remoteStartId,
+      stationRow?.stationDatabaseId ?? stationRow?.id
+    );
     if (tx?.transactionId) {
       transactionId = tx.transactionId;
       break;
@@ -324,18 +383,32 @@ export async function stopAdhocTransaction(stationId, transactionId) {
   return true;
 }
 
-export async function fetchTransactionByRemoteStartId(stationId, remoteStartId) {
+export async function fetchTransactionByRemoteStartId(stationId, remoteStartId, stationDatabaseId) {
+  const dbId =
+    stationDatabaseId ??
+    (await fetchStationRow(stationId))?.id ??
+    parseStationDbId(stationId);
+  if (dbId == null) {
+    throw Object.assign(new Error(`Keine CitrineOS-Datenbank-ID für Station „${stationId}“`), { status: 404 });
+  }
   const data = await hasuraRequest(TX_BY_REMOTE_START_QUERY, {
-    stationId,
+    stationId: dbId,
     tenantId: tenantId(),
     remoteStartId,
   });
   return data.Transactions?.[0] ?? null;
 }
 
-export async function fetchTransactionById(stationId, transactionId) {
+export async function fetchTransactionById(stationId, transactionId, stationDatabaseId) {
+  const dbId =
+    stationDatabaseId ??
+    (await fetchStationRow(stationId))?.id ??
+    parseStationDbId(stationId);
+  if (dbId == null) {
+    throw Object.assign(new Error(`Keine CitrineOS-Datenbank-ID für Station „${stationId}“`), { status: 404 });
+  }
   const data = await hasuraRequest(TX_BY_ID_QUERY, {
-    stationId,
+    stationId: dbId,
     tenantId: tenantId(),
     transactionId,
   });

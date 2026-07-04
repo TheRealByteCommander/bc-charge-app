@@ -70,6 +70,8 @@ export interface Station {
   hardwareModel?: KnownHardwareModel;
   /** Hardware-spezifische Features */
   hardwareFeatures?: HardwareFeatures;
+  /** Numerische ChargingStations.id in CitrineOS/Hasura (Transactions.stationId) */
+  citrineosDatabaseId?: number;
 }
 
 export interface Vehicle {
