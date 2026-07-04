@@ -43,8 +43,25 @@ export function ChargeStartConfirmSheet({
   const selectedChargingFulfillmentId = useAppStore((s) => s.selectedChargingFulfillmentId);
   const setSelectedChargingFulfillment = useAppStore((s) => s.setSelectedChargingFulfillment);
 
+  const actionButtons = (
+    <div className="flex gap-3">
+      <button type="button" className="btn-secondary flex-1 py-3" onClick={onClose} disabled={confirming}>
+        Abbrechen
+      </button>
+      <button
+        type="button"
+        className="btn-primary flex flex-1 items-center justify-center gap-2 py-3"
+        onClick={onConfirm}
+        disabled={confirming}
+      >
+        <Check className="h-4 w-4" />
+        {confirming ? 'Starte…' : 'Jetzt laden'}
+      </button>
+    </div>
+  );
+
   return (
-    <BottomSheet open={open} onClose={onClose} title="Preis bestätigen">
+    <BottomSheet open={open} onClose={onClose} title="Preis bestätigen" footer={actionButtons}>
       <div className="space-y-4">
         <p className="text-sm text-bc-muted">
           Bitte prüfen Sie den Tarif für <span className="font-medium text-bc-text">{station.name}</span> vor
@@ -128,21 +145,6 @@ export function ChargeStartConfirmSheet({
           Die Endabrechnung richtet sich nach der tatsächlich geladenen Energie. Sie erhalten sofort nach dem
           Laden eine Rechnung per E-Mail.
         </p>
-
-        <div className="flex gap-3 pt-2">
-          <button type="button" className="btn-secondary flex-1 py-3" onClick={onClose} disabled={confirming}>
-            Abbrechen
-          </button>
-          <button
-            type="button"
-            className="btn-primary flex flex-1 items-center justify-center gap-2 py-3"
-            onClick={onConfirm}
-            disabled={confirming}
-          >
-            <Check className="h-4 w-4" />
-            {confirming ? 'Starte…' : 'Jetzt laden'}
-          </button>
-        </div>
       </div>
     </BottomSheet>
   );
