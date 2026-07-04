@@ -46,33 +46,61 @@ export interface ChargingStateInfo {
 }
 
 /**
+ * Einheitliches Mapping für OCPP-1.6- und 2.0.1-Statuswerte (z. B. go-e „Preparing“).
+ */
+export function mapUnifiedOcppConnectorStatusToApp(status: string): ConnectorStatus {
+  const normalized = String(status ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[_\s-]/g, '');
+
+  if (normalized === 'available' || normalized === 'idle') return 'available';
+  if (normalized === 'reserved') return 'reserved';
+  if (
+    [
+      'occupied',
+      'preparing',
+      'charging',
+      'suspendedevse',
+      'suspendedev',
+      'finishing',
+      'evconnected',
+    ].includes(normalized)
+  ) {
+    return 'occupied';
+  }
+  if (normalized === 'unavailable' || normalized === 'faulted') return 'offline';
+
+  return 'offline';
+}
+
+/**
  * Mappt OCPP 1.6 Connector Status auf App ConnectorStatus
  */
 export function mapOcpp16StatusToApp(status: string): ConnectorStatus {
-  const normalized = status.toLowerCase();
-  
-  if (normalized === 'available') return 'available';
-  if (normalized === 'reserved') return 'reserved';
-  if (['preparing', 'charging', 'suspendedevse', 'suspendedev', 'finishing'].includes(normalized)) {
-    return 'occupied';
-  }
-  if (['unavailable', 'faulted'].includes(normalized)) return 'offline';
-  
-  return 'offline';
+  return mapUnifiedOcppConnectorStatusToApp(status);
 }
 
 /**
  * Mappt OCPP 2.0.1 Connector Status auf App ConnectorStatus
  */
 export function mapOcpp201StatusToApp(status: string): ConnectorStatus {
-  const normalized = status.toLowerCase();
-  
-  if (normalized === 'available') return 'available';
-  if (normalized === 'occupied') return 'occupied';
-  if (normalized === 'reserved') return 'reserved';
-  if (['unavailable', 'faulted'].includes(normalized)) return 'offline';
-  
-  return 'offline';
+  return mapUnifiedOcppConnectorStatusToApp(status);
+}
+
+/** Remote-Start möglich: frei oder Fahrzeug angesteckt (Preparing/EVConnected). */
+export function isConnectorStartable(status: ConnectorStatus, rawOcppStatus?: string | null): boolean {
+  if (isConnectorActivelyCharging(rawOcppStatus)) return false;
+  return status === 'available' || status === 'occupied';
+}
+
+/** Aktiv ladend – kein erneuter Start. */
+export function isConnectorActivelyCharging(rawStatus?: string | null): boolean {
+  const normalized = String(rawStatus ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[_\s-]/g, '');
+  return normalized === 'charging';
 }
 
 /**

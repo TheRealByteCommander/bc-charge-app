@@ -25,11 +25,12 @@ import { getAvailableCount, getStationById } from '../data/stations';
 import { computePlugScore } from '../services/community';
 import { useAppStore } from '../store/appStore';
 import type { Connector } from '../types';
+import { isConnectorStartable } from '../utils/ocppStateMapping';
 import { buildGuestChargePath } from '../utils/qrDeepLink';
 
 const statusLabel: Record<string, string> = {
   available: 'Verfügbar',
-  occupied: 'Belegt',
+  occupied: 'Angesteckt',
   offline: 'Offline',
   reserved: 'Reserviert',
 };
@@ -256,13 +257,13 @@ export function StationDetailPage() {
             <button
               key={c.id}
               type="button"
-              disabled={c.status !== 'available'}
+              disabled={!isConnectorStartable(c.status, c.ocppRawStatus)}
               onClick={() => setSelectedConnector(c.id)}
               className={`w-full rounded-2xl border p-4 text-left transition ${
                 selectedConnector === c.id
                   ? 'border-bc-accent bg-bc-accent/10'
                   : 'border-bc-border bg-bc-elevated'
-              } ${c.status !== 'available' ? 'opacity-50' : ''}`}
+              } ${!isConnectorStartable(c.status, c.ocppRawStatus) ? 'opacity-50' : ''}`}
             >
               {evseLabel && (
                 <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-bc-accent">

@@ -1,5 +1,7 @@
 /** Serverseitige CitrineOS/Hasura-Hilfen für Ad-Hoc-Laden (ohne Frontend-Abhängigkeit). */
 
+import { mapConnectorStatus } from '../utils/ocppStatus.mjs';
+
 function citrineosApiUrl() {
   return (process.env.CITRINEOS_API_URL ?? 'http://localhost:8080').replace(/\/$/, '');
 }
@@ -139,16 +141,6 @@ function parseConnectorRef(connectorAppId) {
   return { evseId: Number(m[1]), connectorId: Number(m[2]) };
 }
 
-function mapOcppStatus(status, online) {
-  if (!online) return 'offline';
-  const s = String(status ?? '').toLowerCase();
-  if (s === 'available') return 'available';
-  if (s === 'occupied' || s === 'charging' || s === 'preparing' || s === 'finishing') return 'occupied';
-  if (s === 'reserved') return 'reserved';
-  if (s === 'unavailable' || s === 'faulted') return 'offline';
-  return 'offline';
-}
-
 export async function resolveAdhocConnector(stationId, connectorAppId) {
   const ref = parseConnectorRef(connectorAppId);
   if (!ref) {
@@ -180,7 +172,8 @@ export async function resolveAdhocConnector(stationId, connectorAppId) {
           connectorId: ref.connectorId,
           type: conn.type ?? 'Type2',
           powerKw: powerKw > 0 ? powerKw : 22,
-          status: mapOcppStatus(conn.status, row.isOnline),
+          status: mapConnectorStatus(conn.status, row.isOnline),
+          ocppRawStatus: conn.status ?? undefined,
           pricePerKwh: Number(tariff.pricePerKwh ?? 0.49),
           pricePerMin: Number(tariff.pricePerMin ?? 0),
           sessionFee: Number(tariff.pricePerSession ?? 0),

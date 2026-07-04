@@ -7,7 +7,7 @@ import type {
   Station,
 } from '../../types';
 import { parseGeoPoint } from '../../utils/geo';
-import { mapOcpp16StatusToApp, mapOcpp201StatusToApp } from '../../utils/ocppStateMapping';
+import { mapUnifiedOcppConnectorStatusToApp } from '../../utils/ocppStateMapping';
 import { mapTariffToConnectorPricing, type TariffCatalog } from './tariffPricing';
 import type { HasuraChargingStationRow } from './types';
 
@@ -39,6 +39,24 @@ const HARDWARE_CONFIGS: Record<string, { model: KnownHardwareModel; features: Ha
       multiConnector: true,
     },
   },
+  'go-e': {
+    model: 'generic',
+    features: {
+      midCertifiedMeters: false,
+      dynamicLoadManagement: false,
+      ocppVersion: '1.6',
+      multiConnector: false,
+    },
+  },
+  GO_E_HOMEPLUS: {
+    model: 'generic',
+    features: {
+      midCertifiedMeters: false,
+      dynamicLoadManagement: false,
+      ocppVersion: '1.6',
+      multiConnector: false,
+    },
+  },
 };
 
 /** Erkennt Hardware-Modell und Features basierend auf chargePointModel/Vendor */
@@ -48,11 +66,24 @@ function detectHardwareFeatures(
 ): { hardwareModel: KnownHardwareModel; hardwareFeatures: HardwareFeatures } {
   const modelKey = chargePointModel ?? '';
   const vendorModelKey = `${chargePointVendor ?? ''} ${modelKey}`.trim();
-  
+  const vendorLower = (chargePointVendor ?? '').toLowerCase();
+
   const config = HARDWARE_CONFIGS[modelKey] ?? HARDWARE_CONFIGS[vendorModelKey];
   
   if (config) {
     return { hardwareModel: config.model, hardwareFeatures: config.features };
+  }
+
+  if (vendorLower.includes('go-e') || vendorLower.includes('goe')) {
+    return {
+      hardwareModel: 'generic',
+      hardwareFeatures: {
+        midCertifiedMeters: false,
+        dynamicLoadManagement: false,
+        ocppVersion: '1.6',
+        multiConnector: false,
+      },
+    };
   }
   
   return {
@@ -66,17 +97,14 @@ function detectHardwareFeatures(
   };
 }
 
-function mapConnectorStatus(
-  ocppStatus: string,
-  stationOnline: boolean,
-  ocppVersion: '1.6' | '2.0.1' = '2.0.1'
-): ConnectorStatus {
-  if (!stationOnline) return 'offline';
-  
-  if (ocppVersion === '1.6') {
-    return mapOcpp16StatusToApp(ocppStatus);
+function mapConnectorStatus(ocppStatus: string, stationOnline: boolean): ConnectorStatus {
+  const mapped = mapUnifiedOcppConnectorStatusToApp(ocppStatus);
+  // Fahrzeug angesteckt: Connector-Status vertrauen, auch wenn isOnline kurz falsch ist.
+  if (!stationOnline && (mapped === 'occupied' || mapped === 'reserved')) {
+    return mapped;
   }
-  return mapOcpp201StatusToApp(ocppStatus);
+  if (!stationOnline) return 'offline';
+  return mapped;
 }
 
 function mapConnectorType(type?: string | null): ConnectorType {
@@ -134,7 +162,8 @@ export function mapHasuraStationToApp(
         id: connectorId(evse.evseId, conn.connectorId),
         type: mapConnectorType(conn.type),
         powerKw: powerKw > 0 ? powerKw : 22,
-        status: mapConnectorStatus(conn.status, row.isOnline ?? false, hardwareFeatures.ocppVersion),
+        status: mapConnectorStatus(conn.status, row.isOnline ?? false),
+        ocppRawStatus: conn.status ?? undefined,
         evseId: `DE*BCC*${stationId}*${evse.evseId}*${conn.connectorId}`,
         evseNumber: evse.evseId,
         connectorNumber: conn.connectorId,
