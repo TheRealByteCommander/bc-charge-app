@@ -23,6 +23,8 @@ export interface Connector {
   type: ConnectorType;
   powerKw: number;
   status: ConnectorStatus;
+  /** Rohstatus aus CitrineOS/OCPP (z. B. Preparing, Charging) */
+  ocppRawStatus?: string;
   evseId: string;
   pricePerKwh: number;
   pricePerMin?: number;

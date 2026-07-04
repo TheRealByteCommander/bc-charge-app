@@ -19,7 +19,7 @@ import { HelpHintLink } from '../components/help/HelpHintLink';
 import { getStationById } from '../data/stations';
 import { isStripeConfigured } from '../config/stripe';
 import { formatCurrency, formatDuration, formatKwh } from '../utils/format';
-import { getChargingStateInfo } from '../utils/ocppStateMapping';
+import { getChargingStateInfo, isConnectorStartable } from '../utils/ocppStateMapping';
 
 type Step = 'quote' | 'payment' | 'starting' | 'charging' | 'done';
 
@@ -43,8 +43,10 @@ export function GuestChargePage() {
   const resolveConnector = useCallback((): string | null => {
     if (connectorParam) return connectorParam;
     const station = getStationById(stationParam);
-    const available = station?.connectors.find((c) => c.status === 'available');
-    return available?.id ?? station?.connectors[0]?.id ?? null;
+    const startable =
+      station?.connectors.find((c) => c.status === 'available') ??
+      station?.connectors.find((c) => isConnectorStartable(c.status, c.ocppRawStatus));
+    return startable?.id ?? station?.connectors[0]?.id ?? null;
   }, [connectorParam, stationParam]);
 
   useEffect(() => {

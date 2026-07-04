@@ -15,6 +15,7 @@ import {
   startAdhocTransaction,
   stopAdhocTransaction,
 } from '../services/citrineosServer.mjs';
+import { isConnectorStartable } from '../utils/ocppStatus.mjs';
 import { findAdhocSession, insertAdhocSession, updateAdhocSession } from '../db.mjs';
 
 const router = Router();
@@ -86,11 +87,11 @@ router.post('/quote', async (req, res) => {
       return;
     }
     const resolved = await resolveAdhocConnector(String(stationId), String(connectorId));
-    if (!resolved.isOnline) {
+    if (!resolved.isOnline && !isConnectorStartable(resolved.connector.status, resolved.connector.ocppRawStatus)) {
       res.status(409).json({ error: 'Station ist derzeit offline' });
       return;
     }
-    if (resolved.connector.status !== 'available') {
+    if (!isConnectorStartable(resolved.connector.status, resolved.connector.ocppRawStatus)) {
       res.status(409).json({ error: 'Anschluss ist derzeit nicht verfügbar' });
       return;
     }
@@ -128,7 +129,7 @@ router.post('/prepare-payment', adhocMutateLimiter, async (req, res) => {
 
   try {
     const resolved = await resolveAdhocConnector(String(stationId), String(connectorId));
-    if (resolved.connector.status !== 'available') {
+    if (!isConnectorStartable(resolved.connector.status, resolved.connector.ocppRawStatus)) {
       res.status(409).json({ error: 'Anschluss ist derzeit nicht verfügbar' });
       return;
     }
@@ -221,7 +222,7 @@ router.post('/start', adhocMutateLimiter, async (req, res) => {
     }
 
     const resolved = await resolveAdhocConnector(session.stationId, session.connectorId);
-    if (resolved.connector.status !== 'available') {
+    if (!isConnectorStartable(resolved.connector.status, resolved.connector.ocppRawStatus)) {
       res.status(409).json({ error: 'Anschluss ist derzeit nicht verfügbar' });
       return;
     }
