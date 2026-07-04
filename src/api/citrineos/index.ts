@@ -7,5 +7,5 @@ export {
 } from './hasura';
 export { mapHasuraStations, parseConnectorRef } from './mappers';
 export { buildTariffCatalog, mapTariffToConnectorPricing } from './tariffPricing';
-export { requestStartTransaction, requestStopTransaction } from './messages';
+export { requestStartTransaction, requestStartTransactionForStation, requestStopTransaction } from './messages';
 export { citrineosPaths } from './paths';
