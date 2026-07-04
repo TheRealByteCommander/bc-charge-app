@@ -24,6 +24,7 @@ export function ChargeStartConfirmSheet({
   startSoc,
   targetSoc,
   confirming,
+  error,
 }: {
   open: boolean;
   onClose: () => void;
@@ -34,6 +35,7 @@ export function ChargeStartConfirmSheet({
   startSoc: number;
   targetSoc: number;
   confirming?: boolean;
+  error?: string;
 }) {
   const est = estimateChargeSession(connector, vehicle, {
     startSocPercent: startSoc,
@@ -63,6 +65,11 @@ export function ChargeStartConfirmSheet({
   return (
     <BottomSheet open={open} onClose={onClose} title="Preis bestätigen" footer={actionButtons}>
       <div className="space-y-4">
+        {error ? (
+          <p className="rounded-xl border border-bc-danger/40 bg-bc-danger/10 px-3 py-2 text-sm text-bc-danger" role="alert">
+            {error}
+          </p>
+        ) : null}
         <p className="text-sm text-bc-muted">
           Bitte prüfen Sie den Tarif für <span className="font-medium text-bc-text">{station.name}</span> vor
           dem Start.

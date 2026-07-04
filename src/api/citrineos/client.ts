@@ -34,11 +34,12 @@ export async function citrineosFetch<T>(
     method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
     query?: Record<string, string | number | undefined>;
     body?: unknown;
+    timeoutMs?: number;
   } = {}
 ): Promise<T> {
-  const { method = 'GET', query, body } = options;
+  const { method = 'GET', query, body, timeoutMs = CITRINEOS_FETCH_MS } = options;
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), CITRINEOS_FETCH_MS);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   let res: Response;
   try {
     if (isBackendMode()) {

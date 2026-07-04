@@ -64,6 +64,7 @@ export function StationDetailPage() {
   const distance = useAppStore((s) => s.distanceKm);
   const toggleFavorite = useAppStore((s) => s.toggleFavorite);
   const startSession = useAppStore((s) => s.startSession);
+  const setToast = useAppStore((s) => s.setToast);
   const selectedChargingFulfillmentId = useAppStore((s) => s.selectedChargingFulfillmentId);
   const stationDataSource = useAppStore((s) => s.stationDataSource);
   const citrineosConnected = useAppStore((s) => s.citrineosConnected);
@@ -87,6 +88,14 @@ export function StationDetailPage() {
       navigate(buildGuestChargePath(station.id, connector ?? undefined), { replace: true });
     }
   }, [searchParams, station, selectedConnector, navigate]);
+
+  useEffect(() => {
+    if (!station || selectedConnector) return;
+    const startable = station.connectors.filter((c) => isConnectorStartable(c.status, c.ocppRawStatus));
+    if (startable.length === 1) {
+      setSelectedConnector(startable[0].id);
+    }
+  }, [station, selectedConnector]);
 
   if (!station) {
     return (
@@ -119,23 +128,33 @@ export function StationDetailPage() {
     setError('');
     try {
       if (!selectedConnector) {
-        setError('Bitte wählen Sie einen Anschluss.');
+        const msg = 'Bitte wählen Sie den Anschluss, an dem Ihr Fahrzeug steckt.';
+        setError(msg);
+        setToast(msg);
         return;
       }
       if (!selectedVehicle && user.vehicles.length) {
-        setError('Bitte wählen Sie ein Fahrzeug.');
+        const msg = 'Bitte wählen Sie ein Fahrzeug.';
+        setError(msg);
+        setToast(msg);
         return;
       }
       if (!selectedPayment && user.paymentMethods.length) {
-        setError('Bitte wählen Sie eine Zahlungsmethode.');
+        const msg = 'Bitte wählen Sie eine Zahlungsmethode.';
+        setError(msg);
+        setToast(msg);
         return;
       }
       if (!user.vehicles.length) {
-        setError('Bitte legen Sie zuerst ein Fahrzeug an (siehe Checkliste oben).');
+        const msg = 'Bitte legen Sie zuerst ein Fahrzeug an (siehe Checkliste oben).';
+        setError(msg);
+        setToast(msg);
         return;
       }
       if (!user.paymentMethods.length) {
-        setError('Bitte hinterlegen Sie eine Zahlungsmethode (siehe Checkliste oben).');
+        const msg = 'Bitte hinterlegen Sie eine Zahlungsmethode (siehe Checkliste oben).';
+        setError(msg);
+        setToast(msg);
         return;
       }
       const res = await startSession(
@@ -148,7 +167,15 @@ export function StationDetailPage() {
       if (res.ok) {
         setShowConfirm(false);
         navigate('/laden');
-      } else setError(res.error ?? 'Start fehlgeschlagen');
+      } else {
+        const msg = res.error ?? 'Start fehlgeschlagen';
+        setError(msg);
+        setToast(msg);
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Start fehlgeschlagen';
+      setError(msg);
+      setToast(msg);
     } finally {
       setStarting(false);
     }
@@ -157,6 +184,12 @@ export function StationDetailPage() {
   const openConfirm = () => {
     if (!user) {
       navigate('/anmelden');
+      return;
+    }
+    if (!selectedConnector) {
+      const msg = 'Bitte wählen Sie zuerst den Anschluss, an dem Ihr Fahrzeug steckt.';
+      setError(msg);
+      setToast(msg);
       return;
     }
     setError('');
@@ -372,7 +405,7 @@ export function StationDetailPage() {
 
       {user && <div className="h-28 shrink-0" aria-hidden="true" />}
 
-      {user && (
+      {user && !showConfirm && (
         <div className="fixed bottom-20 left-0 right-0 z-40 mx-auto max-w-lg px-4 safe-bottom">
           <button
             type="button"
@@ -401,6 +434,7 @@ export function StationDetailPage() {
           startSoc={startSoc}
           targetSoc={targetSoc}
           confirming={starting}
+          error={error}
         />
       )}
 

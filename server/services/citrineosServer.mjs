@@ -196,12 +196,24 @@ export async function resolveAdhocConnector(stationId, connectorAppId) {
       `${row.chargePointVendor ?? 'BC Charge'} ${row.chargePointModel ?? resolvedStationId}`.trim(),
     address: [loc.address, loc.postalCode, loc.city].filter(Boolean).join(', ') || '—',
     isOnline: Boolean(row.isOnline),
+    chargePointVendor: row.chargePointVendor ?? undefined,
     chargePointModel: row.chargePointModel ?? undefined,
     connector,
   };
 }
 
-async function citrineosMessage(path, stationId, body) {
+function isOcpp16Station(row) {
+  const vendor = String(row?.chargePointVendor ?? '').toLowerCase();
+  const model = String(row?.chargePointModel ?? '').toLowerCase();
+  return (
+    vendor.includes('go-e') ||
+    vendor.includes('goe') ||
+    vendor.includes('elinta') ||
+    model.includes('citycharge')
+  );
+}
+
+async function citrineosMessage(path, stationId, body, timeoutMs = 12_000) {
   if (!process.env.CITRINEOS_API_URL) {
     throw Object.assign(new Error('CitrineOS API nicht konfiguriert'), { status: 503 });
   }
@@ -210,7 +222,7 @@ async function citrineosMessage(path, stationId, body) {
   url.searchParams.set('tenantId', String(tenantId()));
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 12000);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   let res;
   try {
     res = await fetch(url.toString(), {
@@ -240,24 +252,48 @@ async function citrineosMessage(path, stationId, body) {
   return parsed;
 }
 
-export async function startAdhocTransaction(stationId, evseId, idToken) {
+export async function startAdhocTransaction(stationId, evseId, connectorId, idToken, stationRow) {
   const remoteStartId = Math.floor(Math.random() * 2_000_000_000);
-  const confirmations = await citrineosMessage(
-    '/ocpp/2.0.1/evdriver/requestStartTransaction',
-    stationId,
-    {
-      evseId,
-      remoteStartId,
-      idToken: { idToken, type: idTokenType() },
-    }
-  );
+  const useOcpp16 = stationRow ? isOcpp16Station(stationRow) : false;
 
-  const first = Array.isArray(confirmations) ? confirmations[0] : null;
-  if (!first?.success) {
+  let confirmations;
+  if (useOcpp16) {
+    try {
+      confirmations = await citrineosMessage(
+        '/ocpp/1.6/evdriver/remoteStartTransaction',
+        stationId,
+        { connectorId, idTag: idToken },
+        15_000
+      );
+    } catch {
+      confirmations = null;
+    }
+  }
+
+  if (!confirmations) {
+    confirmations = await citrineosMessage(
+      '/ocpp/2.0.1/evdriver/requestStartTransaction',
+      stationId,
+      {
+        evseId,
+        remoteStartId,
+        idToken: { idToken, type: idTokenType() },
+      },
+      15_000
+    );
+  }
+
+  const first = Array.isArray(confirmations) ? confirmations[0] : confirmations;
+  const accepted =
+    first?.success === true ||
+    String(first?.status ?? first?.payload ?? '').toLowerCase() === 'accepted';
+  if (!accepted) {
     const msg =
       typeof first?.payload === 'string'
         ? first.payload
-        : 'Ladestart von der Station abgelehnt';
+        : typeof first?.status === 'string'
+          ? first.status
+          : 'Ladestart von der Station abgelehnt';
     throw Object.assign(new Error(msg), { status: 502 });
   }
 

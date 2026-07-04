@@ -9,29 +9,23 @@ function lockPageScroll(): () => void {
   const saved = scrollRoots.map((el) => ({
     el,
     overflow: el.style.overflow,
-    touchAction: el.style.touchAction,
   }));
 
   scrollRoots.forEach((el) => {
     el.style.overflow = 'hidden';
-    el.style.touchAction = 'none';
   });
 
   const prevHtmlOverflow = document.documentElement.style.overflow;
   const prevBodyOverflow = document.body.style.overflow;
-  const prevBodyTouchAction = document.body.style.touchAction;
   document.documentElement.style.overflow = 'hidden';
   document.body.style.overflow = 'hidden';
-  document.body.style.touchAction = 'none';
 
   return () => {
-    saved.forEach(({ el, overflow, touchAction }) => {
+    saved.forEach(({ el, overflow }) => {
       el.style.overflow = overflow;
-      el.style.touchAction = touchAction;
     });
     document.documentElement.style.overflow = prevHtmlOverflow;
     document.body.style.overflow = prevBodyOverflow;
-    document.body.style.touchAction = prevBodyTouchAction;
   };
 }
 
@@ -75,7 +69,9 @@ export function BottomSheet({
             animate={{ y: 0 }}
             exit={{ y: '100%' }}
             transition={{ type: 'spring', damping: 28, stiffness: 320 }}
-            className="fixed bottom-0 left-0 right-0 z-[71] mx-auto flex max-h-[85dvh] max-w-lg flex-col overflow-hidden rounded-t-3xl border border-bc-border bg-bc-elevated shadow-2xl safe-bottom"
+            className="fixed bottom-0 left-0 right-0 z-[71] mx-auto flex max-h-[85dvh] max-w-lg flex-col overflow-hidden rounded-t-3xl border border-bc-border bg-bc-elevated shadow-2xl safe-bottom touch-auto"
+            onClick={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
             onTouchMove={(e) => e.stopPropagation()}
           >
             <div className="flex shrink-0 items-center justify-between border-b border-bc-border px-4 py-3">

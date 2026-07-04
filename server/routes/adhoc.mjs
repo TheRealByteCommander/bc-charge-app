@@ -231,7 +231,9 @@ router.post('/start', adhocMutateLimiter, async (req, res) => {
     const { remoteStartId, transactionId } = await startAdhocTransaction(
       session.stationId,
       resolved.connector.evseId,
-      idToken
+      resolved.connector.connectorId,
+      idToken,
+      resolved
     );
 
     const updated = {

@@ -5,11 +5,10 @@ import {
   getTariffs,
   getTransaction,
   mapHasuraStations,
-  requestStartTransaction,
+  requestStartTransactionForStation,
   requestStopTransaction,
 } from '../api/citrineos';
 import { applyTariffCatalogToStations, buildTariffCatalog } from '../api/citrineos/tariffPricing';
-import { citrineosConfig } from '../config/citrineos';
 import { getStationDataSource, getStations, setStationsFromCitrineos } from '../data/stations';
 import { saveStationsOfflineCache } from '../utils/offlineCache';
 import type { ChargingSession, Station } from '../types';
@@ -72,11 +71,7 @@ export async function startCitrineosCharge(
   if (!ref) return { ok: false, error: 'Anschluss-Referenz ungültig' };
 
   const remoteStartId = Math.floor(Math.random() * 2_000_000_000);
-  const confirmations = await requestStartTransaction(station.id, {
-    evseId: ref.evseId,
-    remoteStartId,
-    idToken: { idToken, type: citrineosConfig.idTokenType },
-  });
+  const confirmations = await requestStartTransactionForStation(station, ref, idToken, remoteStartId);
 
   const first = confirmations[0];
   if (!first?.success) {
