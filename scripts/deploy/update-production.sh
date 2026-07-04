@@ -138,10 +138,14 @@ echo ""
 echo "── PM2 (BFF-API) ──"
 sudo -u "$APP_USER" pm2 status || true
 API_PORT="$(grep -E '^BC_SERVER_PORT=' "$APP_DIR/.env" 2>/dev/null | cut -d= -f2 || echo "3000")"
-if curl -sf "http://127.0.0.1:${API_PORT}/api/health" >/dev/null 2>&1; then
+if curl -sf "http://127.0.0.1:${API_PORT}/api/health" 2>/dev/null | grep -q 'bc-charge-api'; then
   echo -e "  API /api/health (:${API_PORT}):  ${GREEN}OK${NC}"
+elif curl -sf "http://127.0.0.1:${API_PORT}/api/health" >/dev/null 2>&1; then
+  echo -e "  API /api/health (:${API_PORT}):  ${YELLOW}antwortet, aber nicht bc-charge-api (Port-Konflikt?)${NC}"
+  echo -e "  → sudo $APP_DIR/scripts/deploy/fix-api-port.sh"
 else
   echo -e "  API /api/health (:${API_PORT}):  ${YELLOW}nicht erreichbar – pm2 logs prüfen${NC}"
+  echo -e "  → sudo $APP_DIR/scripts/deploy/fix-api-port.sh"
 fi
 
 # Frontend

@@ -101,7 +101,7 @@ sudo -u "$APP_USER" npm prune --omit=dev
 cat > "$APP_DIR/.env" << EOF
 # BC Charge - Produktions-Konfiguration
 NODE_ENV=production
-PORT=3000
+BC_SERVER_PORT=3001
 
 # Datenbank
 DATABASE_URL=postgresql://bccharge:${DB_PASSWORD}@localhost:5432/bccharge
@@ -141,7 +141,7 @@ module.exports = {
       cwd: '/opt/bc-charge',
       env: {
         NODE_ENV: 'production',
-        PORT: 3000
+        BC_SERVER_PORT: '3001',
       },
       instances: 'max',
       exec_mode: 'cluster',
@@ -214,9 +214,9 @@ server {
     gzip_types text/plain text/css application/json application/javascript text/xml application/xml;
     gzip_min_length 1000;
 
-    # API Proxy
+    # API Proxy (nicht :3000 – dort läuft ggf. Operator UI)
     location /api {
-        proxy_pass http://127.0.0.1:3000;
+        proxy_pass http://127.0.0.1:3001;
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -230,7 +230,7 @@ server {
 
     # Stripe Webhooks
     location /api/stripe/webhook {
-        proxy_pass http://127.0.0.1:3000;
+        proxy_pass http://127.0.0.1:3001;
         proxy_http_version 1.1;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;

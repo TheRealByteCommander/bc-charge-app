@@ -7,6 +7,7 @@ module.exports = {
       cwd: __dirname,
       env: {
         NODE_ENV: 'production',
+        BC_SERVER_PORT: '3001',
       },
       instances: 1,
       exec_mode: 'fork',
