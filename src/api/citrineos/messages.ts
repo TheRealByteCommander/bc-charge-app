@@ -1,6 +1,8 @@
 import { citrineosConfig } from '../../config/citrineos';
 import type { Station } from '../../types';
+import { buildOcpp16RemoteStartBody, normalizeIdToken } from '../../utils/ocpp16RemoteStart';
 import { citrineosFetch } from './client';
+import { parseConnectorRef } from './mappers';
 import { citrineosPaths } from './paths';
 import type {
   CitrineosMessageConfirmation,
@@ -54,7 +56,7 @@ export async function requestStartTransaction(
 /** OCPP 1.6 RemoteStartTransaction (go-e, H2, …). */
 export async function requestStartTransactionOcpp16(
   stationId: string,
-  body: { connectorId: number; idTag: string }
+  body: { connectorId: number; idTag: string; chargingProfile?: unknown }
 ): Promise<CitrineosMessageConfirmation[]> {
   const result = await citrineosFetch<unknown>(citrineosPaths.ocpp16.remoteStartTransaction, {
     method: 'POST',
@@ -71,13 +73,23 @@ export async function requestStartTransactionForStation(
   idToken: string,
   remoteStartId: number
 ): Promise<CitrineosMessageConfirmation[]> {
+  const normalizedToken = normalizeIdToken(idToken);
   const ocppVersion = station.hardwareFeatures?.ocppVersion ?? '2.0.1';
   if (ocppVersion === '1.6') {
     try {
-      return await requestStartTransactionOcpp16(station.id, {
-        connectorId: ref.connectorId,
-        idTag: idToken,
+      const connector = station.connectors.find((c) => {
+        const parsed = parseConnectorRef(c.id);
+        return parsed?.evseId === ref.evseId && parsed?.connectorId === ref.connectorId;
       });
+      return await requestStartTransactionOcpp16(
+        station.id,
+        buildOcpp16RemoteStartBody({
+          connectorId: ref.connectorId,
+          idTag: normalizedToken,
+          vendor: station.chargePointVendor,
+          powerKw: connector?.powerKw,
+        })
+      );
     } catch (e) {
       // Fallback: manche CitrineOS-Installationen exposen nur 2.0.1-Bridge
       console.warn('[BC Charge] OCPP-1.6-Start fehlgeschlagen, versuche 2.0.1:', e);
@@ -86,7 +98,7 @@ export async function requestStartTransactionForStation(
   return requestStartTransaction(station.id, {
     evseId: ref.evseId,
     remoteStartId,
-    idToken: { idToken, type: citrineosConfig.idTokenType },
+    idToken: { idToken: normalizedToken, type: citrineosConfig.idTokenType },
   });
 }
 

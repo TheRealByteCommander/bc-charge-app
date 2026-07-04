@@ -46,3 +46,11 @@ export function isConnectorActivelyCharging(rawStatus) {
     .replace(/[_\s-]/g, '');
   return normalized === 'charging';
 }
+
+export function isConnectorFinishing(rawStatus) {
+  const normalized = String(rawStatus ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[_\s-]/g, '');
+  return normalized === 'finishing';
+}

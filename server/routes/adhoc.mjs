@@ -15,7 +15,7 @@ import {
   startAdhocTransaction,
   stopAdhocTransaction,
 } from '../services/citrineosServer.mjs';
-import { isConnectorStartable } from '../utils/ocppStatus.mjs';
+import { isConnectorFinishing, isConnectorStartable } from '../utils/ocppStatus.mjs';
 import { findAdhocSession, insertAdhocSession, updateAdhocSession } from '../db.mjs';
 
 const router = Router();
@@ -222,6 +222,12 @@ router.post('/start', adhocMutateLimiter, async (req, res) => {
     }
 
     const resolved = await resolveAdhocConnector(session.stationId, session.connectorId);
+    if (isConnectorFinishing(resolved.connector.ocppRawStatus)) {
+      res.status(409).json({
+        error: 'Vorheriger Ladevorgang noch aktiv. Bitte Stecker kurz ab- und wieder anstecken.',
+      });
+      return;
+    }
     if (!isConnectorStartable(resolved.connector.status, resolved.connector.ocppRawStatus)) {
       res.status(409).json({ error: 'Anschluss ist derzeit nicht verfügbar' });
       return;

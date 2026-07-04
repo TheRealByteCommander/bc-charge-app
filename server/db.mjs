@@ -681,3 +681,23 @@ export async function markFulfillmentUsed(userId, fulfillmentId, sessionId) {
     .run(usedAt, sessionId ?? null, userId, fulfillmentId);
   return getFulfillmentById(userId, fulfillmentId);
 }
+
+export async function listUserMembershipIds() {
+  if (isPostgres()) {
+    const { rows } = await pgPool.query(
+      `SELECT id, profile_json->>'membershipId' AS membership_id
+       FROM users
+       WHERE profile_json->>'membershipId' IS NOT NULL`
+    );
+    return rows
+      .map((row) => ({ userId: row.id, membershipId: row.membership_id }))
+      .filter((row) => row.membershipId);
+  }
+  const rows = sqliteDb.prepare('SELECT id, profile_json FROM users').all();
+  return rows
+    .map((row) => {
+      const profile = parseJson(row.profile_json);
+      return { userId: row.id, membershipId: profile?.membershipId };
+    })
+    .filter((row) => row.membershipId);
+}

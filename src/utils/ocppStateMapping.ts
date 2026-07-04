@@ -103,6 +103,15 @@ export function isConnectorActivelyCharging(rawStatus?: string | null): boolean 
   return normalized === 'charging';
 }
 
+/** Vorheriger Ladevorgang beendet – Stecker muss neu angesteckt werden (go-e „Finishing“). */
+export function isConnectorFinishing(rawStatus?: string | null): boolean {
+  const normalized = String(rawStatus ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[_\s-]/g, '');
+  return normalized === 'finishing';
+}
+
 /**
  * Liefert detaillierte Lade-Status-Informationen für die UI
  */

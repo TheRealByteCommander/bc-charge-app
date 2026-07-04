@@ -63,7 +63,7 @@ import {
   saveSession,
   updateSession,
 } from '../api/backend/sessions';
-import { isConnectorStartable } from '../utils/ocppStateMapping';
+import { isConnectorFinishing, isConnectorStartable } from '../utils/ocppStateMapping';
 import { isBackendMode } from '../services/backendMode';
 import {
   getCurrentUserId,
@@ -804,6 +804,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!station) return { ok: false, error: 'Station nicht gefunden.' };
     const connector = station.connectors.find((c) => c.id === connectorId);
     if (!connector) return { ok: false, error: 'Anschluss nicht gefunden.' };
+    if (isConnectorFinishing(connector.ocppRawStatus)) {
+      return {
+        ok: false,
+        error: 'Vorheriger Ladevorgang noch aktiv. Bitte Stecker kurz ab- und wieder anstecken.',
+      };
+    }
     if (!isConnectorStartable(connector.status, connector.ocppRawStatus)) {
       return { ok: false, error: 'Dieser Anschluss ist derzeit nicht verfügbar.' };
     }

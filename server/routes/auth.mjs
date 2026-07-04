@@ -12,8 +12,23 @@ import {
 import { hashPassword, upgradePasswordHashIfLegacy, verifyPassword } from '../auth/password.mjs';
 import { clearSessionCookie, createSessionToken, setSessionCookie } from '../auth/session.mjs';
 import { requireAuth } from '../middleware/auth.mjs';
+import { ensureCitrineosAuthorization } from '../services/citrineosAuth.mjs';
 
 const router = Router();
+
+async function syncCitrineosAuthForUser(row) {
+  try {
+    const profile = rowToProfile(row);
+    if (profile.membershipId) {
+      await ensureCitrineosAuthorization(profile.membershipId);
+    }
+  } catch (e) {
+    console.warn(
+      '[BC] CitrineOS-Authorization sync fehlgeschlagen:',
+      e instanceof Error ? e.message : e
+    );
+  }
+}
 
 function generateId(prefix) {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
@@ -103,7 +118,9 @@ router.post('/register', async (req, res) => {
 
   const token = await createSessionToken(id);
   setSessionCookie(res, token);
-  res.status(201).json({ user: rowToProfile(await findUserById(id)) });
+  const created = await findUserById(id);
+  void syncCitrineosAuthForUser(created);
+  res.status(201).json({ user: rowToProfile(created) });
 });
 
 router.post('/login', async (req, res) => {
@@ -126,7 +143,9 @@ router.post('/login', async (req, res) => {
 
   const token = await createSessionToken(row.id);
   setSessionCookie(res, token);
-  res.json({ user: rowToProfile(await findUserById(row.id)) });
+  const fresh = await findUserById(row.id);
+  void syncCitrineosAuthForUser(fresh);
+  res.json({ user: rowToProfile(fresh) });
 });
 
 router.post('/logout', (_req, res) => {

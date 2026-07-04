@@ -8,11 +8,14 @@ import {
   requestStartTransactionForStation,
   requestStopTransaction,
 } from '../api/citrineos';
+import { ensureCitrineosAuthorization } from '../api/backend/citrineos';
 import { applyTariffCatalogToStations, buildTariffCatalog } from '../api/citrineos/tariffPricing';
 import { getStationDataSource, getStations, setStationsFromCitrineos } from '../data/stations';
 import { saveStationsOfflineCache } from '../utils/offlineCache';
+import { isBackendMode } from './backendMode';
 import type { ChargingSession, Station } from '../types';
 import { parseConnectorRef } from '../api/citrineos/mappers';
+import { normalizeIdToken } from '../utils/ocpp16RemoteStart';
 
 export async function syncStationsFromCitrineos(): Promise<{
   ok: boolean;
@@ -70,8 +73,25 @@ export async function startCitrineosCharge(
   const ref = resolveEvseConnector(station, connectorAppId);
   if (!ref) return { ok: false, error: 'Anschluss-Referenz ungültig' };
 
+  const token = normalizeIdToken(idToken);
+  if (!token) return { ok: false, error: 'Ladeberechtigung (membershipId) fehlt' };
+
+  if (isBackendMode()) {
+    try {
+      const auth = await ensureCitrineosAuthorization(token);
+      if (!auth.ok && !auth.skipped) {
+        return { ok: false, error: 'Ladeberechtigung konnte nicht in CitrineOS hinterlegt werden' };
+      }
+    } catch (e) {
+      return {
+        ok: false,
+        error: e instanceof Error ? e.message : 'Ladeberechtigung fehlgeschlagen',
+      };
+    }
+  }
+
   const remoteStartId = Math.floor(Math.random() * 2_000_000_000);
-  const confirmations = await requestStartTransactionForStation(station, ref, idToken, remoteStartId);
+  const confirmations = await requestStartTransactionForStation(station, ref, token, remoteStartId);
 
   const first = confirmations[0];
   if (!first?.success) {

@@ -1,6 +1,8 @@
 /** Serverseitige CitrineOS/Hasura-Hilfen für Ad-Hoc-Laden (ohne Frontend-Abhängigkeit). */
 
 import { mapConnectorStatus } from '../utils/ocppStatus.mjs';
+import { buildOcpp16RemoteStartBody } from '../utils/ocpp16RemoteStart.mjs';
+import { ensureCitrineosAuthorization } from './citrineosAuth.mjs';
 
 function citrineosApiUrl() {
   return (process.env.CITRINEOS_API_URL ?? 'http://localhost:8080').replace(/\/$/, '');
@@ -308,16 +310,26 @@ async function citrineosMessage(path, stationId, body, timeoutMs = 12_000) {
 }
 
 export async function startAdhocTransaction(stationId, evseId, connectorId, idToken, stationRow) {
+  await ensureCitrineosAuthorization(idToken);
+
   const remoteStartId = Math.floor(Math.random() * 2_000_000_000);
   const useOcpp16 = stationRow ? isOcpp16Station(stationRow) : false;
 
   let confirmations;
   if (useOcpp16) {
     try {
+      const maxPowerWatts = stationRow?.connector?.powerKw
+        ? stationRow.connector.powerKw * 1000
+        : undefined;
       confirmations = await citrineosMessage(
         '/ocpp/1.6/evdriver/remoteStartTransaction',
         stationId,
-        { connectorId, idTag: idToken },
+        buildOcpp16RemoteStartBody({
+          connectorId,
+          idTag: idToken,
+          vendor: stationRow?.chargePointVendor,
+          maxPowerWatts,
+        }),
         15_000
       );
     } catch {

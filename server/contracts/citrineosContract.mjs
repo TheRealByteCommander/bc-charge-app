@@ -83,6 +83,7 @@ export const citrineosIntegrationContract = {
     { method: 'GET', path: '/api/citrineos/tariffs' },
     { method: 'POST', path: '/api/citrineos/hasura' },
     { method: 'POST', path: '/api/citrineos/proxy' },
+    { method: 'POST', path: '/api/citrineos/ensure-authorization' },
   ],
   connectorIdFormat: 'evse-{evseId}-conn-{connectorId}',
   deploymentRepo: 'https://github.com/TheRealByteCommander/bc-citrineos',
