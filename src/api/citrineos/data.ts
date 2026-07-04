@@ -1,6 +1,7 @@
 import { apiConfig } from '../../config/api';
 import { citrineosConfig } from '../../config/citrineos';
 import { isBackendMode } from '../../services/backendMode';
+import { fetchWithTimeout } from '../../utils/fetchWithTimeout';
 import { citrineosFetch } from './client';
 import { citrineosPaths } from './paths';
 import type { CitrineosTariff, CitrineosTransaction } from './types';
@@ -24,7 +25,7 @@ export async function getTransaction(
 /** Tarife für Preisanzeige (Modul transactions). */
 export async function getTariffs(): Promise<CitrineosTariff[]> {
   if (isBackendMode()) {
-    const res = await fetch(`${apiConfig.baseUrl}/api/citrineos/tariffs`, { credentials: 'include' });
+    const res = await fetchWithTimeout(`${apiConfig.baseUrl}/api/citrineos/tariffs`, { credentials: 'include' }, 10_000);
     if (!res.ok) {
       const err = (await res.json().catch(() => ({}))) as { error?: string };
       throw new Error(err.error ?? `Tarife ${res.status}`);

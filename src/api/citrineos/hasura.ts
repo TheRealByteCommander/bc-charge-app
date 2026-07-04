@@ -1,6 +1,7 @@
 import { apiConfig } from '../../config/api';
 import { citrineosConfig } from '../../config/citrineos';
 import { isBackendMode } from '../../services/backendMode';
+import { fetchWithTimeout } from '../../utils/fetchWithTimeout';
 import type { CitrineosTransaction, HasuraChargingStationRow } from './types';
 
 const STATIONS_QUERY = `
@@ -96,12 +97,16 @@ async function hasuraRequest<T>(query: string, variables: Record<string, unknown
     headers['x-hasura-admin-secret'] = citrineosConfig.hasuraAdminSecret;
   }
 
-  const res = await fetch(url, {
-    method: 'POST',
-    credentials: isBackendMode() ? 'include' : 'same-origin',
-    headers,
-    body: JSON.stringify({ query, variables }),
-  });
+  const res = await fetchWithTimeout(
+    url,
+    {
+      method: 'POST',
+      credentials: isBackendMode() ? 'include' : 'same-origin',
+      headers,
+      body: JSON.stringify({ query, variables }),
+    },
+    12_000
+  );
 
   const json = (await res.json()) as { data?: T; errors?: Array<{ message: string }> };
   if (!res.ok || json.errors?.length) {
