@@ -68,7 +68,19 @@ sudo -u "$APP_USER" npm prune --omit=dev
 fix_app_ownership
 
 log "BFF-API (PM2) neu starten – legt DB-Tabellen an (z. B. reward_fulfillments)…"
-sudo -u "$APP_USER" pm2 restart bc-charge-api 2>/dev/null || sudo -u "$APP_USER" pm2 restart all
+mkdir -p /var/log/bc-charge
+chown "$APP_USER:$APP_USER" /var/log/bc-charge 2>/dev/null || true
+
+if sudo -u "$APP_USER" pm2 describe bc-charge-api &>/dev/null; then
+  sudo -u "$APP_USER" pm2 restart bc-charge-api --update-env
+else
+  if [[ -f "$APP_DIR/ecosystem.config.cjs" ]]; then
+    warn "PM2 bc-charge-api nicht gefunden – starte neu…"
+    sudo -u "$APP_USER" pm2 start "$APP_DIR/ecosystem.config.cjs"
+  else
+    err "ecosystem.config.cjs fehlt in $APP_DIR – bitte setup-server.sh ausführen oder Datei anlegen."
+  fi
+fi
 sudo -u "$APP_USER" pm2 save
 
 #-------------------------------------------------------------------------------
