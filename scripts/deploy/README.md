@@ -221,7 +221,7 @@ sudo -u bccharge pm2 save
 
 # Status & API-Health
 sudo -u bccharge pm2 status
-curl -s http://127.0.0.1:3000/api/health   # Port ggf. aus .env: BC_SERVER_PORT
+curl -s http://127.0.0.1:3001/api/health   # BC-Charge-API (Operator UI belegt 3000)
 
 # ── 2. CitrineOS (Core, Hasura, DB) ─────────────────────────────────
 docker compose -f /opt/citrineos/docker-compose.yml pull
@@ -251,15 +251,34 @@ sudo -u bccharge pm2 restart bc-charge-api
 
 | Dienst | Port | Erreichbarkeit |
 |--------|------|----------------|
-| BC Charge BFF-API | `3000` (`.env`: `BC_SERVER_PORT`) | Nginx `/api` → `127.0.0.1:3000` |
-| Hasura | `8080` | nur localhost |
-| CitrineOS Core | `8081` | nur localhost |
-| Operator UI | `3000` | Nginx `operator.main.bc-charge.com` |
-| OCPP | `9000` | öffentlich (Ladesäulen) |
+| BC Charge BFF-API | `3001` (`.env`: `BC_SERVER_PORT`) | Nginx `/api` → `127.0.0.1:3001` |
+| Hasura | `8090` | nur localhost |
+| CitrineOS OCPP | `8081` | öffentlich (Ladesäulen WebSocket) |
+| Operator UI | `3000` | Docker `127.0.0.1:3000`, Nginx `operator.main.bc-charge.com` |
+| MinIO (S3) | `9000` | **kein OCPP** – nur Objektspeicher |
 
 **Hinweis:** `pm2 restart all` startet nur die BC-Charge-API neu. CitrineOS und Operator UI laufen in **Docker** bzw. eigenem Container – dafür die Schritte 2 und 3 oben.
 
 ## Troubleshooting
+
+### PM2 `bc-charge-api` → `errored`, aber `curl :3000/api/health` antwortet
+
+Die CitrineOS Operator UI belegt **Port 3000**. Die BC-Charge-API muss auf **3001** laufen:
+
+```bash
+cd /opt/bc-charge
+sudo git pull origin master
+sudo chmod +x scripts/deploy/fix-api-port.sh
+sudo ./scripts/deploy/fix-api-port.sh
+```
+
+Prüfen:
+
+```bash
+sudo -u bccharge pm2 status
+curl -s http://127.0.0.1:3001/api/health   # → {"ok":true,"service":"bc-charge-api"}
+curl -s http://127.0.0.1:3000/api/health   # → Operator UI ({"status":"ok"})
+```
 
 ### App startet nicht
 ```bash
