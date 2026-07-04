@@ -57,11 +57,14 @@ else
   err "Kein Git-Repository in $APP_DIR"
 fi
 
-log "Abhängigkeiten installieren…"
-sudo -u "$APP_USER" npm ci --omit=dev
+log "Abhängigkeiten installieren (inkl. Build-Tools)…"
+sudo -u "$APP_USER" npm ci
 
 log "Frontend & TypeScript bauen…"
 sudo -u "$APP_USER" npm run build
+
+log "Dev-Abhängigkeiten entfernen (nur Runtime für PM2 behalten)…"
+sudo -u "$APP_USER" npm prune --omit=dev
 fix_app_ownership
 
 log "BFF-API (PM2) neu starten – legt DB-Tabellen an (z. B. reward_fulfillments)…"

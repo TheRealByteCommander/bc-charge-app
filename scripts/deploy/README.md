@@ -211,8 +211,9 @@ sudo RUN_OPERATOR_FIX=no ./scripts/deploy/update-production.sh
 # ── 1. BC Charge App + BFF-API ──────────────────────────────────────
 cd /opt/bc-charge
 sudo -u bccharge git pull origin master
-sudo -u bccharge npm ci --omit=dev
+sudo -u bccharge npm ci
 sudo -u bccharge npm run build
+sudo -u bccharge npm prune --omit=dev
 
 # BFF neu starten (wichtig: DB-Migrationen, Fulfillment-API, Stripe-Routen)
 sudo -u bccharge pm2 restart bc-charge-api
@@ -240,8 +241,9 @@ sudo nginx -t && sudo systemctl reload nginx
 ```bash
 cd /opt/bc-charge
 sudo -u bccharge git pull origin master
-sudo -u bccharge npm ci --omit=dev
+sudo -u bccharge npm ci
 sudo -u bccharge npm run build
+sudo -u bccharge npm prune --omit=dev
 sudo -u bccharge pm2 restart bc-charge-api
 ```
 
