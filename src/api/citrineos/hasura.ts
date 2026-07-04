@@ -2,6 +2,7 @@ import { apiConfig } from '../../config/api';
 import { citrineosConfig } from '../../config/citrineos';
 import { isBackendMode } from '../../services/backendMode';
 import { fetchWithTimeout } from '../../utils/fetchWithTimeout';
+import { resolveCitrineosStationDbId } from './stationId';
 import type { CitrineosTransaction, HasuraChargingStationRow } from './types';
 
 const STATIONS_QUERY = `
@@ -46,7 +47,7 @@ const STATIONS_QUERY = `
 `;
 
 const ACTIVE_TX_QUERY = `
-  query BcChargeActiveTransaction($stationId: String!, $tenantId: Int!) {
+  query BcChargeActiveTransaction($stationId: Int!, $tenantId: Int!) {
     Transactions(
       where: {
         stationId: { _eq: $stationId }
@@ -69,7 +70,7 @@ const ACTIVE_TX_QUERY = `
 `;
 
 const TX_BY_REMOTE_START_QUERY = `
-  query BcChargeTxByRemoteStart($stationId: String!, $tenantId: Int!, $remoteStartId: Int!) {
+  query BcChargeTxByRemoteStart($stationId: Int!, $tenantId: Int!, $remoteStartId: Int!) {
     Transactions(
       where: {
         stationId: { _eq: $stationId }
@@ -123,21 +124,21 @@ export async function fetchChargingStationsFromHasura(): Promise<HasuraChargingS
 }
 
 export async function fetchActiveTransaction(
-  stationId: string
+  stationAppId: string
 ): Promise<CitrineosTransaction | undefined> {
   const data = await hasuraRequest<{ Transactions: CitrineosTransaction[] }>(ACTIVE_TX_QUERY, {
-    stationId,
+    stationId: resolveCitrineosStationDbId(stationAppId),
     tenantId: citrineosConfig.tenantId,
   });
   return data.Transactions?.[0];
 }
 
 export async function fetchTransactionByRemoteStartId(
-  stationId: string,
+  stationAppId: string,
   remoteStartId: number
 ): Promise<CitrineosTransaction | undefined> {
   const data = await hasuraRequest<{ Transactions: CitrineosTransaction[] }>(TX_BY_REMOTE_START_QUERY, {
-    stationId,
+    stationId: resolveCitrineosStationDbId(stationAppId),
     tenantId: citrineosConfig.tenantId,
     remoteStartId,
   });

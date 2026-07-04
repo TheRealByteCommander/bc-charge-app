@@ -178,6 +178,7 @@ export function mapHasuraStationToApp(
 
   return {
     id: stationId,
+    citrineosDatabaseId: row.id,
     evseCode: stationId.toUpperCase(),
     name,
     address: loc?.address ?? '—',
