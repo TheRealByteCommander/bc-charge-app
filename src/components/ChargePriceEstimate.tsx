@@ -11,6 +11,7 @@ export function ChargePriceEstimate({
   targetSoc: controlledTarget,
   onSocChange,
   hardwareFeatures,
+  compact = false,
 }: {
   connector: Connector;
   vehicle?: Vehicle;
@@ -18,6 +19,7 @@ export function ChargePriceEstimate({
   targetSoc?: number;
   onSocChange?: (start: number, target: number) => void;
   hardwareFeatures?: HardwareFeatures;
+  compact?: boolean;
 }) {
   const [internalStart, setInternalStart] = useState(30);
   const [internalTarget, setInternalTarget] = useState(80);
@@ -40,10 +42,61 @@ export function ChargePriceEstimate({
 
   if (!est.priceKnown) {
     return (
-      <div className="mt-4 rounded-2xl border border-bc-border bg-bc-elevated p-4">
+      <div className={compact ? '' : 'mt-4 rounded-2xl border border-bc-border bg-bc-elevated p-4'}>
         <p className="flex items-center gap-2 text-sm text-bc-muted">
           <Info className="h-4 w-4 shrink-0" />
           Aktueller Tarif für diesen Anschluss nicht verfügbar.
+        </p>
+      </div>
+    );
+  }
+
+  const sliders = (
+    <div className="grid grid-cols-2 gap-3">
+      <div>
+        <label className="text-xs text-bc-muted">Start-SoC %</label>
+        <input
+          type="range"
+          min={5}
+          max={90}
+          step={5}
+          value={startSoc}
+          onChange={(e) => {
+            const v = Number(e.target.value);
+            setStartSoc(v);
+            if (v >= targetSoc) setTargetSoc(Math.min(100, v + 10));
+          }}
+          className="mt-1 w-full accent-bc-accent"
+        />
+        <p className="text-right text-sm font-medium text-bc-accent">{startSoc}%</p>
+      </div>
+      <div>
+        <label className="text-xs text-bc-muted">Ziel-SoC %</label>
+        <input
+          type="range"
+          min={20}
+          max={100}
+          step={5}
+          value={targetSoc}
+          onChange={(e) => {
+            const v = Number(e.target.value);
+            setTargetSoc(v);
+            if (v <= startSoc) setStartSoc(Math.max(5, v - 10));
+          }}
+          className="mt-1 w-full accent-bc-accent"
+        />
+        <p className="text-right text-sm font-medium text-bc-accent">{targetSoc}%</p>
+      </div>
+    </div>
+  );
+
+  if (compact) {
+    return (
+      <div>
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-bc-muted">Ladeziel</p>
+        {sliders}
+        <p className="mt-2 text-xs text-bc-muted">
+          ca. {est.kwh} kWh · ~{est.estMinutes} Min.
         </p>
       </div>
     );
@@ -66,42 +119,7 @@ export function ChargePriceEstimate({
             {vehicle ? ` · ${vehicle.nickname}` : ''}
           </p>
 
-          <div className="mt-4 grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs text-bc-muted">Start-SoC %</label>
-              <input
-                type="range"
-                min={5}
-                max={90}
-                step={5}
-                value={startSoc}
-                onChange={(e) => {
-                  const v = Number(e.target.value);
-                  setStartSoc(v);
-                  if (v >= targetSoc) setTargetSoc(Math.min(100, v + 10));
-                }}
-                className="mt-1 w-full accent-bc-accent"
-              />
-              <p className="text-right text-sm font-medium text-bc-accent">{startSoc}%</p>
-            </div>
-            <div>
-              <label className="text-xs text-bc-muted">Ziel-SoC %</label>
-              <input
-                type="range"
-                min={20}
-                max={100}
-                step={5}
-                value={targetSoc}
-                onChange={(e) => {
-                  const v = Number(e.target.value);
-                  setTargetSoc(v);
-                  if (v <= startSoc) setStartSoc(Math.max(5, v - 10));
-                }}
-                className="mt-1 w-full accent-bc-accent"
-              />
-              <p className="text-right text-sm font-medium text-bc-accent">{targetSoc}%</p>
-            </div>
-          </div>
+          <div className="mt-4">{sliders}</div>
 
           <p className="mt-3 flex items-start gap-2 text-xs text-bc-muted">
             <Shield className="mt-0.5 h-3.5 w-3.5 shrink-0 text-bc-accent" />

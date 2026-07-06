@@ -1,8 +1,9 @@
-import { Check, Gauge, Scale, Shield } from 'lucide-react';
+import { Check } from 'lucide-react';
 import { BottomSheet } from './BottomSheet';
+import { ChargePriceEstimate } from './ChargePriceEstimate';
 import { ActiveChargingPerkSelect } from './RewardFulfillmentPanel';
 import { useAppStore } from '../store/appStore';
-import type { Connector, Station, Vehicle } from '../types';
+import type { Connector, Station, UserProfile, Vehicle } from '../types';
 import { estimateChargeSession } from '../utils/chargeEstimate';
 import { formatConnectorPriceSummary } from '../utils/pricing';
 import { formatCurrency } from '../utils/format';
@@ -20,9 +21,15 @@ export function ChargeStartConfirmSheet({
   onConfirm,
   station,
   connector,
+  user,
   vehicle,
+  selectedVehicleId,
+  selectedPaymentId,
+  onVehicleChange,
+  onPaymentChange,
   startSoc,
   targetSoc,
+  onSocChange,
   confirming,
   error,
 }: {
@@ -31,9 +38,15 @@ export function ChargeStartConfirmSheet({
   onConfirm: () => void;
   station: Station;
   connector: Connector;
+  user: UserProfile;
   vehicle?: Vehicle;
+  selectedVehicleId: string;
+  selectedPaymentId: string;
+  onVehicleChange: (id: string) => void;
+  onPaymentChange: (id: string) => void;
   startSoc: number;
   targetSoc: number;
+  onSocChange: (start: number, target: number) => void;
   confirming?: boolean;
   error?: string;
 }) {
@@ -63,25 +76,22 @@ export function ChargeStartConfirmSheet({
   );
 
   return (
-    <BottomSheet open={open} onClose={onClose} title="Preis bestätigen" footer={actionButtons}>
+    <BottomSheet open={open} onClose={onClose} title="Laden starten" footer={actionButtons}>
       <div className="space-y-4">
         {error ? (
           <p className="rounded-xl border border-bc-danger/40 bg-bc-danger/10 px-3 py-2 text-sm text-bc-danger" role="alert">
             {error}
           </p>
         ) : null}
-        <p className="text-sm text-bc-muted">
-          Bitte prüfen Sie den Tarif für <span className="font-medium text-bc-text">{station.name}</span> vor
-          dem Start.
-        </p>
 
         <div className="rounded-xl border border-bc-border bg-bc-surface p-4 text-sm">
+          <p className="font-medium text-bc-text">{station.name}</p>
           {formatEvseDisplay(connector) && (
-            <div className="mb-3 flex items-center gap-2 border-b border-bc-border pb-3">
-              <span className="font-semibold text-bc-accent">{formatEvseDisplay(connector)}</span>
-            </div>
+            <p className="mt-1 text-xs font-semibold uppercase tracking-wider text-bc-accent">
+              {formatEvseDisplay(connector)}
+            </p>
           )}
-          <div className="flex justify-between gap-2">
+          <div className="mt-3 flex justify-between gap-2">
             <span className="text-bc-muted">Anschluss</span>
             <span className="font-medium">
               {connector.type} · {connector.powerKw} kW
@@ -92,20 +102,62 @@ export function ChargeStartConfirmSheet({
             <span className="text-right">{formatConnectorPriceSummary(connector)}</span>
           </div>
           {est.priceKnown && (
-            <>
-              <div className="mt-2 flex justify-between gap-2">
-                <span className="text-bc-muted">Schätzung ({startSoc}→{targetSoc}%)</span>
-                <span>{est.kwh} kWh</span>
-              </div>
-              <div className="mt-3 flex justify-between gap-2 border-t border-bc-border pt-3">
-                <span className="font-medium">Voraussichtlich ca.</span>
-                <span className="font-display text-lg font-bold text-bc-accent">
-                  {formatCurrency(est.totalEur)}
-                </span>
-              </div>
-            </>
+            <div className="mt-3 flex justify-between gap-2 border-t border-bc-border pt-3">
+              <span className="font-medium">Voraussichtlich ca.</span>
+              <span className="font-display text-lg font-bold text-bc-accent">
+                {formatCurrency(est.totalEur)}
+              </span>
+            </div>
           )}
         </div>
+
+        {user.vehicles.length > 0 && (
+          <div>
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-bc-muted">
+              Fahrzeug
+            </label>
+            <select
+              className="input-field"
+              value={selectedVehicleId}
+              onChange={(e) => onVehicleChange(e.target.value)}
+            >
+              {user.vehicles.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.nickname} – {v.brand} {v.model}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {user.paymentMethods.length > 0 && (
+          <div>
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-bc-muted">
+              Zahlung
+            </label>
+            <select
+              className="input-field"
+              value={selectedPaymentId}
+              onChange={(e) => onPaymentChange(e.target.value)}
+            >
+              {user.paymentMethods.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.label} {p.last4 ? `•••• ${p.last4}` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        <ChargePriceEstimate
+          connector={connector}
+          vehicle={vehicle}
+          startSoc={startSoc}
+          targetSoc={targetSoc}
+          onSocChange={onSocChange}
+          hardwareFeatures={station.hardwareFeatures}
+          compact
+        />
 
         <ActiveChargingPerkSelect
           fulfillments={rewardFulfillments}
@@ -113,44 +165,8 @@ export function ChargeStartConfirmSheet({
           onChange={setSelectedChargingFulfillment}
         />
 
-        <div className="flex items-start gap-3 rounded-xl border border-bc-accent/25 bg-bc-accent/5 p-3 text-sm">
-          <Shield className="mt-0.5 h-4 w-4 shrink-0 text-bc-accent" />
-          <div>
-            <p className="font-medium text-bc-text">Keine Blockiergebühr</p>
-            <p className="mt-1 text-bc-muted">
-              BC Charge erhebt keine Blockier- oder Standgebühren nach dem Laden. Sie zahlen nur für
-              verbrauchte kWh.
-            </p>
-          </div>
-        </div>
-
-        {station.hardwareFeatures?.midCertifiedMeters && (
-          <div className="flex items-start gap-3 rounded-xl border border-bc-blue/25 bg-bc-blue/5 p-3 text-sm">
-            <Scale className="mt-0.5 h-4 w-4 shrink-0 text-bc-blue" />
-            <div>
-              <p className="font-medium text-bc-text">Eichrecht-konforme Messung</p>
-              <p className="mt-1 text-bc-muted">
-                Diese Station nutzt MID-zertifizierte Zähler. Die Abrechnung erfolgt nach deutschem Eichrecht.
-              </p>
-            </div>
-          </div>
-        )}
-
-        {station.hardwareFeatures?.dynamicLoadManagement && (
-          <div className="flex items-start gap-3 rounded-xl border border-bc-border bg-bc-elevated p-3 text-sm">
-            <Gauge className="mt-0.5 h-4 w-4 shrink-0 text-bc-muted" />
-            <div>
-              <p className="font-medium text-bc-text">Dynamisches Lastmanagement</p>
-              <p className="mt-1 text-bc-muted">
-                Die Ladeleistung kann je nach Netzauslastung automatisch angepasst werden.
-              </p>
-            </div>
-          </div>
-        )}
-
         <p className="text-xs text-bc-muted">
-          Die Endabrechnung richtet sich nach der tatsächlich geladenen Energie. Sie erhalten sofort nach dem
-          Laden eine Rechnung per E-Mail.
+          Die Endabrechnung richtet sich nach der tatsächlich geladenen Energie.
         </p>
       </div>
     </BottomSheet>

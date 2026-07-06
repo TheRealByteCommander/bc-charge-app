@@ -1,26 +1,14 @@
-import {
-  Accessibility,
-  ArrowLeft,
-  Clock,
-  Gauge,
-  Heart,
-  Leaf,
-  MapPin,
-  Navigation,
-  Scale,
-  Star,
-  Zap,
-} from 'lucide-react';
+import { ArrowLeft, Flag, Heart, Info, Zap } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { ChargingSetupChecklist } from '../components/ChargingSetupChecklist';
-import { ChargePriceEstimate } from '../components/ChargePriceEstimate';
 import { ChargeStartConfirmSheet } from '../components/ChargeStartConfirmSheet';
-import { CommunityReportForm } from '../components/CommunityReportForm';
+import { ChargingSetupChecklist } from '../components/ChargingSetupChecklist';
 import { ConnectorLedStatus } from '../components/ConnectorLedStatus';
 import { ConnectorPrice } from '../components/ConnectorPrice';
 import { GuestBanner } from '../components/GuestBanner';
-import { StationTrustBadge } from '../components/StationTrustBadge';
+import { StationInfoSheet } from '../components/sheets/StationInfoSheet';
+import { StationReportSheet } from '../components/sheets/StationReportSheet';
+import { MenuRow, MenuSection } from '../components/ui/MenuList';
 import { getAvailableCount, getStationById } from '../data/stations';
 import { computePlugScore } from '../services/community';
 import { useAppStore } from '../store/appStore';
@@ -43,17 +31,8 @@ const statusColor: Record<string, string> = {
   reserved: 'text-bc-blue',
 };
 
-/** Prüft ob Station Multi-Connector-Support hat (z.B. H2 mit 2 Ladepunkten) */
-function isMultiConnectorStation(station: ReturnType<typeof getStationById>): boolean {
-  if (!station) return false;
-  return station.connectors.length > 1 || station.hardwareFeatures?.multiConnector === true;
-}
-
-/** Formatiert Ladepunkt-Anzeige - nutzt connectorNumber für die Nummerierung */
 function formatEvseLabel(connector: { evseNumber?: number; connectorNumber?: number }, index: number): string {
-  if (connector.connectorNumber != null) {
-    return `Ladepunkt ${connector.connectorNumber}`;
-  }
+  if (connector.connectorNumber != null) return `Ladepunkt ${connector.connectorNumber}`;
   return `Ladepunkt ${index + 1}`;
 }
 
@@ -71,9 +50,7 @@ export function StationDetailPage() {
   const stationDataSource = useAppStore((s) => s.stationDataSource);
   const citrineosConnected = useAppStore((s) => s.citrineosConnected);
   const navigate = useNavigate();
-  const [selectedConnector, setSelectedConnector] = useState<string | null>(
-    searchParams.get('connector')
-  );
+  const [selectedConnector, setSelectedConnector] = useState<string | null>(searchParams.get('connector'));
   const [selectedVehicle, setSelectedVehicle] = useState(user?.vehicles[0]?.id ?? '');
   const [selectedPayment, setSelectedPayment] = useState(
     user?.paymentMethods.find((p) => p.isDefault)?.id ?? user?.paymentMethods[0]?.id ?? ''
@@ -81,6 +58,8 @@ export function StationDetailPage() {
   const [error, setError] = useState('');
   const [starting, setStarting] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [showInfo, setShowInfo] = useState(false);
+  const [showReport, setShowReport] = useState(false);
   const [startSoc, setStartSoc] = useState(30);
   const [targetSoc, setTargetSoc] = useState(80);
 
@@ -94,9 +73,7 @@ export function StationDetailPage() {
   useEffect(() => {
     if (!station || selectedConnector) return;
     const startable = station.connectors.filter((c) => isConnectorStartable(c.status, c.ocppRawStatus));
-    if (startable.length === 1) {
-      setSelectedConnector(startable[0].id);
-    }
+    if (startable.length === 1) setSelectedConnector(startable[0].id);
   }, [station, selectedConnector]);
 
   if (!station) {
@@ -122,6 +99,7 @@ export function StationDetailPage() {
   const selectedVehicleData = user?.vehicles.find((v) => v.id === selectedVehicle);
   const chargingHere = activeSession?.stationId === station.id;
   const chargingElsewhere = Boolean(activeSession && activeSession.stationId !== station.id);
+  const setupIncomplete = Boolean(user && (user.vehicles.length === 0 || user.paymentMethods.length === 0));
 
   const beginCharge = async () => {
     if (!user) {
@@ -137,26 +115,8 @@ export function StationDetailPage() {
         setToast(msg);
         return;
       }
-      if (!selectedVehicle && user.vehicles.length) {
-        const msg = 'Bitte wählen Sie ein Fahrzeug.';
-        setError(msg);
-        setToast(msg);
-        return;
-      }
-      if (!selectedPayment && user.paymentMethods.length) {
-        const msg = 'Bitte wählen Sie eine Zahlungsmethode.';
-        setError(msg);
-        setToast(msg);
-        return;
-      }
-      if (!user.vehicles.length) {
-        const msg = 'Bitte legen Sie zuerst ein Fahrzeug an (siehe Checkliste oben).';
-        setError(msg);
-        setToast(msg);
-        return;
-      }
-      if (!user.paymentMethods.length) {
-        const msg = 'Bitte hinterlegen Sie eine Zahlungsmethode (siehe Checkliste oben).';
+      if (!user.vehicles.length || !user.paymentMethods.length) {
+        const msg = 'Bitte vervollständigen Sie Fahrzeug und Zahlung in Ihrem Profil.';
         setError(msg);
         setToast(msg);
         return;
@@ -191,7 +151,7 @@ export function StationDetailPage() {
       return;
     }
     if (!selectedConnector) {
-      const msg = 'Bitte wählen Sie zuerst den Anschluss, an dem Ihr Fahrzeug steckt.';
+      const msg = 'Bitte wählen Sie zuerst einen Anschluss.';
       setError(msg);
       setToast(msg);
       return;
@@ -203,227 +163,104 @@ export function StationDetailPage() {
   return (
     <div className={`page-shell${user ? ' station-detail-with-action' : ''}`}>
       <GuestBanner />
-      <button
-        type="button"
-        onClick={() => navigate(-1)}
-        className="inline-flex items-center gap-2 text-bc-muted"
-      >
-        <ArrowLeft className="h-5 w-5" />
-        Zurück
-      </button>
-      <div className={`mt-4 h-32 rounded-2xl bg-gradient-to-br ${station.imageGradient}`} />
-      <div className="mt-4 flex items-start justify-between gap-2">
-        <div>
-          <p className="font-mono text-xs text-bc-accent">{station.evseCode}</p>
-          <h1 className="font-display text-xl font-bold">{station.name}</h1>
-          <p className="mt-1 flex items-center gap-1 text-sm text-bc-muted">
-            <MapPin className="h-4 w-4" />
-            {station.address}, {station.zip} {station.city}
-            {dist != null && ` · ${dist} km`}
-          </p>
-        </div>
-        {user && (
-          <button type="button" onClick={() => toggleFavorite(station.id)} className="rounded-full p-2">
-            <Heart className={`h-6 w-6 ${isFav ? 'fill-bc-danger text-bc-danger' : 'text-bc-muted'}`} />
-          </button>
-        )}
-      </div>
 
-      <div className="mt-4 flex flex-wrap gap-2">
-        <span className="rounded-lg bg-bc-elevated px-2 py-1 text-xs">
-          <Star className="inline h-3 w-3 fill-bc-warn text-bc-warn" /> PlugScore {plugScore}
-        </span>
-        <span className="rounded-lg bg-bc-elevated px-2 py-1 text-xs text-bc-muted">
-          <Clock className="inline h-3 w-3" /> {station.openingHours}
-        </span>
-        {showGreenBadge && (
-          <span className="rounded-lg bg-bc-accent/15 px-2 py-1 text-xs text-bc-accent">
-            <Leaf className="inline h-3 w-3" /> Ökostrom
-          </span>
-        )}
-        {showAccessibleBadge && (
-          <span className="rounded-lg bg-bc-elevated px-2 py-1 text-xs text-bc-muted">
-            <Accessibility className="inline h-3 w-3" /> Barrierefrei
-          </span>
-        )}
-        {station.hardwareFeatures?.midCertifiedMeters && (
-          <span className="rounded-lg bg-bc-blue/15 px-2 py-1 text-xs text-bc-blue">
-            <Scale className="inline h-3 w-3" /> Eichrecht
-          </span>
-        )}
-        {station.hardwareFeatures?.dynamicLoadManagement && (
-          <span className="rounded-lg bg-bc-elevated px-2 py-1 text-xs text-bc-muted">
-            <Gauge className="inline h-3 w-3" /> Lastmanagement
-          </span>
-        )}
+      <div className="flex items-center justify-between">
+        <button type="button" onClick={() => navigate(-1)} className="inline-flex items-center gap-2 text-bc-muted">
+          <ArrowLeft className="h-5 w-5" />
+        </button>
+        <div className="flex gap-1">
+          <button
+            type="button"
+            onClick={() => setShowInfo(true)}
+            className="rounded-full p-2 text-bc-muted hover:bg-bc-elevated"
+            aria-label="Stationdetails"
+          >
+            <Info className="h-5 w-5" />
+          </button>
+          {user && (
+            <button type="button" onClick={() => toggleFavorite(station.id)} className="rounded-full p-2">
+              <Heart className={`h-5 w-5 ${isFav ? 'fill-bc-danger text-bc-danger' : 'text-bc-muted'}`} />
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="mt-4">
-        <StationTrustBadge
-          stationId={station.id}
-          liveData={liveTrust}
-          availableCount={availableCount}
-          offlineCount={offlineCount}
-        />
-      </div>
-
-      <a
-        href={`https://www.google.com/maps/dir/?api=1&destination=${station.lat},${station.lng}`}
-        target="_blank"
-        rel="noreferrer"
-        className="btn-secondary mt-4 flex w-full items-center justify-center gap-2"
-      >
-        <Navigation className="h-4 w-4" />
-        Route planen
-      </a>
-
-      {user && <ChargingSetupChecklist user={user} returnTo={`/station/${station.id}`} />}
-
-      <h2 className="mt-8 font-display font-semibold">
-        {isMultiConnectorStation(station) ? 'Ladepunkt wählen' : 'Anschlüsse'} ({getAvailableCount(station)} frei)
-      </h2>
-      {isMultiConnectorStation(station) && (
+        <h1 className="font-display text-2xl font-bold tracking-tight">{station.name}</h1>
         <p className="mt-1 text-sm text-bc-muted">
-          Diese Station hat mehrere Ladepunkte. Bitte wählen Sie den Anschluss, an dem Ihr Fahrzeug steht.
+          {getAvailableCount(station)} frei
+          {dist != null ? ` · ${dist} km` : ''}
         </p>
-      )}
-      <div className="mt-3 space-y-3">
-        {station.connectors.map((c: Connector, index: number) => {
-          const evseLabel = formatEvseLabel(c, index);
-          return (
-            <button
-              key={c.id}
-              type="button"
-              disabled={!isConnectorStartable(c.status, c.ocppRawStatus)}
-              onClick={() => setSelectedConnector(c.id)}
-              className={`w-full rounded-2xl border p-4 text-left transition ${
-                selectedConnector === c.id
-                  ? 'border-bc-accent bg-bc-accent/10'
-                  : 'border-bc-border bg-bc-elevated'
-              } ${!isConnectorStartable(c.status, c.ocppRawStatus) ? 'opacity-50' : ''}`}
-            >
-              {evseLabel && (
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-bc-accent">
-                  {evseLabel}
-                </p>
-              )}
-              <div className="flex items-center justify-between">
-                <span className="flex items-center gap-2 font-semibold">
-                  <Zap className="h-4 w-4 text-bc-accent" />
-                  {c.type} · {c.powerKw} kW
-                </span>
-                <div className="flex items-center gap-3">
-                  <ConnectorLedStatus
-                    status={c.status}
-                    isH2Hardware={station.hardwareModel === 'CityCharge H2'}
-                  />
-                  <span className={`text-sm font-medium ${statusColor[c.status]}`}>{statusLabel[c.status]}</span>
-                </div>
-              </div>
-              <ConnectorPrice connector={c} className="mt-1" />
-              <p className="mt-1 font-mono text-xs text-bc-muted">{c.evseId}</p>
-            </button>
-          );
-        })}
       </div>
 
-      {selectedConnectorData && (
-        <ChargePriceEstimate
-          connector={selectedConnectorData}
-          vehicle={selectedVehicleData}
-          startSoc={startSoc}
-          targetSoc={targetSoc}
-          onSocChange={(s, t) => {
-            setStartSoc(s);
-            setTargetSoc(t);
-          }}
-          hardwareFeatures={station.hardwareFeatures}
-        />
+      {user && setupIncomplete && (
+        <div className="mt-4">
+          <ChargingSetupChecklist user={user} returnTo={`/station/${station.id}`} compact />
+        </div>
       )}
-
-      {user && user.vehicles.length > 0 && (
-        <>
-          <h2 className="mt-6 font-display font-semibold">Fahrzeug</h2>
-          <select
-            className="input-field mt-2"
-            value={selectedVehicle}
-            onChange={(e) => setSelectedVehicle(e.target.value)}
-          >
-            {user.vehicles.map((v) => (
-              <option key={v.id} value={v.id}>
-                {v.nickname} – {v.brand} {v.model}
-              </option>
-            ))}
-          </select>
-        </>
-      )}
-
-      {user && user.paymentMethods.length > 0 && (
-        <>
-          <h2 className="mt-4 font-display font-semibold">Zahlung</h2>
-          <select
-            className="input-field mt-2"
-            value={selectedPayment}
-            onChange={(e) => setSelectedPayment(e.target.value)}
-          >
-            {user.paymentMethods.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.label} {p.last4 ? `•••• ${p.last4}` : ''}
-              </option>
-            ))}
-          </select>
-        </>
-      )}
-
-      {error && <p className="mt-4 text-sm text-bc-danger">{error}</p>}
 
       {chargingElsewhere && activeSession && (
         <div className="mt-4 rounded-2xl border border-bc-warn/40 bg-bc-warn/10 p-4 text-sm" role="alert">
-          <p className="font-medium text-bc-text">{formatConcurrentSessionError(activeSession)}</p>
+          <p className="font-medium">{formatConcurrentSessionError(activeSession)}</p>
           <Link to="/laden" className="btn-secondary mt-3 inline-flex w-full justify-center">
-            Zur laufenden Ladesitzung
+            Zur laufenden Sitzung
           </Link>
         </div>
       )}
 
       {chargingHere && (
-        <div className="mt-4 rounded-2xl border border-bc-accent/30 bg-bc-accent/10 p-4 text-sm">
-          <p className="text-bc-muted">An dieser Station läuft bereits Ihre Ladesitzung.</p>
-          <Link to="/laden" className="btn-primary mt-3 inline-flex w-full justify-center">
-            Ladevorgang anzeigen
-          </Link>
-        </div>
+        <Link to="/laden" className="mt-4 block rounded-2xl border border-bc-accent/30 bg-bc-accent/10 p-4 text-center text-sm font-medium text-bc-accent">
+          Ladevorgang anzeigen →
+        </Link>
       )}
+
+      <h2 className="mt-8 text-xs font-semibold uppercase tracking-wider text-bc-muted">Anschluss wählen</h2>
+      <div className="mt-3 space-y-2">
+        {station.connectors.map((c: Connector, index: number) => {
+          const evseLabel = station.connectors.length > 1 ? formatEvseLabel(c, index) : null;
+          const startable = isConnectorStartable(c.status, c.ocppRawStatus);
+          return (
+            <button
+              key={c.id}
+              type="button"
+              disabled={!startable}
+              onClick={() => setSelectedConnector(c.id)}
+              className={`w-full rounded-2xl border p-4 text-left transition ${
+                selectedConnector === c.id ? 'border-bc-accent bg-bc-accent/10' : 'border-bc-border bg-bc-elevated'
+              } ${!startable ? 'opacity-50' : ''}`}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  {evseLabel && <p className="text-xs font-medium text-bc-accent">{evseLabel}</p>}
+                  <p className="font-semibold">
+                    {c.type} · {c.powerKw} kW
+                  </p>
+                  <ConnectorPrice connector={c} className="mt-0.5 text-sm" />
+                </div>
+                <div className="flex shrink-0 flex-col items-end gap-1">
+                  <ConnectorLedStatus status={c.status} isH2Hardware={station.hardwareModel === 'CityCharge H2'} />
+                  <span className={`text-xs font-medium ${statusColor[c.status]}`}>{statusLabel[c.status]}</span>
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      <MenuSection title="Mehr">
+        <MenuRow icon={Info} label="Station & Route" onClick={() => setShowInfo(true)} />
+        <MenuRow icon={Flag} label="Problem melden" onClick={() => setShowReport(true)} />
+      </MenuSection>
 
       {!user && selectedConnector && (
-        <div className="mt-6 rounded-2xl border border-bc-accent/30 bg-bc-accent/5 p-4">
-          <p className="text-sm text-bc-muted">
-            Laden ohne Konto – per Karte bezahlen und sofort starten.
-          </p>
-          <Link
-            to={buildGuestChargePath(station.id, selectedConnector)}
-            className="btn-primary mt-3 flex w-full items-center justify-center gap-2"
-          >
-            <Zap className="h-4 w-4" />
-            Ad-Hoc laden
-          </Link>
-        </div>
+        <Link
+          to={buildGuestChargePath(station.id, selectedConnector)}
+          className="btn-primary mt-6 flex w-full items-center justify-center gap-2"
+        >
+          <Zap className="h-4 w-4" />
+          Ad-Hoc laden
+        </Link>
       )}
-
-      {station.amenities.length > 0 && (
-        <>
-          <h2 className="mt-8 font-display font-semibold">Am Standort</h2>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {station.amenities.map((a) => (
-              <span key={a} className="rounded-lg border border-bc-border px-3 py-1 text-sm text-bc-muted">
-                {a}
-              </span>
-            ))}
-          </div>
-        </>
-      )}
-
-      <CommunityReportForm stationId={station.id} />
 
       {user && <div className="h-28 shrink-0" aria-hidden="true" />}
 
@@ -431,35 +268,52 @@ export function StationDetailPage() {
         <div className="fixed bottom-20 left-0 right-0 z-40 mx-auto max-w-lg px-4 safe-bottom">
           <button
             type="button"
-            className="btn-primary w-full shadow-glow"
+            className="btn-primary w-full py-4 text-base shadow-glow"
             onClick={openConfirm}
-            disabled={
-              starting ||
-              !selectedConnector ||
-              user.vehicles.length === 0 ||
-              user.paymentMethods.length === 0
-            }
+            disabled={starting || !selectedConnector || setupIncomplete}
           >
             Laden starten
           </button>
         </div>
       )}
 
-      {selectedConnectorData && (
+      {selectedConnectorData && user && (
         <ChargeStartConfirmSheet
           open={showConfirm}
           onClose={() => setShowConfirm(false)}
           onConfirm={() => void beginCharge()}
           station={station}
           connector={selectedConnectorData}
+          user={user}
           vehicle={selectedVehicleData}
+          selectedVehicleId={selectedVehicle}
+          selectedPaymentId={selectedPayment}
+          onVehicleChange={setSelectedVehicle}
+          onPaymentChange={setSelectedPayment}
           startSoc={startSoc}
           targetSoc={targetSoc}
+          onSocChange={(s, t) => {
+            setStartSoc(s);
+            setTargetSoc(t);
+          }}
           confirming={starting}
           error={error}
         />
       )}
 
+      <StationInfoSheet
+        open={showInfo}
+        onClose={() => setShowInfo(false)}
+        station={station}
+        distanceKm={dist}
+        liveTrust={liveTrust}
+        availableCount={availableCount}
+        offlineCount={offlineCount}
+        plugScore={plugScore}
+        showGreenBadge={showGreenBadge}
+        showAccessibleBadge={showAccessibleBadge}
+      />
+      <StationReportSheet open={showReport} onClose={() => setShowReport(false)} stationId={station.id} />
     </div>
   );
 }

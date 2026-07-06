@@ -10,7 +10,15 @@ import { StationTrustBadge } from '../components/StationTrustBadge';
 import { formatCurrency } from '../utils/format';
 import { minKnownPricePerKwh } from '../utils/pricing';
 
-export function StationCard({ station, index = 0 }: { station: Station; index?: number }) {
+export function StationCard({
+  station,
+  index = 0,
+  compact = false,
+}: {
+  station: Station;
+  index?: number;
+  compact?: boolean;
+}) {
   const userLocation = useAppStore((s) => s.userLocation);
   const distance = useMemo(
     () => useAppStore.getState().distanceKm(station),
@@ -41,12 +49,14 @@ export function StationCard({ station, index = 0 }: { station: Station; index?: 
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0 flex-1">
               <h3 className="font-display font-semibold text-bc-text leading-tight">{station.name}</h3>
-              <p className="mt-1 flex items-center gap-1 text-sm text-bc-muted">
-                <MapPin className="h-3.5 w-3.5 shrink-0" />
-                <span className="truncate">
-                  {station.address}, {station.zip} {station.city}
-                </span>
-              </p>
+              {!compact && (
+                <p className="mt-1 flex items-center gap-1 text-sm text-bc-muted">
+                  <MapPin className="h-3.5 w-3.5 shrink-0" />
+                  <span className="truncate">
+                    {station.address}, {station.zip} {station.city}
+                  </span>
+                </p>
+              )}
             </div>
             {user && (
               <button
@@ -68,22 +78,24 @@ export function StationCard({ station, index = 0 }: { station: Station; index?: 
               {available} frei
             </span>
             {minPrice != null && (
-              <span className="text-xs text-bc-muted">
-                ab {formatCurrency(minPrice)}/kWh
-              </span>
+              <span className="text-xs text-bc-muted">ab {formatCurrency(minPrice)}/kWh</span>
             )}
             {distance != null && <span className="text-xs text-bc-muted">{distance} km</span>}
-            <span className="inline-flex items-center gap-0.5 text-xs text-bc-muted" title="PlugScore">
-              <Star className="h-3 w-3 fill-bc-warn text-bc-warn" />
-              {plugScore} PlugScore
-            </span>
-            <StationTrustBadge
-              stationId={station.id}
-              liveData={liveTrust}
-              availableCount={available}
-              offlineCount={station.connectors.filter((c) => c.status === 'offline').length}
-              compact
-            />
+            {!compact && (
+              <>
+                <span className="inline-flex items-center gap-0.5 text-xs text-bc-muted" title="PlugScore">
+                  <Star className="h-3 w-3 fill-bc-warn text-bc-warn" />
+                  {plugScore}
+                </span>
+                <StationTrustBadge
+                  stationId={station.id}
+                  liveData={liveTrust}
+                  availableCount={available}
+                  offlineCount={station.connectors.filter((c) => c.status === 'offline').length}
+                  compact
+                />
+              </>
+            )}
           </div>
         </div>
       </Link>

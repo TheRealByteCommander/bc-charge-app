@@ -44,7 +44,15 @@ function resizeImage(file: File): Promise<string> {
   });
 }
 
-export function CommunityReportForm({ stationId, onSubmitted }: { stationId: string; onSubmitted?: () => void }) {
+export function CommunityReportForm({
+  stationId,
+  onSubmitted,
+  embedded = false,
+}: {
+  stationId: string;
+  onSubmitted?: () => void;
+  embedded?: boolean;
+}) {
   const { locale } = useLocale();
   const [category, setCategory] = useState<ReportCategory>('defect');
   const [message, setMessage] = useState('');
@@ -97,15 +105,26 @@ export function CommunityReportForm({ stationId, onSubmitted }: { stationId: str
   };
 
   return (
-    <div className="mt-6 rounded-2xl border border-bc-border bg-bc-elevated p-4">
-      <h2 className="font-display font-semibold">
-        {locale === 'de' ? 'Community-Meldung' : 'Community report'}
-      </h2>
-      <p className="mt-1 text-xs text-bc-muted">
-        {locale === 'de'
-          ? 'Hilft anderen Fahrern und verbessert den PlugScore.'
-          : 'Helps other drivers and improves PlugScore.'}
-      </p>
+    <div className={embedded ? 'space-y-3' : 'mt-6 rounded-2xl border border-bc-border bg-bc-elevated p-4'}>
+      {!embedded && (
+        <>
+          <h2 className="font-display font-semibold">
+            {locale === 'de' ? 'Community-Meldung' : 'Community report'}
+          </h2>
+          <p className="mt-1 text-xs text-bc-muted">
+            {locale === 'de'
+              ? 'Hilft anderen Fahrern und verbessert den PlugScore.'
+              : 'Helps other drivers and improves PlugScore.'}
+          </p>
+        </>
+      )}
+      {embedded && (
+        <p className="text-sm text-bc-muted">
+          {locale === 'de'
+            ? 'Hilft anderen Fahrern und verbessert den PlugScore.'
+            : 'Helps other drivers and improves PlugScore.'}
+        </p>
+      )}
       <select
         className="input-field mt-3"
         value={category}

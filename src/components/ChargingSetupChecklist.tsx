@@ -6,9 +6,10 @@ import type { UserProfile } from '../types';
 interface ChargingSetupChecklistProps {
   user: UserProfile;
   returnTo?: string;
+  compact?: boolean;
 }
 
-export function ChargingSetupChecklist({ user, returnTo }: ChargingSetupChecklistProps) {
+export function ChargingSetupChecklist({ user, returnTo, compact = false }: ChargingSetupChecklistProps) {
   const { t, locale } = useLocale();
   
   const hasVehicle = user.vehicles.length > 0;
@@ -16,6 +17,7 @@ export function ChargingSetupChecklist({ user, returnTo }: ChargingSetupChecklis
   const ready = hasVehicle && hasPayment;
 
   if (ready) {
+    if (compact) return null;
     return (
       <div className="mt-4 flex items-center gap-2 rounded-xl border border-bc-accent/30 bg-bc-accent/10 px-4 py-3 text-sm text-bc-accent">
         <CheckCircle2 className="h-4 w-4 shrink-0" />
@@ -46,7 +48,23 @@ export function ChargingSetupChecklist({ user, returnTo }: ChargingSetupChecklis
   ];
 
   const remaining = steps.filter((s) => !s.done).length;
-  
+  const nextStep = steps.find((s) => !s.done);
+
+  if (compact && nextStep) {
+    return (
+      <Link
+        to={nextStep.to}
+        className="flex items-center gap-3 rounded-2xl border border-bc-warn/30 bg-bc-warn/10 p-4 text-sm"
+      >
+        <nextStep.icon className="h-5 w-5 shrink-0 text-bc-warn" />
+        <span className="flex-1 font-medium">
+          {locale === 'de' ? `Noch ${remaining} Schritt(e): ${nextStep.title}` : `${remaining} step(s): ${nextStep.title}`}
+        </span>
+        <ChevronRight className="h-4 w-4 text-bc-muted" />
+      </Link>
+    );
+  }
+
   return (
     <div className="mt-4 rounded-2xl border border-bc-warn/30 bg-bc-warn/10 p-4">
       <p className="text-sm font-semibold text-bc-warn">
