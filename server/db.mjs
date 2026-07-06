@@ -96,6 +96,20 @@ export async function initDb() {
       );
 
       CREATE INDEX IF NOT EXISTS idx_adhoc_sessions_station ON adhoc_sessions(station_id);
+
+      CREATE TABLE IF NOT EXISTS invoice_counters (
+        year INTEGER PRIMARY KEY,
+        last_number INTEGER NOT NULL DEFAULT 0
+      );
+
+      CREATE TABLE IF NOT EXISTS invoice_registry (
+        invoice_number TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL UNIQUE,
+        user_id TEXT NOT NULL,
+        issued_at TIMESTAMPTZ NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_invoice_registry_user ON invoice_registry(user_id);
     `);
     return pgPool;
   }
@@ -167,6 +181,20 @@ export async function initDb() {
     );
 
     CREATE INDEX IF NOT EXISTS idx_adhoc_sessions_station ON adhoc_sessions(station_id);
+
+    CREATE TABLE IF NOT EXISTS invoice_counters (
+      year INTEGER PRIMARY KEY,
+      last_number INTEGER NOT NULL DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS invoice_registry (
+      invoice_number TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL UNIQUE,
+      user_id TEXT NOT NULL,
+      issued_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_invoice_registry_user ON invoice_registry(user_id);
   `);
   return sqliteDb;
 }
@@ -762,4 +790,97 @@ export async function listUserMembershipIds() {
       return { userId: row.id, membershipId: profile?.membershipId };
     })
     .filter((row) => row.membershipId);
+}
+
+function formatInvoiceNumber(year, seq) {
+  return `BC-${year}-${String(seq).padStart(6, '0')}`;
+}
+
+export async function findInvoiceNumberBySessionId(sessionId) {
+  if (isPostgres()) {
+    const { rows } = await pgPool.query(
+      `SELECT invoice_number FROM invoice_registry WHERE session_id = $1 LIMIT 1`,
+      [sessionId]
+    );
+    return rows[0]?.invoice_number ?? null;
+  }
+  const row = sqliteDb
+    .prepare(`SELECT invoice_number FROM invoice_registry WHERE session_id = ? LIMIT 1`)
+    .get(sessionId);
+  return row?.invoice_number ?? null;
+}
+
+/** Fortlaufende, einmalige Rechnungsnummer (§14 UStG) – idempotent pro sessionId. */
+export async function allocateInvoiceNumber(userId, sessionId) {
+  const existing = await findInvoiceNumberBySessionId(sessionId);
+  if (existing) return existing;
+
+  const year = new Date().getFullYear();
+  const issuedAt = new Date().toISOString();
+
+  if (isPostgres()) {
+    const client = await pgPool.connect();
+    try {
+      await client.query('BEGIN');
+      const again = await client.query(
+        `SELECT invoice_number FROM invoice_registry WHERE session_id = $1 LIMIT 1`,
+        [sessionId]
+      );
+      if (again.rows[0]?.invoice_number) {
+        await client.query('COMMIT');
+        return again.rows[0].invoice_number;
+      }
+
+      const counter = await client.query(
+        `INSERT INTO invoice_counters (year, last_number)
+         VALUES ($1, 1)
+         ON CONFLICT (year) DO UPDATE
+         SET last_number = invoice_counters.last_number + 1
+         RETURNING last_number`,
+        [year]
+      );
+      const seq = counter.rows[0].last_number;
+      const invoiceNumber = formatInvoiceNumber(year, seq);
+
+      await client.query(
+        `INSERT INTO invoice_registry (invoice_number, session_id, user_id, issued_at)
+         VALUES ($1, $2, $3, $4)`,
+        [invoiceNumber, sessionId, userId, issuedAt]
+      );
+      await client.query('COMMIT');
+      return invoiceNumber;
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
+  }
+
+  const allocate = sqliteDb.transaction(() => {
+    const row = sqliteDb
+      .prepare(`SELECT invoice_number FROM invoice_registry WHERE session_id = ? LIMIT 1`)
+      .get(sessionId);
+    if (row?.invoice_number) return row.invoice_number;
+
+    const existing = sqliteDb.prepare(`SELECT last_number FROM invoice_counters WHERE year = ?`).get(year);
+    let seq;
+    if (existing) {
+      seq = existing.last_number + 1;
+      sqliteDb.prepare(`UPDATE invoice_counters SET last_number = ? WHERE year = ?`).run(seq, year);
+    } else {
+      seq = 1;
+      sqliteDb.prepare(`INSERT INTO invoice_counters (year, last_number) VALUES (?, 1)`).run(year);
+    }
+
+    const invoiceNumber = formatInvoiceNumber(year, seq);
+    sqliteDb
+      .prepare(
+        `INSERT INTO invoice_registry (invoice_number, session_id, user_id, issued_at)
+         VALUES (?, ?, ?, ?)`
+      )
+      .run(invoiceNumber, sessionId, userId, issuedAt);
+    return invoiceNumber;
+  });
+  return allocate();
 }

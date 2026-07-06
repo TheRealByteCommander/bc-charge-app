@@ -1,14 +1,10 @@
 import { findUserById, rowToProfile, upsertSession } from '../db.mjs';
-import { invoiceNumberFromSessionId } from './invoiceNumber.mjs';
+import { ensureInvoiceNumber } from './invoiceNumber.mjs';
 import { buildInvoicePdf } from './invoicePdf.mjs';
 import { sendInvoiceEmails } from './invoiceEmail.mjs';
 
-export function ensureInvoiceNumber(session) {
-  return session.invoiceNumber ?? invoiceNumberFromSessionId(session.id);
-}
-
 export async function buildInvoiceForSession(userId, session, customer) {
-  const invoiceNumber = ensureInvoiceNumber(session);
+  const invoiceNumber = await ensureInvoiceNumber(userId, session);
   const pdfBuffer = await buildInvoicePdf({ invoiceNumber, session, customer });
   return { invoiceNumber, pdfBuffer };
 }
@@ -30,7 +26,7 @@ export async function issueInvoiceForSession(userId, session) {
     membershipId: profile.membershipId,
   };
 
-  const invoiceNumber = ensureInvoiceNumber(session);
+  const invoiceNumber = await ensureInvoiceNumber(userId, session);
   const sessionWithInvoice = { ...session, invoiceNumber };
   const { pdfBuffer } = await buildInvoiceForSession(userId, sessionWithInvoice, customer);
 

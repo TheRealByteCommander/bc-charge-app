@@ -35,8 +35,8 @@ export async function sendInvoiceEmails({ invoiceNumber, session, customer, pdfB
     return { sent: false, reason: 'smtp_not_configured' };
   }
 
-  const from = process.env.SMTP_FROM ?? `BC Charge <${companyInfo.email}>`;
-  const copyTo = companyInfo.email;
+  const from = process.env.SMTP_FROM ?? `BC Charge <${companyInfo.emailInvoice}>`;
+  const copyTo = companyInfo.emailInvoice;
   const customerEmail = customer.email;
   const station = session.stationName;
   const gross = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(

@@ -25,8 +25,10 @@ export const companyInfo = {
   registerType: 'Handelsregister',
   registerCourt: 'Amtsgericht Leipzig',
   registerNumber: 'HRB 38559',
-  /** Wird auf Rechnungen ausgewiesen, sofern vorhanden */
-  vatIdNote: 'Umsatzsteuer-Identifikationsnummer gemäß § 27a UStG auf Anfrage',
+  vatId: 'DE343089057',
+  /** Steuernummer des Finanzamts (optional, z. B. über BC_TAX_NUMBER) */
+  taxNumber: undefined as string | undefined,
+  vatIdNote: 'USt-IdNr. DE343089057',
 } as const;
 
 export const companyAddressLines = [
