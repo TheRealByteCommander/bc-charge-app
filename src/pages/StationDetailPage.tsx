@@ -24,6 +24,7 @@ import { StationTrustBadge } from '../components/StationTrustBadge';
 import { getAvailableCount, getStationById } from '../data/stations';
 import { computePlugScore } from '../services/community';
 import { useAppStore } from '../store/appStore';
+import { formatConcurrentSessionError } from '../utils/sessionConcurrency';
 import type { Connector } from '../types';
 import { isConnectorStartable } from '../utils/ocppStateMapping';
 import { buildGuestChargePath } from '../utils/qrDeepLink';
@@ -64,6 +65,7 @@ export function StationDetailPage() {
   const distance = useAppStore((s) => s.distanceKm);
   const toggleFavorite = useAppStore((s) => s.toggleFavorite);
   const startSession = useAppStore((s) => s.startSession);
+  const activeSession = useAppStore((s) => s.activeSession);
   const setToast = useAppStore((s) => s.setToast);
   const selectedChargingFulfillmentId = useAppStore((s) => s.selectedChargingFulfillmentId);
   const stationDataSource = useAppStore((s) => s.stationDataSource);
@@ -118,6 +120,8 @@ export function StationDetailPage() {
   const showAccessibleBadge = stationDataSource !== 'citrineos' ? station.accessible : false;
   const selectedConnectorData = station.connectors.find((c) => c.id === selectedConnector);
   const selectedVehicleData = user?.vehicles.find((v) => v.id === selectedVehicle);
+  const chargingHere = activeSession?.stationId === station.id;
+  const chargingElsewhere = Boolean(activeSession && activeSession.stationId !== station.id);
 
   const beginCharge = async () => {
     if (!user) {
@@ -373,6 +377,24 @@ export function StationDetailPage() {
 
       {error && <p className="mt-4 text-sm text-bc-danger">{error}</p>}
 
+      {chargingElsewhere && activeSession && (
+        <div className="mt-4 rounded-2xl border border-bc-warn/40 bg-bc-warn/10 p-4 text-sm" role="alert">
+          <p className="font-medium text-bc-text">{formatConcurrentSessionError(activeSession)}</p>
+          <Link to="/laden" className="btn-secondary mt-3 inline-flex w-full justify-center">
+            Zur laufenden Ladesitzung
+          </Link>
+        </div>
+      )}
+
+      {chargingHere && (
+        <div className="mt-4 rounded-2xl border border-bc-accent/30 bg-bc-accent/10 p-4 text-sm">
+          <p className="text-bc-muted">An dieser Station läuft bereits Ihre Ladesitzung.</p>
+          <Link to="/laden" className="btn-primary mt-3 inline-flex w-full justify-center">
+            Ladevorgang anzeigen
+          </Link>
+        </div>
+      )}
+
       {!user && selectedConnector && (
         <div className="mt-6 rounded-2xl border border-bc-accent/30 bg-bc-accent/5 p-4">
           <p className="text-sm text-bc-muted">
@@ -405,7 +427,7 @@ export function StationDetailPage() {
 
       {user && <div className="h-28 shrink-0" aria-hidden="true" />}
 
-      {user && !showConfirm && (
+      {user && !showConfirm && !chargingElsewhere && !chargingHere && (
         <div className="fixed bottom-20 left-0 right-0 z-40 mx-auto max-w-lg px-4 safe-bottom">
           <button
             type="button"
