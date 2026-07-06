@@ -28,7 +28,7 @@ export async function backendApi<T>(path: string, options: RequestInit = {}, tim
 
   const data = (await res.json().catch(() => ({}))) as { error?: string } & T;
   if (!res.ok) {
-    throw new BackendApiError(data.error ?? `API ${res.status}`, res.status);
+    throw new BackendApiError(data.error ?? `Anfrage fehlgeschlagen (HTTP ${res.status})`, res.status);
   }
   return data as T;
 }

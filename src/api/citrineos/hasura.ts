@@ -91,7 +91,7 @@ const TX_BY_REMOTE_START_QUERY = `
   }
 `;
 
-async function hasuraRequest<T>(query: string, variables: Record<string, unknown>): Promise<T> {
+export async function hasuraGraphql<T>(query: string, variables: Record<string, unknown>): Promise<T> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   const url = isBackendMode() ? `${apiConfig.baseUrl}/api/citrineos/hasura` : citrineosConfig.hasuraUrl;
   if (!isBackendMode() && citrineosConfig.hasuraAdminSecret) {
@@ -117,7 +117,7 @@ async function hasuraRequest<T>(query: string, variables: Record<string, unknown
 }
 
 export async function fetchChargingStationsFromHasura(): Promise<HasuraChargingStationRow[]> {
-  const data = await hasuraRequest<{ ChargingStations: HasuraChargingStationRow[] }>(STATIONS_QUERY, {
+  const data = await hasuraGraphql<{ ChargingStations: HasuraChargingStationRow[] }>(STATIONS_QUERY, {
     tenantId: citrineosConfig.tenantId,
   });
   return data.ChargingStations ?? [];
@@ -126,7 +126,7 @@ export async function fetchChargingStationsFromHasura(): Promise<HasuraChargingS
 export async function fetchActiveTransaction(
   stationAppId: string
 ): Promise<CitrineosTransaction | undefined> {
-  const data = await hasuraRequest<{ Transactions: CitrineosTransaction[] }>(ACTIVE_TX_QUERY, {
+  const data = await hasuraGraphql<{ Transactions: CitrineosTransaction[] }>(ACTIVE_TX_QUERY, {
     stationId: resolveCitrineosStationDbId(stationAppId),
     tenantId: citrineosConfig.tenantId,
   });
@@ -137,7 +137,7 @@ export async function fetchTransactionByRemoteStartId(
   stationAppId: string,
   remoteStartId: number
 ): Promise<CitrineosTransaction | undefined> {
-  const data = await hasuraRequest<{ Transactions: CitrineosTransaction[] }>(TX_BY_REMOTE_START_QUERY, {
+  const data = await hasuraGraphql<{ Transactions: CitrineosTransaction[] }>(TX_BY_REMOTE_START_QUERY, {
     stationId: resolveCitrineosStationDbId(stationAppId),
     tenantId: citrineosConfig.tenantId,
     remoteStartId,
