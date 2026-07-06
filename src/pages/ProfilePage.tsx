@@ -2,76 +2,29 @@ import {
   Accessibility,
   Bell,
   Car,
-  ChevronRight,
   CreditCard,
-  Download,
   FileText,
   HelpCircle,
   History,
   LogOut,
   MapPin,
-  MapPinOff,
   Receipt,
   Scale,
+  Settings,
   Shield,
   Trash2,
 } from 'lucide-react';
+import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { ProfileDataSheet } from '../components/sheets/ProfileDataSheet';
+import { MenuRow, MenuSection } from '../components/ui/MenuList';
 import { getStations } from '../data/stations';
 import { useLocale } from '../i18n/LocaleContext';
-import { LanguageSwitcher } from '../components/LanguageSwitcher';
-import { StationCard } from '../components/StationCard';
 import { useAppStore } from '../store/appStore';
 import { formatDate, formatPoints } from '../utils/format';
 import { companyInfo } from '../data/company';
 import { tierThresholds } from '../data/rewards';
 import { getGeoConsent, revokeGeoConsent } from '../utils/geoConsent';
-
-type MenuKey = 'vehicles' | 'payment' | 'history' | 'accessibility' | 'notifications' | 'tariffs' | 'privacy' | 'imprint' | 'terms' | 'support';
-
-interface MenuItem {
-  to: string;
-  icon: typeof Car;
-  labelKey: MenuKey;
-}
-
-interface MenuSection {
-  titleKey: 'charging' | 'app' | 'legal';
-  items: MenuItem[];
-}
-
-const menuSections: MenuSection[] = [
-  {
-    titleKey: 'charging',
-    items: [
-      { to: '/fahrzeuge', icon: Car, labelKey: 'vehicles' },
-      { to: '/zahlung', icon: CreditCard, labelKey: 'payment' },
-      { to: '/historie', icon: History, labelKey: 'history' },
-    ],
-  },
-  {
-    titleKey: 'app',
-    items: [
-      { to: '/barrierefreiheit', icon: Accessibility, labelKey: 'accessibility' },
-      { to: '/benachrichtigungen', icon: Bell, labelKey: 'notifications' },
-      { to: '/tarife', icon: Receipt, labelKey: 'tariffs' },
-    ],
-  },
-  {
-    titleKey: 'legal',
-    items: [
-      { to: '/datenschutz', icon: Shield, labelKey: 'privacy' },
-      { to: '/impressum', icon: FileText, labelKey: 'imprint' },
-      { to: '/nutzungsbedingungen', icon: Scale, labelKey: 'terms' },
-      { to: '/hilfe', icon: HelpCircle, labelKey: 'support' },
-    ],
-  },
-];
-
-const sectionTitles = {
-  de: { charging: 'Laden', app: 'App', legal: 'Rechtliches' },
-  en: { charging: 'Charging', app: 'App', legal: 'Legal' },
-};
 
 export function ProfilePage() {
   const { t, locale } = useLocale();
@@ -81,6 +34,7 @@ export function ProfilePage() {
   const exportUserData = useAppStore((s) => s.exportUserData);
   const setUserLocation = useAppStore((s) => s.setUserLocation);
   const navigate = useNavigate();
+  const [dataOpen, setDataOpen] = useState(false);
   const geoConsent = getGeoConsent();
 
   if (!user) {
@@ -105,102 +59,56 @@ export function ProfilePage() {
 
   return (
     <div className="page-shell">
-      <h1 className="font-display text-2xl font-bold">{t.profile.title}</h1>
+      <h1 className="font-display text-2xl font-bold tracking-tight">{t.profile.title}</h1>
 
-      <div className="mt-6 flex items-center gap-4">
-        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-accent-gradient font-display text-xl font-bold text-bc-ink">
+      <div className="mt-8 flex items-center gap-4">
+        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-accent-gradient font-display text-2xl font-bold text-bc-ink">
           {user.firstName[0]}
           {user.lastName[0]}
         </div>
         <div className="min-w-0">
-          <p className="font-display text-lg font-semibold">
+          <p className="font-display text-xl font-semibold">
             {user.firstName} {user.lastName}
           </p>
           <p className="truncate text-sm text-bc-muted">{user.email}</p>
-          <p className="text-xs text-bc-accent">
-            {tier.label} · {formatPoints(user.loyaltyPoints)} {t.gamification.points}
+          <p className="text-sm text-bc-accent">
+            {tier.label} · {formatPoints(user.loyaltyPoints)} P
           </p>
         </div>
       </div>
 
-      <section className="mt-8">
-        <p className="mb-2 px-1 text-xs font-semibold uppercase tracking-wider text-bc-muted">
-          {t.profile.language}
-        </p>
-        <div className="rounded-2xl border border-bc-border bg-bc-elevated p-4">
-          <LanguageSwitcher />
-        </div>
-      </section>
+      <MenuSection title={locale === 'de' ? 'Laden' : 'Charging'}>
+        <MenuRow to="/fahrzeuge" icon={Car} label={t.profile.vehicles} detail={`${user.vehicles.length}`} />
+        <MenuRow to="/zahlung" icon={CreditCard} label={t.profile.payment} detail={`${user.paymentMethods.length}`} />
+        <MenuRow to="/historie" icon={History} label={t.profile.history} />
+      </MenuSection>
 
-      <section className="mt-8">
-        <p className="mb-2 px-1 text-xs font-semibold uppercase tracking-wider text-bc-muted">
-          {t.profile.yourData}
-        </p>
-        <div className="space-y-2 rounded-2xl border border-bc-border bg-bc-elevated p-4">
-          <p className="text-sm text-bc-muted">{t.profile.dataExport}</p>
-          <button
-            type="button"
-            onClick={() => exportUserData()}
-            className="btn-secondary flex w-full items-center justify-center gap-2 text-sm"
-          >
-            <Download className="h-4 w-4" />
-            {t.profile.exportData}
-          </button>
-          {geoConsent === 'granted' ? (
-            <button
-              type="button"
-              onClick={revokeLocation}
-              className="btn-secondary flex w-full items-center justify-center gap-2 text-sm"
-            >
-              <MapPinOff className="h-4 w-4" />
-              {t.profile.revokeLocation}
-            </button>
-          ) : (
-            <p className="text-xs text-bc-muted">
-              {geoConsent === 'denied' ? t.profile.locationDenied : t.profile.locationPending} – {t.profile.locationHint}
-            </p>
-          )}
-        </div>
-      </section>
+      <MenuSection title={locale === 'de' ? 'Konto' : 'Account'}>
+        <MenuRow
+          icon={Settings}
+          label={t.profile.yourData}
+          detail={locale === 'de' ? 'Sprache, Export, Standort' : 'Language, export, location'}
+          onClick={() => setDataOpen(true)}
+        />
+        {favorites.length > 0 && (
+          <MenuRow
+            to="/stationen"
+            icon={MapPin}
+            label={t.stations.favorites}
+            detail={`${favorites.length}`}
+          />
+        )}
+        <MenuRow to="/barrierefreiheit" icon={Accessibility} label={t.profile.accessibility} />
+        <MenuRow to="/benachrichtigungen" icon={Bell} label={t.profile.notifications} />
+        <MenuRow to="/tarife" icon={Receipt} label={t.profile.tariffs} />
+      </MenuSection>
 
-      {menuSections.map((section) => (
-        <section key={section.titleKey} className="mt-8">
-          <p className="mb-2 px-1 text-xs font-semibold uppercase tracking-wider text-bc-muted">
-            {sectionTitles[locale][section.titleKey]}
-          </p>
-          <nav className="overflow-hidden rounded-2xl border border-bc-border bg-bc-elevated">
-            {section.items.map(({ to, icon: Icon, labelKey }, i) => (
-              <Link
-                key={to}
-                to={to}
-                className={`flex items-center justify-between px-4 py-3.5 transition hover:bg-bc-surface ${
-                  i > 0 ? 'border-t border-bc-border' : ''
-                }`}
-              >
-                <span className="flex items-center gap-3 text-sm">
-                  <Icon className="h-5 w-5 text-bc-accent" />
-                  {t.profile[labelKey]}
-                </span>
-                <ChevronRight className="h-4 w-4 text-bc-muted" />
-              </Link>
-            ))}
-          </nav>
-        </section>
-      ))}
-
-      {favorites.length > 0 && (
-        <section className="mt-8">
-          <h2 className="flex items-center gap-2 font-display font-semibold">
-            <MapPin className="h-5 w-5 text-bc-accent" />
-            {t.stations.favorites}
-          </h2>
-          <div className="mt-3 space-y-3">
-            {favorites.map((s) => (
-              <StationCard key={s.id} station={s} />
-            ))}
-          </div>
-        </section>
-      )}
+      <MenuSection title={locale === 'de' ? 'Rechtliches' : 'Legal'}>
+        <MenuRow to="/datenschutz" icon={Shield} label={t.profile.privacy} />
+        <MenuRow to="/impressum" icon={FileText} label={t.profile.imprint} />
+        <MenuRow to="/nutzungsbedingungen" icon={Scale} label={t.profile.terms} />
+        <MenuRow to="/hilfe" icon={HelpCircle} label={t.profile.support} />
+      </MenuSection>
 
       <button
         type="button"
@@ -231,6 +139,14 @@ export function ProfilePage() {
       <p className="mt-8 text-center text-xs text-bc-muted">
         {companyInfo.brand} · {t.profile.memberSince} {formatDate(user.memberSince).split(' ')[0]}
       </p>
+
+      <ProfileDataSheet
+        open={dataOpen}
+        onClose={() => setDataOpen(false)}
+        onExport={() => exportUserData()}
+        onRevokeLocation={revokeLocation}
+        geoConsent={geoConsent}
+      />
     </div>
   );
 }

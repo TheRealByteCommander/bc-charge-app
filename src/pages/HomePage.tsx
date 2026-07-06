@@ -1,145 +1,96 @@
-import { BatteryCharging, ChevronRight, HelpCircle, Route, Search, Zap } from 'lucide-react';
+import { ChevronRight, Map, MoreHorizontal, QrCode, Zap } from 'lucide-react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ChargingPlannerCard } from '../components/ChargingPlannerCard';
-import { LoyaltyCard } from '../components/LoyaltyCard';
+import { HomeMoreSheet } from '../components/sheets/HomeMoreSheet';
 import { StationCard } from '../components/StationCard';
-import { useAccessibility } from '../context/AccessibilityContext';
-import { useLocale } from '../i18n/LocaleContext';
 import { useNearbyStations } from '../hooks/useStationLists';
 import { useAppStore } from '../store/appStore';
 import { formatCurrency, formatDuration, formatKwh } from '../utils/format';
 
 export function HomePage() {
-  const { t } = useLocale();
   const user = useAppStore((s) => s.user)!;
-  const { prefs: a11y } = useAccessibility();
-  const nearby = useNearbyStations(a11y.simpleMode ? 2 : 4);
+  const nearby = useNearbyStations(2);
   const activeSession = useAppStore((s) => s.activeSession);
+  const [moreOpen, setMoreOpen] = useState(false);
   const elapsed =
     activeSession ? Math.floor((Date.now() - new Date(activeSession.startedAt).getTime()) / 1000) : 0;
 
   return (
     <div className="page-shell">
-      <header className="flex items-center justify-between">
+      <header className="flex items-end justify-between">
         <div>
           <p className="text-sm text-bc-muted">Hallo, {user.firstName}</p>
-          <h1 className="font-display text-2xl font-bold">BC Charge</h1>
+          <h1 className="font-display text-3xl font-bold tracking-tight">Laden</h1>
         </div>
-        <Link
-          to="/laden"
-          className={`rounded-full p-3 ${activeSession ? 'bg-bc-accent/20 text-bc-accent' : 'bg-bc-elevated text-bc-muted'}`}
-          aria-label="Ladevorgang"
+        <button
+          type="button"
+          onClick={() => setMoreOpen(true)}
+          className="rounded-full p-2.5 text-bc-muted transition hover:bg-bc-elevated hover:text-bc-text"
+          aria-label="Mehr"
         >
-          <BatteryCharging className={`h-6 w-6 ${activeSession ? 'animate-charge' : ''}`} />
-        </Link>
+          <MoreHorizontal className="h-6 w-6" />
+        </button>
       </header>
-
-      <Link
-        to="/hilfe"
-        className="mt-3 flex items-center justify-between rounded-xl border border-bc-border bg-bc-elevated px-4 py-3 text-sm text-bc-muted transition hover:border-bc-accent/30"
-      >
-        <span className="flex items-center gap-2">
-          <HelpCircle className="h-4 w-4 text-bc-accent" />
-          {t.help.title}
-        </span>
-        <ChevronRight className="h-4 w-4" />
-      </Link>
 
       {activeSession ? (
         <Link
           to="/laden"
-          className="mt-6 block overflow-hidden rounded-2xl border border-bc-accent/40 bg-bc-accent/10 p-4"
+          className="mt-8 block overflow-hidden rounded-3xl border border-bc-accent/30 bg-gradient-to-br from-bc-accent/20 to-bc-surface p-6"
         >
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-bc-accent">Ladevorgang aktiv</p>
-              <p className="mt-1 font-medium">{activeSession.stationName}</p>
-              <p className="text-sm text-bc-muted">
-                {formatKwh(activeSession.energyKwh)} · {formatCurrency(activeSession.costEur)} ·{' '}
-                {formatDuration(elapsed)}
-              </p>
-            </div>
-            <ChevronRight className="h-5 w-5 text-bc-accent" />
-          </div>
+          <p className="text-xs font-semibold uppercase tracking-widest text-bc-accent">Aktiv</p>
+          <p className="mt-2 font-display text-2xl font-bold leading-tight">{activeSession.stationName}</p>
+          <p className="mt-3 font-display text-4xl font-bold text-bc-accent">{formatKwh(activeSession.energyKwh)}</p>
+          <p className="mt-1 text-sm text-bc-muted">
+            {formatCurrency(activeSession.costEur)} · {formatDuration(elapsed)}
+          </p>
         </Link>
       ) : (
-        <div className="mt-6">
-          <div className="mb-3 flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-bc-accent/20 text-bc-accent">
-              <Zap className="h-4 w-4" />
-            </div>
-            <div>
-              <p className="font-display text-sm font-semibold">Ladeplaner</p>
-              <p className="text-xs text-bc-muted">Freie Stationen in Ihrer Nähe</p>
-            </div>
-          </div>
-          <ChargingPlannerCard />
-        </div>
-      )}
-
-      <div className={`mt-6 ${a11y.simpleMode ? 'a11y-hide-simple' : ''}`}>
-        <LoyaltyCard user={user} />
-      </div>
-
-      <div className={`mt-4 grid grid-cols-3 gap-2 ${a11y.simpleMode ? 'a11y-hide-simple' : ''}`}>
-        {[
-          { label: 'Geladen', value: `${user.totalKwh.toFixed(0)} kWh` },
-          { label: 'CO₂ gespart', value: `${user.co2SavedKg} kg` },
-          { label: 'Sessions', value: String(user.totalSessions) },
-        ].map((stat) => (
-          <div key={stat.label} className="rounded-xl border border-bc-border bg-bc-elevated p-3 text-center">
-            <p className="font-display text-base font-bold">{stat.value}</p>
-            <p className="text-[10px] text-bc-muted">{stat.label}</p>
-          </div>
-        ))}
-      </div>
-
-      <div className={`mt-4 grid grid-cols-2 gap-3 ${a11y.simpleMode ? 'grid-cols-1' : ''}`}>
         <Link
           to="/scan"
-          className={`btn-primary text-center ${a11y.simpleMode ? 'py-4 text-base' : 'py-3 text-sm'}`}
+          className="mt-8 flex flex-col items-center justify-center rounded-3xl border border-bc-border bg-bc-elevated px-6 py-12 text-center transition hover:border-bc-accent/40"
         >
-          Ladepunkt-ID eingeben
+          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-bc-accent/15 text-bc-accent">
+            <Zap className="h-8 w-8" />
+          </div>
+          <p className="mt-4 font-display text-xl font-semibold">Laden starten</p>
+          <p className="mt-1 max-w-xs text-sm text-bc-muted">QR-Code scannen oder Ladepunkt-ID eingeben</p>
         </Link>
-        <Link
-          to="/karte"
-          className={`btn-secondary text-center ${a11y.simpleMode ? 'py-4 text-base' : 'py-3 text-sm'}`}
-        >
-          Karte öffnen
+      )}
+
+      <div className="mt-4 grid grid-cols-2 gap-3">
+        <Link to="/karte" className="flex items-center justify-center gap-2 rounded-2xl border border-bc-border bg-bc-elevated py-4 text-sm font-medium">
+          <Map className="h-4 w-4 text-bc-accent" />
+          Karte
         </Link>
-      </div>
-
-      <Link
-        to="/reise"
-        className={`a11y-hide-simple mt-3 flex items-center justify-between rounded-xl border border-bc-border bg-bc-elevated px-4 py-3 text-sm`}
-      >
-        <span className="flex items-center gap-2 text-bc-muted">
-          <Route className="h-4 w-4 text-bc-accent" />
-          Reise planen
-        </span>
-        <ChevronRight className="h-4 w-4 text-bc-muted" />
-      </Link>
-
-      <div className="mt-8 flex items-center justify-between">
-        <h2 className="font-display text-lg font-semibold">In der Nähe</h2>
-        <Link to="/stationen" className="text-sm font-medium text-bc-accent">
-          Alle
+        <Link to="/scan" className="flex items-center justify-center gap-2 rounded-2xl border border-bc-border bg-bc-elevated py-4 text-sm font-medium">
+          <QrCode className="h-4 w-4 text-bc-accent" />
+          Scannen
         </Link>
       </div>
 
-      <Link
-        to="/stationen"
-        className={`mt-3 flex items-center gap-3 rounded-xl border border-bc-border bg-bc-elevated px-4 py-3 ${a11y.simpleMode ? 'a11y-hide-simple' : ''}`}
-      >
-        <Search className="h-5 w-5 shrink-0 text-bc-muted" />
-        <span className="text-bc-muted">Station oder Ort suchen…</span>
-      </Link>
+      {nearby.length > 0 && (
+        <>
+          <div className="mt-10 flex items-center justify-between">
+            <h2 className="font-display text-lg font-semibold">In der Nähe</h2>
+            <Link to="/stationen" className="flex items-center gap-1 text-sm text-bc-accent">
+              Alle
+              <ChevronRight className="h-4 w-4" />
+            </Link>
+          </div>
+          <div className="mt-3 space-y-3">
+            {nearby.map((s, i) => (
+              <StationCard key={s.id} station={s} index={i} compact />
+            ))}
+          </div>
+        </>
+      )}
 
-      <div className="mt-3 space-y-3">
-        {nearby.map((s, i) => (
-          <StationCard key={s.id} station={s} index={i} />
-        ))}
-      </div>
+      <HomeMoreSheet
+        open={moreOpen}
+        onClose={() => setMoreOpen(false)}
+        user={user}
+        showPlanner={!activeSession}
+      />
     </div>
   );
 }
