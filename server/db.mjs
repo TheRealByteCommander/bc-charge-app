@@ -3,6 +3,11 @@ import { Pool } from 'pg';
 import { mkdirSync } from 'fs';
 import { dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
+import {
+  assertCanActivateSession,
+  assertSingleActiveInPayload,
+  formatConcurrentSessionError,
+} from './services/sessionGuard.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const dbPath = process.env.BC_DB_PATH ?? resolve(root, 'data', 'bc-charge.sqlite');
@@ -51,6 +56,9 @@ export async function initDb() {
       );
 
       CREATE INDEX IF NOT EXISTS idx_sessions_user ON charging_sessions(user_id);
+
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_one_active_per_user
+        ON charging_sessions(user_id) WHERE status = 'active';
 
       CREATE TABLE IF NOT EXISTS redeemed_rewards (
         user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -119,6 +127,9 @@ export async function initDb() {
     );
 
     CREATE INDEX IF NOT EXISTS idx_sessions_user ON charging_sessions(user_id);
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_one_active_per_user
+      ON charging_sessions(user_id) WHERE status = 'active';
 
     CREATE TABLE IF NOT EXISTS redeemed_rewards (
       user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -281,6 +292,29 @@ export async function listSessions(userId) {
   return rows.map((r) => JSON.parse(r.data_json));
 }
 
+export async function findActiveSessionForUser(userId, excludeSessionId = null) {
+  if (isPostgres()) {
+    const params = [userId];
+    let sql = `SELECT data_json FROM charging_sessions WHERE user_id = $1 AND status = 'active'`;
+    if (excludeSessionId) {
+      sql += ' AND id != $2';
+      params.push(excludeSessionId);
+    }
+    sql += ' ORDER BY updated_at DESC LIMIT 1';
+    const { rows } = await pgPool.query(sql, params);
+    return rows[0] ? parseJson(rows[0].data_json) : null;
+  }
+
+  const rows = sqliteDb
+    .prepare(
+      `SELECT data_json FROM charging_sessions
+       WHERE user_id = ? AND status = 'active'${excludeSessionId ? ' AND id != ?' : ''}
+       ORDER BY updated_at DESC LIMIT 1`
+    )
+    .all(...(excludeSessionId ? [userId, excludeSessionId] : [userId]));
+  return rows[0] ? JSON.parse(rows[0].data_json) : null;
+}
+
 export async function findSessionById(userId, sessionId) {
   if (isPostgres()) {
     const { rows } = await pgPool.query(
@@ -296,38 +330,66 @@ export async function findSessionById(userId, sessionId) {
 }
 
 export async function upsertSession(userId, session) {
+  await assertCanActivateSession(userId, session);
+
   const now = new Date().toISOString();
   const dataJson = JSON.stringify(session);
-  if (isPostgres()) {
-    await pgPool.query(
-      `INSERT INTO charging_sessions (id, user_id, data_json, status, created_at, updated_at)
-       VALUES ($1, $2, $3::jsonb, $4, $5, $6)
-       ON CONFLICT (id) DO UPDATE
-       SET data_json = EXCLUDED.data_json,
-           status = EXCLUDED.status,
-           updated_at = EXCLUDED.updated_at`,
-      [session.id, userId, dataJson, session.status, session.startedAt ?? now, now]
-    );
-    return;
-  }
-  const existing = sqliteDb
-    .prepare('SELECT id FROM charging_sessions WHERE id = ? AND user_id = ?')
-    .get(session.id, userId);
-  if (existing) {
-    sqliteDb
-      .prepare('UPDATE charging_sessions SET data_json = ?, status = ?, updated_at = ? WHERE id = ?')
-      .run(dataJson, session.status, now, session.id);
-  } else {
-    sqliteDb
-      .prepare(
+  try {
+    if (isPostgres()) {
+      await pgPool.query(
         `INSERT INTO charging_sessions (id, user_id, data_json, status, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?)`
-      )
-      .run(session.id, userId, dataJson, session.status, session.startedAt ?? now, now);
+         VALUES ($1, $2, $3::jsonb, $4, $5, $6)
+         ON CONFLICT (id) DO UPDATE
+         SET data_json = EXCLUDED.data_json,
+             status = EXCLUDED.status,
+             updated_at = EXCLUDED.updated_at`,
+        [session.id, userId, dataJson, session.status, session.startedAt ?? now, now]
+      );
+      return;
+    }
+    const existing = sqliteDb
+      .prepare('SELECT id FROM charging_sessions WHERE id = ? AND user_id = ?')
+      .get(session.id, userId);
+    if (existing) {
+      sqliteDb
+        .prepare('UPDATE charging_sessions SET data_json = ?, status = ?, updated_at = ? WHERE id = ?')
+        .run(dataJson, session.status, now, session.id);
+    } else {
+      sqliteDb
+        .prepare(
+          `INSERT INTO charging_sessions (id, user_id, data_json, status, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?)`
+        )
+        .run(session.id, userId, dataJson, session.status, session.startedAt ?? now, now);
+    }
+  } catch (e) {
+    if (isUniqueActiveSessionViolation(e)) {
+      const existing = await findActiveSessionForUser(userId, session.id);
+      throw Object.assign(new Error(formatConcurrentSessionError(existing)), {
+        status: 409,
+        code: 'CONCURRENT_SESSION',
+        activeSession: existing,
+      });
+    }
+    throw e;
   }
 }
 
+function isUniqueActiveSessionViolation(err) {
+  if (!err) return false;
+  if (err.code === '23505') return true;
+  if (String(err.message ?? '').includes('idx_sessions_one_active_per_user')) return true;
+  if (String(err.message ?? '').includes('UNIQUE constraint failed')) return true;
+  return false;
+}
+
 export async function replaceSessions(userId, sessions) {
+  assertSingleActiveInPayload(sessions);
+  const active = sessions.find((s) => s?.status === 'active');
+  if (active) {
+    await assertCanActivateSession(userId, active);
+  }
+
   if (isPostgres()) {
     const client = await pgPool.connect();
     try {

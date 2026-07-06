@@ -63,7 +63,9 @@ import {
   saveSession,
   updateSession,
 } from '../api/backend/sessions';
+import { BackendApiError } from '../api/backend/client';
 import { isConnectorFinishing, isConnectorStartable } from '../utils/ocppStateMapping';
+import { formatConcurrentSessionError, findActiveSession } from '../utils/sessionConcurrency';
 import { isBackendMode } from '../services/backendMode';
 import {
   getCurrentUserId,
@@ -796,7 +798,28 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { user, activeSession, citrineosConnected, rewardFulfillments, selectedChargingFulfillmentId } =
       get();
     if (!user) return { ok: false, error: 'Bitte melden Sie sich an.' };
-    if (activeSession) return { ok: false, error: 'Es läuft bereits eine Ladesitzung.' };
+
+    if (isBackendMode()) {
+      try {
+        const remoteSessions = await fetchSessions();
+        const remoteActive = findActiveSession(remoteSessions);
+        if (remoteActive) {
+          set({ sessions: remoteSessions, activeSession: remoteActive });
+          return { ok: false, error: formatConcurrentSessionError(remoteActive) };
+        }
+        set({ sessions: remoteSessions, activeSession: null });
+      } catch {
+        /* Offline – lokaler Check weiter unten */
+      }
+    } else if (activeSession) {
+      return { ok: false, error: formatConcurrentSessionError(activeSession) };
+    }
+
+    const currentActive = get().activeSession;
+    if (currentActive) {
+      return { ok: false, error: formatConcurrentSessionError(currentActive) };
+    }
+
     if (user.paymentMethods.length === 0) {
       return { ok: false, error: 'Bitte hinterlegen Sie eine Zahlungsmethode unter Profil → Zahlung.' };
     }
@@ -869,6 +892,18 @@ export const useAppStore = create<AppState>((set, get) => ({
       try {
         await saveSession(session);
       } catch (e) {
+        if (e instanceof BackendApiError && e.status === 409) {
+          try {
+            const remoteSessions = await fetchSessions();
+            const remoteActive = findActiveSession(remoteSessions);
+            set({
+              sessions: remoteSessions,
+              activeSession: remoteActive ?? null,
+            });
+          } catch {
+            /* ignore */
+          }
+        }
         return {
           ok: false,
           error: e instanceof Error ? e.message : 'Sitzung konnte nicht gespeichert werden.',

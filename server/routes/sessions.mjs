@@ -23,6 +23,14 @@ import {
 
 const router = Router();
 
+function handleSessionError(res, err) {
+  const status = err?.status ?? 500;
+  const body = { error: err instanceof Error ? err.message : 'Interner Fehler' };
+  if (err?.code) body.code = err.code;
+  if (err?.activeSession) body.activeSession = err.activeSession;
+  res.status(status).json(body);
+}
+
 router.get('/', requireAuth, async (req, res) => {
   res.json({ sessions: await listSessions(req.userId) });
 });
@@ -33,8 +41,12 @@ router.put('/', requireAuth, async (req, res) => {
     res.status(400).json({ error: 'sessions muss ein Array sein.' });
     return;
   }
-  await replaceSessions(req.userId, sessions);
-  res.json({ sessions: await listSessions(req.userId) });
+  try {
+    await replaceSessions(req.userId, sessions);
+    res.json({ sessions: await listSessions(req.userId) });
+  } catch (err) {
+    handleSessionError(res, err);
+  }
 });
 
 router.post('/', requireAuth, async (req, res) => {
@@ -43,8 +55,12 @@ router.post('/', requireAuth, async (req, res) => {
     res.status(400).json({ error: 'session mit id erforderlich.' });
     return;
   }
-  await upsertSession(req.userId, session);
-  res.status(201).json({ session });
+  try {
+    await upsertSession(req.userId, session);
+    res.status(201).json({ session });
+  } catch (err) {
+    handleSessionError(res, err);
+  }
 });
 
 router.patch('/:id', requireAuth, async (req, res) => {
@@ -53,8 +69,12 @@ router.patch('/:id', requireAuth, async (req, res) => {
     res.status(400).json({ error: 'Ungültige Sitzungsdaten.' });
     return;
   }
-  await upsertSession(req.userId, session);
-  res.json({ session });
+  try {
+    await upsertSession(req.userId, session);
+    res.json({ session });
+  } catch (err) {
+    handleSessionError(res, err);
+  }
 });
 
 router.post('/:id/complete', requireAuth, async (req, res) => {
