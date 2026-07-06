@@ -55,7 +55,7 @@ async function hasuraRequest(query, variables) {
 const UPSERT_AUTHORIZATION = `
   mutation BcUpsertAuthorization(
     $tenantId: Int!
-    $idToken: String!
+    $idToken: citext!
     $idTokenType: String!
     $status: String!
     $createdAt: timestamptz!
