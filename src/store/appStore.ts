@@ -61,6 +61,7 @@ import {
   completeSessionRemote,
   fetchSessions,
   saveSession,
+  syncActiveSession,
   updateSession,
 } from '../api/backend/sessions';
 import { BackendApiError } from '../api/backend/client';
@@ -68,12 +69,15 @@ import { isConnectorFinishing, isConnectorStartable } from '../utils/ocppStateMa
 import { formatConcurrentSessionError, findActiveSession } from '../utils/sessionConcurrency';
 import { isBackendMode } from '../services/backendMode';
 import {
+  clearActiveSessionCache,
   getCurrentUserId,
   isOnboardingDone,
+  loadActiveSessionCache,
   loadFulfillments,
   loadRedeemed,
   loadSessions,
   loadUsers,
+  saveActiveSessionCache,
   saveFulfillments,
   saveRedeemed,
   saveSessions,
@@ -118,6 +122,7 @@ interface AppState {
   init: () => Promise<void>;
   syncStripePayments: () => Promise<void>;
   refreshCitrineosData: () => Promise<void>;
+  refreshActiveSession: () => Promise<void>;
   completeOnboarding: () => void;
   setToast: (msg: string | null) => void;
   setUserLocation: (loc: { lat: number; lng: number } | null) => void;
@@ -287,6 +292,33 @@ function calcPoints(energyKwh: number, tier: UserProfile['loyaltyTier']): number
   return Math.round(energyKwh * 1.2 * tierThresholds[tier].multiplier);
 }
 
+function applyLiveSessionPricing(
+  base: ChargingSession,
+  user: UserProfile,
+  fulfillment: RewardFulfillment | undefined,
+  rewardFulfillments: RewardFulfillment[]
+): ChargingSession {
+  const elapsedMin = (Date.now() - new Date(base.startedAt).getTime()) / 60000;
+  const applied = applyChargingFulfillment({
+    energyKwh: base.energyKwh,
+    pricePerKwh: base.pricePerKwh,
+    sessionFee: base.sessionFee ?? 0,
+    pricePerMin: base.pricePerMin ?? 0,
+    minutes: elapsedMin,
+    fulfillment,
+  });
+  const nightMult = getNightPointsMultiplier(rewardFulfillments, base.startedAt);
+  return {
+    ...base,
+    baseCostEur: applied.baseCostEur,
+    costEur: applied.costEur,
+    rewardDiscountEur: applied.rewardDiscountEur,
+    appliedFulfillmentId: applied.appliedFulfillmentId ?? base.appliedFulfillmentId,
+    rewardLabel: applied.rewardLabel ?? base.rewardLabel,
+    pointsEarned: Math.round(calcPoints(base.energyKwh, user.loyaltyTier) * nightMult),
+  };
+}
+
 /** Aktuellen Nutzer immer frisch aus dem Storage lesen (wichtig nach Registrierung während init läuft). */
 function enrichUser(profile: UserProfile): UserProfile {
   return {
@@ -319,9 +351,16 @@ async function loadBackendUserBundles(user: UserProfile | null): Promise<{
       fetchRedeemedRewards(),
       fetchRewardFulfillments(),
     ]);
+    const active = sessions.find((s) => s.status === 'active');
+    if (active) saveActiveSessionCache(user.id, active);
+    else clearActiveSessionCache();
     return { sessions, redeemedRewardIds, rewardFulfillments };
   } catch (e) {
     console.warn('[BC Charge] Nutzerdaten beim Start nicht geladen:', e);
+    const cached = loadActiveSessionCache(user.id);
+    if (cached) {
+      return { sessions: [cached], redeemedRewardIds: [], rewardFulfillments: [] };
+    }
     return { sessions: [], redeemedRewardIds: [], rewardFulfillments: [] };
   }
 }
@@ -511,6 +550,39 @@ export const useAppStore = create<AppState>((set, get) => ({
         : 'Stationen konnten nicht aktualisiert werden',
     });
     if (sync.ok) checkFavoriteAvailability(get().user);
+  },
+
+  refreshActiveSession: async () => {
+    const { user, rewardFulfillments } = get();
+    if (!user || !isBackendMode()) return;
+    try {
+      const synced = await syncActiveSession();
+      if (synced) {
+        const fulfillment = findFulfillmentById(rewardFulfillments, synced.appliedFulfillmentId);
+        const updated = applyLiveSessionPricing(synced, user, fulfillment, rewardFulfillments);
+        saveActiveSessionCache(user.id, updated);
+        const sessions = get().sessions;
+        const nextSessions = sessions.some((s) => s.id === updated.id)
+          ? sessions.map((s) => (s.id === updated.id ? updated : s))
+          : [updated, ...sessions];
+        set({ activeSession: updated, sessions: nextSessions });
+        return;
+      }
+
+      const sessions = await fetchSessions();
+      const active = sessions.find((s) => s.status === 'active') ?? null;
+      if (active) saveActiveSessionCache(user.id, active);
+      else clearActiveSessionCache();
+      set({ sessions, activeSession: active });
+    } catch {
+      const cached = loadActiveSessionCache(user.id);
+      if (!cached) return;
+      const sessions = get().sessions;
+      const nextSessions = sessions.some((s) => s.id === cached.id)
+        ? sessions.map((s) => (s.id === cached.id ? cached : s))
+        : [cached, ...sessions];
+      set({ activeSession: cached, sessions: nextSessions });
+    }
   },
 
   completeOnboarding: () => {
@@ -707,6 +779,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   logout: () => {
     if (isBackendMode()) void logoutUser();
+    clearActiveSessionCache();
     setCurrentUserId(null);
     set({ user: null, sessions: [], activeSession: null, redeemedRewardIds: [], rewardFulfillments: [], selectedChargingFulfillmentId: null, lastRedeemedFulfillment: null });
   },
@@ -878,7 +951,12 @@ export const useAppStore = create<AppState>((set, get) => ({
       try {
         const cs = await startCitrineosCharge(station, connectorId, user.membershipId);
         if (!cs.ok) return { ok: false, error: cs.error };
-        session = { ...session, ...cs.sessionPatch, citrineosBacked: true };
+        session = {
+          ...session,
+          ...cs.sessionPatch,
+          citrineosBacked: true,
+          citrineosStationDbId: station.citrineosDatabaseId,
+        };
       } catch (e) {
         return {
           ok: false,
@@ -912,6 +990,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     } else {
       saveSessions(user.id, sessions);
     }
+    if (isBackendMode()) saveActiveSessionCache(user.id, session);
     set({ activeSession: session, sessions });
     return { ok: true };
   },
@@ -919,97 +998,43 @@ export const useAppStore = create<AppState>((set, get) => ({
   tickSession: async () => {
     const { activeSession, user, rewardFulfillments } = get();
     if (!activeSession || !user || activeSession.status !== 'active') return;
+
     const station = getStationById(activeSession.stationId);
     const connector = station?.connectors.find((c) => c.id === activeSession.connectorId);
-    if (!connector) return;
-
-    let updated: ChargingSession = { ...activeSession };
     const fulfillment = findFulfillmentById(rewardFulfillments, activeSession.appliedFulfillmentId);
+
+    let liveBase: ChargingSession = { ...activeSession };
 
     if (activeSession.citrineosBacked) {
       try {
-        const patch = await pollCitrineosSession(activeSession);
-        if (patch) {
-          const energyKwh = patch.energyKwh ?? updated.energyKwh;
-          const elapsedMin = (Date.now() - new Date(activeSession.startedAt).getTime()) / 60000;
-          const applied = applyChargingFulfillment({
-            energyKwh,
-            pricePerKwh: connector.pricePerKwh,
-            sessionFee: connector.sessionFee ?? 0,
-            pricePerMin: connector.pricePerMin ?? 0,
-            minutes: elapsedMin,
-            fulfillment,
-          });
-          const nightMult = getNightPointsMultiplier(rewardFulfillments, activeSession.startedAt);
-          updated = {
-            ...updated,
-            ...patch,
-            baseCostEur: applied.baseCostEur,
-            costEur: applied.costEur,
-            rewardDiscountEur: applied.rewardDiscountEur,
-            appliedFulfillmentId: applied.appliedFulfillmentId ?? undefined,
-            rewardLabel: applied.rewardLabel ?? updated.rewardLabel,
-            pointsEarned: Math.round(calcPoints(energyKwh, user.loyaltyTier) * nightMult),
-          };
+        if (isBackendMode()) {
+          const synced = await syncActiveSession();
+          if (synced) liveBase = synced;
+        } else {
+          const patch = await pollCitrineosSession(activeSession);
+          if (patch) liveBase = { ...liveBase, ...patch };
         }
       } catch {
-        /* Fallback auf Simulation bei API-Fehler */
+        /* letzter bekannter Stand */
       }
-    }
-
-    if (!activeSession.citrineosBacked) {
+    } else if (connector) {
       const elapsedMin = (Date.now() - new Date(activeSession.startedAt).getTime()) / 60000;
       const efficiency = 0.85;
       const maxKwh = (connector.powerKw * efficiency * elapsedMin) / 60;
       const energyKwh = Math.min(maxKwh, 80);
-      const applied = applyChargingFulfillment({
-        energyKwh,
-        pricePerKwh: connector.pricePerKwh,
-        sessionFee: connector.sessionFee ?? 0,
-        pricePerMin: connector.pricePerMin ?? 0,
-        minutes: elapsedMin,
-        fulfillment,
-      });
-      const nightMult = getNightPointsMultiplier(rewardFulfillments, activeSession.startedAt);
-      updated = {
-        ...updated,
-        energyKwh: Math.round(energyKwh * 100) / 100,
-        baseCostEur: applied.baseCostEur,
-        costEur: applied.costEur,
-        rewardDiscountEur: applied.rewardDiscountEur,
-        appliedFulfillmentId: applied.appliedFulfillmentId ?? undefined,
-        rewardLabel: applied.rewardLabel ?? updated.rewardLabel,
-        pointsEarned: Math.round(calcPoints(energyKwh, user.loyaltyTier) * nightMult),
-      };
-    } else if (updated.energyKwh > 0 && !updated.rewardDiscountEur) {
-      const elapsedMin = (Date.now() - new Date(activeSession.startedAt).getTime()) / 60000;
-      const applied = applyChargingFulfillment({
-        energyKwh: updated.energyKwh,
-        pricePerKwh: connector.pricePerKwh,
-        sessionFee: connector.sessionFee ?? 0,
-        pricePerMin: connector.pricePerMin ?? 0,
-        minutes: elapsedMin,
-        fulfillment,
-      });
-      const nightMult = getNightPointsMultiplier(rewardFulfillments, activeSession.startedAt);
-      updated = {
-        ...updated,
-        baseCostEur: applied.baseCostEur,
-        costEur: applied.costEur,
-        rewardDiscountEur: applied.rewardDiscountEur,
-        appliedFulfillmentId: applied.appliedFulfillmentId ?? undefined,
-        rewardLabel: applied.rewardLabel ?? updated.rewardLabel,
-        pointsEarned: Math.round(calcPoints(updated.energyKwh, user.loyaltyTier) * nightMult),
-      };
+      liveBase = { ...liveBase, energyKwh: Math.round(energyKwh * 100) / 100 };
     }
 
+    const updated = applyLiveSessionPricing(liveBase, user, fulfillment, rewardFulfillments);
     const sessions = get().sessions.map((s) => (s.id === updated.id ? updated : s));
+
     if (isBackendMode()) {
       try {
         await updateSession(updated);
       } catch {
         /* lokaler Stand bleibt sichtbar */
       }
+      saveActiveSessionCache(user.id, updated);
     } else {
       saveSessions(user.id, sessions);
     }
@@ -1094,6 +1119,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           : result.invoice?.error
             ? ' · Rechnung konnte nicht per E-Mail versendet werden'
             : '';
+        clearActiveSessionCache();
         set({
           user: mergedUser,
           sessions: sessions.map((s) => (s.id === result.session.id ? result.session : s)),
@@ -1132,6 +1158,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     const toastMsg = `Laden beendet · ${formatGamificationToast(gam, 'de')}`;
+    clearActiveSessionCache();
     set({
       user: updatedUser,
       sessions,

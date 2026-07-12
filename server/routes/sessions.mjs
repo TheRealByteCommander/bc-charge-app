@@ -20,8 +20,25 @@ import {
   isFulfillmentActive,
   shouldConsumeFulfillment,
 } from '../services/rewardFulfillment.mjs';
+import { syncAccountSessionFromCitrineos } from '../services/citrineosServer.mjs';
 
 const router = Router();
+
+async function listSessionsWithLiveSync(userId) {
+  const sessions = await listSessions(userId);
+  const activeIdx = sessions.findIndex((s) => s.status === 'active' && s.citrineosBacked);
+  if (activeIdx < 0) return sessions;
+
+  const synced = await syncAccountSessionFromCitrineos(sessions[activeIdx]);
+  if (JSON.stringify(synced) === JSON.stringify(sessions[activeIdx])) {
+    return sessions;
+  }
+
+  await upsertSession(userId, synced);
+  const next = [...sessions];
+  next[activeIdx] = synced;
+  return next;
+}
 
 function handleSessionError(res, err) {
   const status = err?.status ?? 500;
@@ -32,7 +49,30 @@ function handleSessionError(res, err) {
 }
 
 router.get('/', requireAuth, async (req, res) => {
-  res.json({ sessions: await listSessions(req.userId) });
+  try {
+    res.json({ sessions: await listSessionsWithLiveSync(req.userId) });
+  } catch (err) {
+    handleSessionError(res, err);
+  }
+});
+
+router.get('/active/sync', requireAuth, async (req, res) => {
+  try {
+    const sessions = await listSessions(req.userId);
+    const active = sessions.find((s) => s.status === 'active');
+    if (!active) {
+      res.json({ session: null });
+      return;
+    }
+
+    const synced = await syncAccountSessionFromCitrineos(active);
+    if (JSON.stringify(synced) !== JSON.stringify(active)) {
+      await upsertSession(req.userId, synced);
+    }
+    res.json({ session: synced });
+  } catch (err) {
+    handleSessionError(res, err);
+  }
 });
 
 router.put('/', requireAuth, async (req, res) => {

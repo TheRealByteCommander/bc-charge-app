@@ -167,6 +167,8 @@ export interface ChargingSession {
   pointsEarned: number;
   /** CitrineOS/OCPP Transaktions-ID */
   citrineosTransactionId?: string;
+  /** CitrineOS ChargingStations.id (Hasura) – für Live-Polling ohne Stations-Cache */
+  citrineosStationDbId?: number;
   remoteStartId?: number;
   /** true = Live-Daten von CitrineOS, false = lokale Simulation */
   citrineosBacked?: boolean;

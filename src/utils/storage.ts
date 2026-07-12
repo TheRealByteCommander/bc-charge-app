@@ -48,6 +48,36 @@ export function saveSessions(userId: string, sessions: ChargingSession[]): void 
   localStorage.setItem(KEYS.sessions, JSON.stringify(all));
 }
 
+const ACTIVE_SESSION_CACHE = 'bc_active_session_cache';
+
+/** Kurzzeit-Cache der aktiven Session (Backend-Modus) – Wiederherstellung bei App-Neustart. */
+export function saveActiveSessionCache(userId: string, session: ChargingSession): void {
+  try {
+    sessionStorage.setItem(
+      ACTIVE_SESSION_CACHE,
+      JSON.stringify({ userId, session, savedAt: new Date().toISOString() })
+    );
+  } catch {
+    /* Quota / private mode */
+  }
+}
+
+export function loadActiveSessionCache(userId: string): ChargingSession | null {
+  try {
+    const raw = sessionStorage.getItem(ACTIVE_SESSION_CACHE);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { userId: string; session: ChargingSession };
+    if (parsed.userId !== userId || parsed.session.status !== 'active') return null;
+    return parsed.session;
+  } catch {
+    return null;
+  }
+}
+
+export function clearActiveSessionCache(): void {
+  sessionStorage.removeItem(ACTIVE_SESSION_CACHE);
+}
+
 export function isOnboardingDone(): boolean {
   return localStorage.getItem(KEYS.onboarding) === '1';
 }
