@@ -10,6 +10,7 @@ import { StationInfoSheet } from '../components/sheets/StationInfoSheet';
 import { StationReportSheet } from '../components/sheets/StationReportSheet';
 import { MenuRow, MenuSection } from '../components/ui/MenuList';
 import { getAvailableCount, getStationById } from '../data/stations';
+import { isMultiConnectorStation } from '../api/citrineos/mappers';
 import { computePlugScore } from '../services/community';
 import { useAppStore } from '../store/appStore';
 import { formatConcurrentSessionError } from '../utils/sessionConcurrency';
@@ -217,7 +218,7 @@ export function StationDetailPage() {
       <h2 className="mt-8 text-xs font-semibold uppercase tracking-wider text-bc-muted">Anschluss wählen</h2>
       <div className="mt-3 space-y-2">
         {station.connectors.map((c: Connector, index: number) => {
-          const evseLabel = station.connectors.length > 1 ? formatEvseLabel(c, index) : null;
+          const evseLabel = isMultiConnectorStation(station) ? formatEvseLabel(c, index) : null;
           const startable = isConnectorStartable(c.status, c.ocppRawStatus);
           return (
             <button
