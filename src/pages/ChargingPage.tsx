@@ -26,6 +26,14 @@ export function ChargingPage() {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [now, setNow] = useState(Date.now());
 
+  const tickSession = useAppStore((s) => s.tickSession);
+
+  useEffect(() => {
+    if (!initialized || !user || !activeSession) return;
+    void refreshActiveSession();
+    void tickSession();
+  }, [initialized, user, activeSession?.id, refreshActiveSession, tickSession]);
+
   useEffect(() => {
     if (!initialized || !user || activeSession) return;
     void refreshActiveSession();

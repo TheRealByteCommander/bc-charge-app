@@ -345,6 +345,19 @@ function estimateEnergyKwh(session, minutes) {
   return Math.round(Math.min(estimated, 120) * 100) / 100;
 }
 
+/** Fallback wenn CitrineOS keine Tx/Meterwerte liefert – Anzeige bleibt nicht bei 0 kWh hängen. */
+function applyEstimatedLiveMetrics(session) {
+  const minutes = session.startedAt
+    ? (Date.now() - new Date(session.startedAt).getTime()) / 60000
+    : 0;
+  let energyKwh = Number(session.energyKwh) || 0;
+  if (energyKwh < 0.01 && minutes > 0.05) {
+    energyKwh = estimateEnergyKwh(session, minutes);
+  }
+  const costEur = computeCostFromSession(energyKwh, session, minutes);
+  return { ...session, energyKwh, costEur };
+}
+
 export async function stopAccountTransaction(stationId, transactionId, stationRow) {
   if (!transactionId) {
     throw Object.assign(new Error('Keine Transaktions-ID für Stoppen verfügbar'), { status: 400 });
@@ -600,7 +613,11 @@ export async function syncAccountSessionFromCitrineos(session) {
       tx = await fetchActiveTransactionForStation(session.stationId, stationDbId);
     }
     if (!tx) {
-      return { ...session, citrineosStationDbId: stationDbId, citrineosBacked: citrineosBacked || Boolean(stationRow) };
+      return applyEstimatedLiveMetrics({
+        ...session,
+        citrineosStationDbId: stationDbId,
+        citrineosBacked: citrineosBacked || Boolean(stationRow),
+      });
     }
 
     const minutes = session.startedAt
@@ -625,7 +642,7 @@ export async function syncAccountSessionFromCitrineos(session) {
     };
   } catch (e) {
     console.warn('[bc-charge] CitrineOS-Session-Sync fehlgeschlagen:', e);
-    return session;
+    return applyEstimatedLiveMetrics(session);
   }
 }
 
