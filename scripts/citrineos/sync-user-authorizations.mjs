@@ -24,7 +24,7 @@ for (const { userId, membershipId } of users) {
       console.warn(`⊘ ${userId} (${membershipId}): ${result.reason}`);
       continue;
     }
-    console.log(`✓ ${userId} → ${result.idToken} (id ${result.id ?? '—'})`);
+    console.log(`✓ ${userId} → ${result.idToken} (${result.status})`);
     ok += 1;
   } catch (e) {
     console.error(`✗ ${userId} (${membershipId}):`, e instanceof Error ? e.message : e);
