@@ -60,6 +60,7 @@ import { fetchRewardFulfillments } from '../api/backend/rewards';
 import {
   abandonActiveSession,
   completeSessionRemote,
+  fetchActiveSessionOnly,
   fetchSessions,
   saveSession,
   stopRemoteActiveSession,
@@ -881,15 +882,26 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!user) return { ok: false, error: 'Bitte melden Sie sich an.' };
 
     if (isBackendMode()) {
+      if (activeSession) {
+        return { ok: false, error: formatConcurrentSessionError(activeSession) };
+      }
       try {
-        const remoteSessions = await fetchSessions();
-        const remoteActive = findActiveSession(remoteSessions);
+        const remoteActive = await fetchActiveSessionOnly();
         if (remoteActive) {
-          set({ sessions: remoteSessions, activeSession: remoteActive });
+          const sessions = get().sessions.some((s) => s.id === remoteActive.id)
+            ? get().sessions.map((s) => (s.id === remoteActive.id ? remoteActive : s))
+            : [remoteActive, ...get().sessions];
+          set({ sessions, activeSession: remoteActive });
           return { ok: false, error: formatConcurrentSessionError(remoteActive) };
         }
-        set({ sessions: remoteSessions, activeSession: null });
-      } catch {
+      } catch (e) {
+        if (e instanceof BackendApiError && e.status === 429) {
+          return {
+            ok: false,
+            error:
+              'Server ausgelastet (zu viele Anfragen). Bitte 1 Minute warten und erneut versuchen – oder unter Laden den Vorgang abbrechen.',
+          };
+        }
         /* Offline – lokaler Check weiter unten */
       }
     } else if (activeSession) {

@@ -93,6 +93,15 @@ export function ChargeStartConfirmSheet({
                 Zur laufenden Sitzung
               </Link>
             ) : null}
+            {error.includes('Zu viele Anfragen') || error.includes('ausgelastet') ? (
+              <p className="text-xs text-bc-muted">
+                Tipp: 1 Minute warten, App neu öffnen oder unter{' '}
+                <Link to="/laden" onClick={onClose} className="text-bc-accent underline">
+                  Laden
+                </Link>{' '}
+                einen hängenden Vorgang abbrechen.
+              </p>
+            ) : null}
           </div>
         ) : null}
 

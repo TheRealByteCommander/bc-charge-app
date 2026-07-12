@@ -20,6 +20,8 @@ const PORT = Number(process.env.BC_SERVER_PORT ?? process.env.STRIPE_SERVER_PORT
 
 const app = express();
 app.disable('x-powered-by');
+/** Hinter Nginx/Caddy: echte Client-IP für Rate-Limit-Fallback (nicht nur 127.0.0.1). */
+app.set('trust proxy', Number(process.env.BC_TRUST_PROXY_HOPS ?? 1));
 
 const corsOptions = getCorsOptions();
 app.use(
@@ -31,15 +33,16 @@ app.use(
 
 app.use(cookieParser());
 app.use(express.json({ limit: '256kb' }));
-app.use(attachUserForRateLimit);
-app.use(createRateLimiter({ windowMs: 60_000, max: 480 }));
-
-await initDb();
-await seedDemoUser();
 
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true, service: 'bc-charge-api' });
 });
+
+app.use(attachUserForRateLimit);
+app.use(createRateLimiter({ windowMs: 60_000, max: 900 }));
+
+await initDb();
+await seedDemoUser();
 
 app.use('/api/auth', authRouter);
 app.use('/api/profile', profileRouter);

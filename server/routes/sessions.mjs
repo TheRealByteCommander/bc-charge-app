@@ -50,7 +50,22 @@ function handleSessionError(res, err) {
 
 router.get('/', requireAuth, async (req, res) => {
   try {
-    res.json({ sessions: await listSessionsWithLiveSync(req.userId) });
+    const live = req.query.sync === '1' || req.query.sync === 'true';
+    const sessions = live
+      ? await listSessionsWithLiveSync(req.userId)
+      : await listSessions(req.userId);
+    res.json({ sessions });
+  } catch (err) {
+    handleSessionError(res, err);
+  }
+});
+
+/** Aktive Sitzung ohne CitrineOS-Sync (leichtgewichtig für Ladestart-Check). */
+router.get('/active', requireAuth, async (req, res) => {
+  try {
+    const sessions = await listSessions(req.userId);
+    const active = sessions.find((s) => s.status === 'active') ?? null;
+    res.json({ session: active });
   } catch (err) {
     handleSessionError(res, err);
   }

@@ -7,6 +7,12 @@ export async function fetchSessions(): Promise<ChargingSession[]> {
   return res.sessions;
 }
 
+/** Nur prüfen ob eine aktive Sitzung existiert (ohne CitrineOS-Sync, rate-limit-freundlich). */
+export async function fetchActiveSessionOnly(): Promise<ChargingSession | null> {
+  const res = await backendApi<{ session: ChargingSession | null }>('/api/sessions/active');
+  return res.session;
+}
+
 /** Aktive Session mit Live-Daten aus CitrineOS synchronisieren (serverseitig). */
 export async function syncActiveSession(): Promise<ChargingSession | null> {
   const res = await backendApi<{ session: ChargingSession | null }>('/api/sessions/active/sync');
