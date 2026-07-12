@@ -38,7 +38,7 @@ echo "============================================"
 echo "H2 Connectors für Station $STATION_ID (Tenant $TENANT_ID)"
 echo "============================================"
 
-STATION_JSON=$(graphql_post "{\"query\":\"query { ChargingStations_by_pk(id: $STATION_ID) { id ocppConnectionName chargePointModel tenantId } }\"}")
+STATION_JSON=$(graphql_post "{\"query\":\"query { ChargingStations_by_pk(id: $STATION_ID) { id ocppConnectionName chargePointModel chargePointVendor tenantId } }\"}")
 
 OCPP_NAME=$(echo "$STATION_JSON" | python3 -c "
 import json, sys
@@ -52,6 +52,30 @@ if not row:
     sys.exit(1)
 print(row['ocppConnectionName'])
 ")
+
+VENDOR_MODEL=$(echo "$STATION_JSON" | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+row = d.get('data', {}).get('ChargingStations_by_pk') or {}
+vendor = (row.get('chargePointVendor') or '').lower()
+model = (row.get('chargePointModel') or '').lower()
+print(vendor, model)
+")
+
+VENDOR_LOWER=$(echo "$VENDOR_MODEL" | awk '{print $1}')
+MODEL_LOWER=$(echo "$VENDOR_MODEL" | awk '{print $2}')
+
+if echo "$VENDOR_LOWER $MODEL_LOWER" | grep -qiE 'go-e|goe|go_e|homeplus'; then
+  echo "FEHLER: Station $STATION_ID ($OCPP_NAME) ist go-e – kein H2-Doppelanschluss." >&2
+  echo "  seed-h2-connectors.sh nur für Elinta CityCharge H2 verwenden." >&2
+  exit 1
+fi
+
+if ! echo "$MODEL_LOWER" | grep -qiE 'h2|citycharge'; then
+  echo "WARNUNG: chargePointModel enthält weder H2 noch CityCharge ($MODEL_LOWER)." >&2
+  read -r -p "Trotzdem fortfahren? [y/N] " CONFIRM
+  [[ "${CONFIRM,,}" == "y" ]] || exit 1
+fi
 
 echo "Ladesäule: $OCPP_NAME"
 

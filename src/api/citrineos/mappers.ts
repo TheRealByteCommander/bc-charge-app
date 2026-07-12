@@ -119,6 +119,44 @@ function connectorId(evseId: number, connectorId: number): string {
   return `evse-${evseId}-conn-${connectorId}`;
 }
 
+/**
+ * go-e & Co.: nur ein physischer Anschluss – Hasura kann fälschlich 2 EVSEs haben
+ * (z. B. nach seed-h2-connectors.sh). Zeigt nur den primären Ladepunkt.
+ */
+function normalizeConnectorsForHardware(
+  connectors: Connector[],
+  hardwareFeatures: HardwareFeatures,
+  stationLabel: string
+): Connector[] {
+  if (hardwareFeatures.multiConnector || connectors.length <= 1) {
+    return connectors;
+  }
+
+  const sorted = [...connectors].sort((a, b) => {
+    const evseDiff = (a.evseNumber ?? 99) - (b.evseNumber ?? 99);
+    if (evseDiff !== 0) return evseDiff;
+    return (a.connectorNumber ?? 99) - (b.connectorNumber ?? 99);
+  });
+
+  if (connectors.length > 1 && import.meta.env.DEV) {
+    console.warn(
+      `[BC Charge] „${stationLabel}“: ${connectors.length} Hasura-Connectors, Anzeige auf Ladepunkt 1 reduziert (multiConnector=false)`
+    );
+  }
+
+  return [sorted[0]];
+}
+
+/** Ob die UI mehrere Ladepunkte anzeigen soll (H2 ja, go-e nein). */
+export function isMultiConnectorStation(station: {
+  hardwareFeatures?: HardwareFeatures;
+  connectors: Connector[];
+}): boolean {
+  if (station.hardwareFeatures?.multiConnector === true) return true;
+  if (station.hardwareFeatures?.multiConnector === false) return false;
+  return station.connectors.length > 1;
+}
+
 export function parseConnectorRef(
   connectorAppId: string
 ): { evseId: number; connectorId: number } | null {
@@ -174,6 +212,8 @@ export function mapHasuraStationToApp(
 
   if (connectors.length === 0) return null;
 
+  const normalizedConnectors = normalizeConnectorsForHardware(connectors, hardwareFeatures, name);
+
   const { lat, lng } = resolveStationCoordinates(row);
 
   return {
@@ -195,7 +235,7 @@ export function mapHasuraStationToApp(
     imageGradient: GRADIENTS[index % GRADIENTS.length],
     greenEnergy: true,
     accessible: true,
-    connectors,
+    connectors: normalizedConnectors,
     chargePointVendor: row.chargePointVendor ?? undefined,
     chargePointModel: row.chargePointModel ?? undefined,
     hardwareModel,
