@@ -25,7 +25,6 @@ const UPSERT_AUTHORIZATION = `
         update_columns: [status, updatedAt]
       }
     ) {
-      id
       idToken
       status
     }
@@ -35,7 +34,6 @@ const UPSERT_AUTHORIZATION = `
 /** Authorization direkt über Hasura-Proxy (Fallback wenn BFF-Route noch nicht deployed). */
 export async function upsertCitrineosAuthorization(idToken: string): Promise<{
   ok: boolean;
-  id?: number;
   idToken: string;
   status: string;
 }> {
@@ -46,7 +44,7 @@ export async function upsertCitrineosAuthorization(idToken: string): Promise<{
 
   const now = new Date().toISOString();
   const data = await hasuraGraphql<{
-    insert_Authorizations_one?: { id: number; idToken: string; status: string };
+    insert_Authorizations_one?: { idToken: string; status: string };
   }>(UPSERT_AUTHORIZATION, {
     tenantId: citrineosConfig.tenantId,
     idToken: token,
@@ -59,7 +57,6 @@ export async function upsertCitrineosAuthorization(idToken: string): Promise<{
   const row = data.insert_Authorizations_one;
   return {
     ok: true,
-    id: row?.id,
     idToken: row?.idToken ?? token,
     status: row?.status ?? 'Accepted',
   };

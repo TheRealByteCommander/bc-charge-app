@@ -75,7 +75,6 @@ const UPSERT_AUTHORIZATION = `
         update_columns: [status, updatedAt]
       }
     ) {
-      id
       idToken
       status
     }
@@ -107,7 +106,6 @@ export async function ensureCitrineosAuthorization(rawIdToken) {
 
   return {
     ok: true,
-    id: data.insert_Authorizations_one?.id,
     idToken: data.insert_Authorizations_one?.idToken ?? idToken,
     status: data.insert_Authorizations_one?.status ?? 'Accepted',
   };
