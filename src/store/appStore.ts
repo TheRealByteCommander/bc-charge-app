@@ -1058,12 +1058,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   abandonStuckSession: async () => {
-    const { user } = get();
+    const { user, activeSession } = get();
     if (!user) return { ok: false, error: 'Bitte melden Sie sich an.' };
     if (!isBackendMode()) return { ok: false, error: 'Nur mit Backend verfügbar.' };
+    if (!activeSession) return { ok: false, error: 'Keine aktive Sitzung in der App.' };
 
     try {
-      const completed = await abandonActiveSession();
+      const completed = await abandonActiveSession(activeSession);
       clearActiveSessionCache();
       const sessions = get().sessions.map((s) => (s.id === completed.id ? completed : s));
       if (!sessions.some((s) => s.id === completed.id)) {
@@ -1074,7 +1075,12 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ toast: 'Hängender Ladevorgang wurde beendet.' });
       return { ok: true };
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Abbrechen fehlgeschlagen';
+      const msg =
+        e instanceof BackendApiError && e.status === 404
+          ? 'Server-API noch nicht aktualisiert. Bitte auf dem Server pm2 restart bc-charge-api ausführen.'
+          : e instanceof Error
+            ? e.message
+            : 'Abbrechen fehlgeschlagen';
       return { ok: false, error: msg };
     }
   },
