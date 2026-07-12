@@ -61,6 +61,7 @@ import {
   completeSessionRemote,
   fetchSessions,
   saveSession,
+  stopRemoteActiveSession,
   syncActiveSession,
   updateSession,
 } from '../api/backend/sessions';
@@ -439,7 +440,10 @@ export const useAppStore = create<AppState>((set, get) => ({
           pricingSyncedAt: sync.ok ? (sync.pricingSyncedAt ?? null) : null,
         });
 
-        if (user && runId === initRun) void get().syncStripePayments();
+        if (user && runId === initRun) {
+          void get().syncStripePayments();
+          if (sessions.some((s) => s.status === 'active')) void get().refreshActiveSession();
+        }
         return;
       }
 
@@ -1042,24 +1046,55 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   stopSession: async () => {
-    const { activeSession, user } = get();
+    const { activeSession, user, rewardFulfillments } = get();
     if (!activeSession || !user) return;
 
-    if (activeSession.citrineosBacked && activeSession.citrineosTransactionId) {
+    let current: ChargingSession = { ...activeSession };
+
+    if (isBackendMode()) {
       try {
-        const stop = await stopCitrineosCharge(activeSession);
-        if (!stop.ok) {
-          set({ toast: stop.error ?? 'Stoppen fehlgeschlagen' });
-          return;
-        }
-        await pollCitrineosSession(activeSession);
+        const synced = await stopRemoteActiveSession();
+        const fulfillment = findFulfillmentById(rewardFulfillments, synced.appliedFulfillmentId);
+        current = applyLiveSessionPricing(synced, user, fulfillment, rewardFulfillments);
+        set({
+          activeSession: current,
+          sessions: get().sessions.map((s) => (s.id === current.id ? current : s)),
+        });
       } catch (e) {
-        set({ toast: e instanceof Error ? e.message : 'Ladevorgang konnte nicht beendet werden' });
-        return;
+        try {
+          const synced = await syncActiveSession();
+          if (synced) {
+            const fulfillment = findFulfillmentById(rewardFulfillments, synced.appliedFulfillmentId);
+            current = applyLiveSessionPricing(synced, user, fulfillment, rewardFulfillments);
+          }
+        } catch {
+          /* weiter mit lokalem Stand */
+        }
+        if (e instanceof Error && !e.message.includes('Keine aktive')) {
+          set({ toast: `${e.message} – Sitzung wird trotzdem beendet.` });
+        }
+      }
+    } else if (current.citrineosBacked) {
+      try {
+        const patch = await pollCitrineosSession(current);
+        if (patch) current = { ...current, ...patch };
+        const stop = await stopCitrineosCharge(current);
+        if (!stop.ok) {
+          set({ toast: stop.error ?? 'Remote-Stop fehlgeschlagen – Sitzung wird trotzdem beendet.' });
+        } else {
+          const finalPatch = await pollCitrineosSession(current);
+          if (finalPatch) current = { ...current, ...finalPatch };
+        }
+      } catch (e) {
+        set({
+          toast:
+            e instanceof Error
+              ? `${e.message} – Sitzung wird trotzdem beendet.`
+              : 'Remote-Stop fehlgeschlagen – Sitzung wird trotzdem beendet.',
+        });
       }
     }
 
-    const current = get().activeSession ?? activeSession;
     let paymentStatus: ChargingSession['paymentStatus'] = 'skipped';
     let stripePaymentIntentId: string | undefined;
 
@@ -1141,9 +1176,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     saveUsers(users);
     saveSessions(user.id, sessions);
 
-    let rewardFulfillments = get().rewardFulfillments;
+    let updatedFulfillments = get().rewardFulfillments;
     if (ended.appliedFulfillmentId) {
-      rewardFulfillments = rewardFulfillments.map((f) =>
+      updatedFulfillments = updatedFulfillments.map((f) =>
         f.id === ended.appliedFulfillmentId && shouldConsumeFulfillment(f)
           ? {
               ...f,
@@ -1154,7 +1189,7 @@ export const useAppStore = create<AppState>((set, get) => ({
             }
           : f
       );
-      saveFulfillments(user.id, rewardFulfillments);
+      saveFulfillments(user.id, updatedFulfillments);
     }
 
     const toastMsg = `Laden beendet · ${formatGamificationToast(gam, 'de')}`;
@@ -1163,8 +1198,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       user: updatedUser,
       sessions,
       activeSession: null,
-      rewardFulfillments,
-      selectedChargingFulfillmentId: listActiveChargingFulfillments(rewardFulfillments)[0]?.id ?? null,
+      rewardFulfillments: updatedFulfillments,
+      selectedChargingFulfillmentId: listActiveChargingFulfillments(updatedFulfillments)[0]?.id ?? null,
       toast: toastMsg,
     });
     notifyIfSessionComplete(updatedUser, ended);

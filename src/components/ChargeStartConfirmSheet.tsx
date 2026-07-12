@@ -1,4 +1,5 @@
 import { Check } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { BottomSheet } from './BottomSheet';
 import { ChargePriceEstimate } from './ChargePriceEstimate';
 import { ActiveChargingPerkSelect } from './RewardFulfillmentPanel';
@@ -79,9 +80,20 @@ export function ChargeStartConfirmSheet({
     <BottomSheet open={open} onClose={onClose} title="Laden starten" footer={actionButtons}>
       <div className="space-y-4">
         {error ? (
-          <p className="rounded-xl border border-bc-danger/40 bg-bc-danger/10 px-3 py-2 text-sm text-bc-danger" role="alert">
-            {error}
-          </p>
+          <div className="space-y-2" role="alert">
+            <p className="rounded-xl border border-bc-danger/40 bg-bc-danger/10 px-3 py-2 text-sm text-bc-danger">
+              {error}
+            </p>
+            {error.includes('laden bereits') ? (
+              <Link
+                to="/laden"
+                onClick={onClose}
+                className="btn-secondary flex w-full justify-center py-2.5 text-sm"
+              >
+                Zur laufenden Sitzung
+              </Link>
+            ) : null}
+          </div>
         ) : null}
 
         <div className="rounded-xl border border-bc-border bg-bc-surface p-4 text-sm">

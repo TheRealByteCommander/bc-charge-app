@@ -13,6 +13,14 @@ export async function syncActiveSession(): Promise<ChargingSession | null> {
   return res.session;
 }
 
+/** CitrineOS Remote-Stop + finaler Sync (serverseitig, go-e/OCPP 1.6 + 2.0.1). */
+export async function stopRemoteActiveSession(): Promise<ChargingSession> {
+  const res = await backendApi<{ session: ChargingSession }>('/api/sessions/active/stop-remote', {
+    method: 'POST',
+  });
+  return res.session;
+}
+
 export async function saveSession(session: ChargingSession): Promise<ChargingSession> {
   const res = await backendApi<{ session: ChargingSession }>('/api/sessions', {
     method: 'POST',
