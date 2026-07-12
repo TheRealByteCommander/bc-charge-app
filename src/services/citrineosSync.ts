@@ -7,8 +7,9 @@ import {
   getTransaction,
   mapHasuraStations,
   requestStartTransactionForStation,
-  requestStopTransaction,
+  requestStopTransactionForStation,
 } from '../api/citrineos';
+import { getStationById } from '../data/stations';
 import { ensureCitrineosAuthorization } from '../api/backend/citrineos';
 import { applyTariffCatalogToStations, buildTariffCatalog } from '../api/citrineos/tariffPricing';
 import { getStationDataSource, getStations, setStationsFromCitrineos } from '../data/stations';
@@ -137,10 +138,24 @@ export async function startCitrineosCharge(
 
 function txToSessionPatch(
   session: ChargingSession,
-  tx: { transactionId?: string; totalKwh?: number | null; totalCost?: number; chargingState?: string | null }
+  tx: {
+    transactionId?: string;
+    totalKwh?: number | null;
+    totalCost?: number;
+    chargingState?: string | null;
+    isActive?: boolean;
+  }
 ): Partial<ChargingSession> {
+  const minutes = session.startedAt
+    ? (Date.now() - new Date(session.startedAt).getTime()) / 60000
+    : 0;
+  let energyKwh = tx.totalKwh ?? session.energyKwh;
+  if ((!energyKwh || energyKwh < 0.01) && minutes > 0.05 && tx.isActive !== false) {
+    const powerKw = session.powerKw || 11;
+    energyKwh = Math.round(Math.min((powerKw * 0.85 * minutes) / 60, 120) * 100) / 100;
+  }
   return {
-    energyKwh: tx.totalKwh ?? session.energyKwh,
+    energyKwh,
     costEur: tx.totalCost ?? session.costEur,
     citrineosTransactionId: tx.transactionId ?? session.citrineosTransactionId,
     chargingState: tx.chargingState,
@@ -181,12 +196,25 @@ export async function pollCitrineosSession(
 }
 
 export async function stopCitrineosCharge(session: ChargingSession): Promise<{ ok: boolean; error?: string }> {
-  if (!session.citrineosTransactionId) {
+  let transactionId = session.citrineosTransactionId;
+
+  if (!transactionId) {
+    const patch = await pollCitrineosSession(session);
+    transactionId = patch?.citrineosTransactionId;
+  }
+
+  if (!transactionId) {
     return { ok: true };
   }
-  const confirmations = await requestStopTransaction(session.stationId, {
-    transactionId: session.citrineosTransactionId,
-  });
+
+  const station = getStationById(session.stationId);
+  const confirmations = station
+    ? await requestStopTransactionForStation(station, transactionId)
+    : await requestStopTransactionForStation(
+        { id: session.stationId, hardwareFeatures: { ocppVersion: '1.6' } } as Station,
+        transactionId
+      );
+
   const first = confirmations[0];
   if (!first?.success) {
     return {

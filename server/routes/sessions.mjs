@@ -20,13 +20,13 @@ import {
   isFulfillmentActive,
   shouldConsumeFulfillment,
 } from '../services/rewardFulfillment.mjs';
-import { syncAccountSessionFromCitrineos } from '../services/citrineosServer.mjs';
+import { syncAccountSessionFromCitrineos, stopAndSyncAccountSession } from '../services/citrineosServer.mjs';
 
 const router = Router();
 
 async function listSessionsWithLiveSync(userId) {
   const sessions = await listSessions(userId);
-  const activeIdx = sessions.findIndex((s) => s.status === 'active' && s.citrineosBacked);
+  const activeIdx = sessions.findIndex((s) => s.status === 'active');
   if (activeIdx < 0) return sessions;
 
   const synced = await syncAccountSessionFromCitrineos(sessions[activeIdx]);
@@ -69,6 +69,23 @@ router.get('/active/sync', requireAuth, async (req, res) => {
     if (JSON.stringify(synced) !== JSON.stringify(active)) {
       await upsertSession(req.userId, synced);
     }
+    res.json({ session: synced });
+  } catch (err) {
+    handleSessionError(res, err);
+  }
+});
+
+router.post('/active/stop-remote', requireAuth, async (req, res) => {
+  try {
+    const sessions = await listSessions(req.userId);
+    const active = sessions.find((s) => s.status === 'active');
+    if (!active) {
+      res.status(404).json({ error: 'Keine aktive Sitzung.' });
+      return;
+    }
+
+    const synced = await stopAndSyncAccountSession(active);
+    await upsertSession(req.userId, synced);
     res.json({ session: synced });
   } catch (err) {
     handleSessionError(res, err);

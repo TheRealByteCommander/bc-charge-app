@@ -291,6 +291,106 @@ function isOcpp16Station(row) {
   );
 }
 
+async function citrineosDataGet(path, query, timeoutMs = 8000) {
+  if (!process.env.CITRINEOS_API_URL) return null;
+  const url = new URL(path, `${citrineosApiUrl()}/`);
+  for (const [k, v] of Object.entries(query ?? {})) {
+    if (v !== undefined && v !== '') url.searchParams.set(k, String(v));
+  }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url.toString(), {
+      headers: { Accept: 'application/json' },
+      signal: controller.signal,
+    });
+    if (!res.ok) return null;
+    const text = await res.text();
+    if (!text) return null;
+    try {
+      return JSON.parse(text);
+    } catch {
+      return null;
+    }
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function fetchTransactionFromRestApi(stationId, transactionId) {
+  return citrineosDataGet('/data/transactions/transactionType', {
+    tenantId: tenantId(),
+    stationId,
+    transactionId,
+  });
+}
+
+function normalizeTransactionRow(tx) {
+  if (!tx || typeof tx !== 'object') return null;
+  return {
+    transactionId: tx.transactionId ?? tx.id ?? null,
+    isActive: tx.isActive ?? tx.active ?? null,
+    totalKwh: tx.totalKwh ?? tx.totalEnergyKwh ?? tx.energyKwh ?? null,
+    totalCost: tx.totalCost ?? tx.cost ?? null,
+    chargingState: tx.chargingState ?? tx.state ?? null,
+  };
+}
+
+function estimateEnergyKwh(session, minutes) {
+  const powerKw = Number(session.powerKw) || 11;
+  const efficiency = 0.85;
+  const estimated = (powerKw * efficiency * minutes) / 60;
+  return Math.round(Math.min(estimated, 120) * 100) / 100;
+}
+
+export async function stopAccountTransaction(stationId, transactionId, stationRow) {
+  if (!transactionId) {
+    throw Object.assign(new Error('Keine Transaktions-ID für Stoppen verfügbar'), { status: 400 });
+  }
+
+  const useOcpp16 = stationRow ? isOcpp16Station(stationRow) : false;
+  let confirmations;
+
+  if (useOcpp16) {
+    try {
+      confirmations = await citrineosMessage(
+        '/ocpp/1.6/evdriver/remoteStopTransaction',
+        stationId,
+        { transactionId: Number(transactionId) || transactionId },
+        15_000
+      );
+    } catch {
+      confirmations = null;
+    }
+  }
+
+  if (!confirmations) {
+    confirmations = await citrineosMessage(
+      '/ocpp/2.0.1/evdriver/requestStopTransaction',
+      stationId,
+      { transactionId: String(transactionId) },
+      15_000
+    );
+  }
+
+  const first = Array.isArray(confirmations) ? confirmations[0] : confirmations;
+  const accepted =
+    first?.success === true ||
+    String(first?.status ?? first?.payload ?? '').toLowerCase() === 'accepted';
+  if (!accepted) {
+    const msg =
+      typeof first?.payload === 'string'
+        ? first.payload
+        : typeof first?.status === 'string'
+          ? first.status
+          : 'Stoppen fehlgeschlagen';
+    throw Object.assign(new Error(msg), { status: 502 });
+  }
+  return true;
+}
+
 async function citrineosMessage(path, stationId, body, timeoutMs = 12_000) {
   if (!process.env.CITRINEOS_API_URL) {
     throw Object.assign(new Error('CitrineOS API nicht konfiguriert'), { status: 503 });
@@ -472,47 +572,82 @@ function computeCostFromSession(energyKwh, session, minutes = 0) {
 
 /** Live-Daten aus CitrineOS für Konto-Sessions (Hasura, unabhängig vom Frontend-Station-Cache). */
 export async function syncAccountSessionFromCitrineos(session) {
-  if (!session?.citrineosBacked || session.status !== 'active') return session;
+  if (session?.status !== 'active') return session;
   if (!isCitrineosConfigured()) return session;
 
+  const citrineosBacked = session.citrineosBacked !== false;
+
   try {
+    const stationRow = await fetchStationRow(session.stationId);
     const stationDbId =
-      session.citrineosStationDbId ??
-      (await fetchStationRow(session.stationId))?.id ??
-      parseStationDbId(session.stationId);
+      session.citrineosStationDbId ?? stationRow?.id ?? parseStationDbId(session.stationId);
     if (stationDbId == null) return session;
 
     let tx = null;
-    if (session.citrineosTransactionId) {
+    if (citrineosBacked && session.citrineosTransactionId) {
       tx = await fetchTransactionById(session.stationId, session.citrineosTransactionId, stationDbId);
+      if (!tx?.totalKwh && session.citrineosTransactionId) {
+        const restTx = normalizeTransactionRow(
+          await fetchTransactionFromRestApi(session.stationId, session.citrineosTransactionId)
+        );
+        if (restTx) tx = { ...tx, ...restTx };
+      }
     }
-    if (!tx && session.remoteStartId != null) {
+    if (!tx && citrineosBacked && session.remoteStartId != null) {
       tx = await fetchTransactionByRemoteStartId(session.stationId, session.remoteStartId, stationDbId);
     }
-    if (!tx) {
+    if (!tx && citrineosBacked) {
       tx = await fetchActiveTransactionForStation(session.stationId, stationDbId);
     }
-    if (!tx) return { ...session, citrineosStationDbId: stationDbId };
+    if (!tx) {
+      return { ...session, citrineosStationDbId: stationDbId, citrineosBacked: citrineosBacked || Boolean(stationRow) };
+    }
 
-    const energyKwh = Number(tx.totalKwh ?? session.energyKwh) || 0;
     const minutes = session.startedAt
       ? (Date.now() - new Date(session.startedAt).getTime()) / 60000
       : 0;
+    let energyKwh = Number(tx.totalKwh ?? session.energyKwh) || 0;
+    if (energyKwh < 0.01 && tx.isActive !== false && minutes > 0.05) {
+      energyKwh = Math.max(energyKwh, estimateEnergyKwh(session, minutes));
+    }
     const costEur =
       tx.totalCost != null ? Number(tx.totalCost) : computeCostFromSession(energyKwh, session, minutes);
 
     return {
       ...session,
+      citrineosBacked: true,
       citrineosStationDbId: stationDbId,
       energyKwh,
       costEur,
       citrineosTransactionId: tx.transactionId ?? session.citrineosTransactionId,
       chargingState: tx.chargingState ?? session.chargingState,
+      citrineosTxActive: tx.isActive ?? true,
     };
   } catch (e) {
     console.warn('[bc-charge] CitrineOS-Session-Sync fehlgeschlagen:', e);
     return session;
   }
+}
+
+/** Remote-Stop + finaler Sync für Konto-Ladesitzungen. */
+export async function stopAndSyncAccountSession(session) {
+  if (!session || session.status !== 'active') return session;
+
+  let synced = await syncAccountSessionFromCitrineos(session);
+  const stationRow = await fetchStationRow(synced.stationId).catch(() => null);
+
+  if (synced.citrineosTransactionId) {
+    try {
+      await stopAccountTransaction(synced.stationId, synced.citrineosTransactionId, stationRow);
+      await sleep(2000);
+    } catch (e) {
+      console.warn('[bc-charge] CitrineOS-Stop fehlgeschlagen:', e);
+      // Trotzdem abschließen – Nutzer hat physisch gestoppt oder Tx-ID fehlt
+    }
+  }
+
+  synced = await syncAccountSessionFromCitrineos(synced);
+  return synced;
 }
 
 function sleep(ms) {

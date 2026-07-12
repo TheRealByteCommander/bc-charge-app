@@ -116,3 +116,39 @@ export async function requestStopTransaction(
     timeoutMs: 15_000,
   });
 }
+
+/** OCPP 1.6 RemoteStopTransaction (go-e, H2, …). */
+export async function requestStopTransactionOcpp16(
+  stationId: string,
+  transactionId: string | number
+): Promise<CitrineosMessageConfirmation[]> {
+  const result = await citrineosFetch<unknown>(citrineosPaths.ocpp16.remoteStopTransaction, {
+    method: 'POST',
+    query: messageQuery(stationId),
+    body: { transactionId: Number(transactionId) || transactionId },
+    timeoutMs: 15_000,
+  });
+  return normalizeStartConfirmations(result);
+}
+
+export async function requestStopTransactionForStation(
+  station: Station,
+  transactionId: string
+): Promise<CitrineosMessageConfirmation[]> {
+  const ocppVersion = station.hardwareFeatures?.ocppVersion ?? '2.0.1';
+  const vendor = (station.chargePointVendor ?? '').toLowerCase();
+  const useOcpp16 =
+    ocppVersion === '1.6' ||
+    vendor.includes('go-e') ||
+    vendor.includes('goe') ||
+    vendor.includes('elinta');
+
+  if (useOcpp16) {
+    try {
+      return await requestStopTransactionOcpp16(station.id, transactionId);
+    } catch (e) {
+      console.warn('[BC Charge] OCPP-1.6-Stop fehlgeschlagen, versuche 2.0.1:', e);
+    }
+  }
+  return requestStopTransaction(station.id, { transactionId });
+}
