@@ -15,11 +15,18 @@ export function ChargingPage() {
   const { t, locale } = useLocale();
   const activeSession = useAppStore((s) => s.activeSession);
   const user = useAppStore((s) => s.user);
+  const initialized = useAppStore((s) => s.initialized);
+  const refreshActiveSession = useAppStore((s) => s.refreshActiveSession);
   const stopSession = useAppStore((s) => s.stopSession);
   const navigate = useNavigate();
   const [stopping, setStopping] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    if (!initialized || !user || activeSession) return;
+    void refreshActiveSession();
+  }, [initialized, user, activeSession, refreshActiveSession]);
 
   useEffect(() => {
     if (!activeSession) return;

@@ -1,5 +1,6 @@
 import {
   citrineosHealth,
+  fetchActiveTransaction,
   fetchChargingStationsFromHasura,
   fetchTransactionByRemoteStartId,
   getTariffs,
@@ -134,33 +135,46 @@ export async function startCitrineosCharge(
   };
 }
 
+function txToSessionPatch(
+  session: ChargingSession,
+  tx: { transactionId?: string; totalKwh?: number | null; totalCost?: number; chargingState?: string | null }
+): Partial<ChargingSession> {
+  return {
+    energyKwh: tx.totalKwh ?? session.energyKwh,
+    costEur: tx.totalCost ?? session.costEur,
+    citrineosTransactionId: tx.transactionId ?? session.citrineosTransactionId,
+    chargingState: tx.chargingState,
+  };
+}
+
 export async function pollCitrineosSession(
   session: ChargingSession
 ): Promise<Partial<ChargingSession> | null> {
   if (!session.citrineosBacked || !session.stationId) return null;
 
   if (session.citrineosTransactionId) {
-    const tx = await getTransaction(session.stationId, session.citrineosTransactionId);
-    if (tx) {
-      return {
-        energyKwh: tx.totalKwh ?? session.energyKwh,
-        costEur: tx.totalCost ?? session.costEur,
-        citrineosTransactionId: tx.transactionId,
-        chargingState: tx.chargingState,
-      };
+    try {
+      const tx = await getTransaction(session.stationId, session.citrineosTransactionId);
+      if (tx) return txToSessionPatch(session, tx);
+    } catch {
+      /* Hasura-Fallback unten */
     }
   }
 
   if (session.remoteStartId != null) {
-    const tx = await fetchTransactionByRemoteStartId(session.stationId, session.remoteStartId);
-    if (tx) {
-      return {
-        energyKwh: tx.totalKwh ?? session.energyKwh,
-        costEur: tx.totalCost ?? session.costEur,
-        citrineosTransactionId: tx.transactionId,
-        chargingState: tx.chargingState,
-      };
+    try {
+      const tx = await fetchTransactionByRemoteStartId(session.stationId, session.remoteStartId);
+      if (tx) return txToSessionPatch(session, tx);
+    } catch {
+      /* Aktive Transaktion unten */
     }
+  }
+
+  try {
+    const tx = await fetchActiveTransaction(session.stationId);
+    if (tx) return txToSessionPatch(session, tx);
+  } catch {
+    /* kein Live-Update */
   }
 
   return null;

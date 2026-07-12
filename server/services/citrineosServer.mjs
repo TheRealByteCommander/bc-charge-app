@@ -142,6 +142,27 @@ const TX_BY_ID_QUERY = `
   }
 `;
 
+const ACTIVE_TX_QUERY = `
+  query BcActiveTx($stationId: Int!, $tenantId: Int!) {
+    Transactions(
+      where: {
+        stationId: { _eq: $stationId }
+        tenantId: { _eq: $tenantId }
+        isActive: { _eq: true }
+      }
+      order_by: { timeSpentCharging: desc }
+      limit: 1
+    ) {
+      transactionId
+      stationId
+      isActive
+      totalKwh
+      totalCost
+      chargingState
+    }
+  }
+`;
+
 async function hasuraRequest(query, variables) {
   if (!process.env.CITRINEOS_HASURA_URL) {
     throw Object.assign(new Error('Hasura nicht konfiguriert'), { status: 503 });
@@ -425,6 +446,73 @@ export async function fetchTransactionById(stationId, transactionId, stationData
     transactionId,
   });
   return data.Transactions?.[0] ?? null;
+}
+
+export async function fetchActiveTransactionForStation(stationId, stationDatabaseId) {
+  const dbId =
+    stationDatabaseId ??
+    (await fetchStationRow(stationId))?.id ??
+    parseStationDbId(stationId);
+  if (dbId == null) return null;
+  const data = await hasuraRequest(ACTIVE_TX_QUERY, {
+    stationId: dbId,
+    tenantId: tenantId(),
+  });
+  return data.Transactions?.[0] ?? null;
+}
+
+function computeCostFromSession(energyKwh, session, minutes = 0) {
+  const kwh = Number(energyKwh) || 0;
+  const min = Number(minutes) || 0;
+  const energy = kwh * (session.pricePerKwh ?? 0.49);
+  const time = min * (session.pricePerMin ?? 0);
+  const fee = session.sessionFee ?? 0;
+  return Math.round((energy + time + fee) * 100) / 100;
+}
+
+/** Live-Daten aus CitrineOS für Konto-Sessions (Hasura, unabhängig vom Frontend-Station-Cache). */
+export async function syncAccountSessionFromCitrineos(session) {
+  if (!session?.citrineosBacked || session.status !== 'active') return session;
+  if (!isCitrineosConfigured()) return session;
+
+  try {
+    const stationDbId =
+      session.citrineosStationDbId ??
+      (await fetchStationRow(session.stationId))?.id ??
+      parseStationDbId(session.stationId);
+    if (stationDbId == null) return session;
+
+    let tx = null;
+    if (session.citrineosTransactionId) {
+      tx = await fetchTransactionById(session.stationId, session.citrineosTransactionId, stationDbId);
+    }
+    if (!tx && session.remoteStartId != null) {
+      tx = await fetchTransactionByRemoteStartId(session.stationId, session.remoteStartId, stationDbId);
+    }
+    if (!tx) {
+      tx = await fetchActiveTransactionForStation(session.stationId, stationDbId);
+    }
+    if (!tx) return { ...session, citrineosStationDbId: stationDbId };
+
+    const energyKwh = Number(tx.totalKwh ?? session.energyKwh) || 0;
+    const minutes = session.startedAt
+      ? (Date.now() - new Date(session.startedAt).getTime()) / 60000
+      : 0;
+    const costEur =
+      tx.totalCost != null ? Number(tx.totalCost) : computeCostFromSession(energyKwh, session, minutes);
+
+    return {
+      ...session,
+      citrineosStationDbId: stationDbId,
+      energyKwh,
+      costEur,
+      citrineosTransactionId: tx.transactionId ?? session.citrineosTransactionId,
+      chargingState: tx.chargingState ?? session.chargingState,
+    };
+  } catch (e) {
+    console.warn('[bc-charge] CitrineOS-Session-Sync fehlgeschlagen:', e);
+    return session;
+  }
 }
 
 function sleep(ms) {
