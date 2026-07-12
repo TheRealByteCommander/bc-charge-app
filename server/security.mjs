@@ -13,8 +13,20 @@ export function escapeStripeSearchValue(value) {
   return String(value).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 }
 
-export function createRateLimiter({ windowMs = 60_000, max = 300, keyFn } = {}) {
+/** Ladestart und Session-Sync nicht vom globalen Limiter blockieren. */
+export function shouldSkipRateLimit(req) {
+  const path = (req.originalUrl ?? req.url ?? '').split('?')[0];
+  if (path === '/api/health') return true;
+  if (!req.userId) return false;
+  if (path.startsWith('/api/sessions/active')) return true;
+  if (path === '/api/citrineos/ensure-authorization') return true;
+  if (req.method === 'POST' && path === '/api/sessions') return true;
+  return false;
+}
+
+export function createRateLimiter({ windowMs = 60_000, max = 300, keyFn, skip } = {}) {
   const hits = new Map();
+  const shouldSkip = skip ?? shouldSkipRateLimit;
   const resolveKey =
     keyFn ??
     ((req) => {
@@ -24,6 +36,10 @@ export function createRateLimiter({ windowMs = 60_000, max = 300, keyFn } = {}) 
     });
 
   return (req, res, next) => {
+    if (shouldSkip(req)) {
+      next();
+      return;
+    }
     const key = resolveKey(req);
     const now = Date.now();
     let bucket = hits.get(key);

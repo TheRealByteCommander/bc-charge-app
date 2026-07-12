@@ -60,6 +60,7 @@ import { fetchRewardFulfillments } from '../api/backend/rewards';
 import {
   abandonActiveSession,
   completeSessionRemote,
+  fetchActiveSessionOnly,
   fetchSessions,
   saveSession,
   stopRemoteActiveSession,
@@ -881,15 +882,26 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!user) return { ok: false, error: 'Bitte melden Sie sich an.' };
 
     if (isBackendMode()) {
+      if (activeSession) {
+        return { ok: false, error: formatConcurrentSessionError(activeSession) };
+      }
       try {
-        const remoteSessions = await fetchSessions();
-        const remoteActive = findActiveSession(remoteSessions);
+        const remoteActive = await fetchActiveSessionOnly();
         if (remoteActive) {
-          set({ sessions: remoteSessions, activeSession: remoteActive });
+          const sessions = get().sessions.some((s) => s.id === remoteActive.id)
+            ? get().sessions.map((s) => (s.id === remoteActive.id ? remoteActive : s))
+            : [remoteActive, ...get().sessions];
+          set({ sessions, activeSession: remoteActive });
           return { ok: false, error: formatConcurrentSessionError(remoteActive) };
         }
-        set({ sessions: remoteSessions, activeSession: null });
-      } catch {
+      } catch (e) {
+        if (e instanceof BackendApiError && e.status === 429) {
+          return {
+            ok: false,
+            error:
+              'Server ausgelastet (zu viele Anfragen). Bitte 1 Minute warten und erneut versuchen – oder unter Laden den Vorgang abbrechen.',
+          };
+        }
         /* Offline – lokaler Check weiter unten */
       }
     } else if (activeSession) {
@@ -1046,12 +1058,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   abandonStuckSession: async () => {
-    const { user } = get();
+    const { user, activeSession } = get();
     if (!user) return { ok: false, error: 'Bitte melden Sie sich an.' };
     if (!isBackendMode()) return { ok: false, error: 'Nur mit Backend verfügbar.' };
+    if (!activeSession) return { ok: false, error: 'Keine aktive Sitzung in der App.' };
 
     try {
-      const completed = await abandonActiveSession();
+      const completed = await abandonActiveSession(activeSession);
       clearActiveSessionCache();
       const sessions = get().sessions.map((s) => (s.id === completed.id ? completed : s));
       if (!sessions.some((s) => s.id === completed.id)) {
@@ -1062,7 +1075,12 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ toast: 'Hängender Ladevorgang wurde beendet.' });
       return { ok: true };
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Abbrechen fehlgeschlagen';
+      const msg =
+        e instanceof BackendApiError && e.status === 404
+          ? 'Server-API noch nicht aktualisiert. Bitte auf dem Server pm2 restart bc-charge-api ausführen.'
+          : e instanceof Error
+            ? e.message
+            : 'Abbrechen fehlgeschlagen';
       return { ok: false, error: msg };
     }
   },
