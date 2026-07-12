@@ -51,6 +51,19 @@ export function estimateChargeSession(
   };
 }
 
+export function estimateSessionEnergyKwh(
+  session: { powerKw?: number; energyKwh?: number; startedAt: string },
+  nowMs = Date.now()
+): number {
+  const elapsedMin = (nowMs - new Date(session.startedAt).getTime()) / 60000;
+  if (elapsedMin <= 0.05) return session.energyKwh ?? 0;
+  const existing = Number(session.energyKwh) || 0;
+  if (existing >= 0.01) return existing;
+  const powerKw = Number(session.powerKw) || 11;
+  const estimated = (powerKw * CHARGE_EFFICIENCY * elapsedMin) / 60;
+  return Math.round(Math.min(estimated, 120) * 100) / 100;
+}
+
 export function estimateRemainingChargeMinutes(
   energyKwh: number,
   targetKwh: number,

@@ -98,6 +98,7 @@ import {
   shouldConsumeFulfillment,
 } from '../services/rewardFulfillment';
 import { findRewardById } from '../data/rewards';
+import { estimateSessionEnergyKwh } from '../utils/chargeEstimate';
 
 interface AppState {
   initialized: boolean;
@@ -567,8 +568,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       const synced = await syncActiveSession();
       if (synced) {
-        const fulfillment = findFulfillmentById(rewardFulfillments, synced.appliedFulfillmentId);
-        const updated = applyLiveSessionPricing(synced, user, fulfillment, rewardFulfillments);
+        const withEnergy = {
+          ...synced,
+          energyKwh: estimateSessionEnergyKwh(synced),
+        };
+        const fulfillment = findFulfillmentById(rewardFulfillments, withEnergy.appliedFulfillmentId);
+        const updated = applyLiveSessionPricing(withEnergy, user, fulfillment, rewardFulfillments);
         saveActiveSessionCache(user.id, updated);
         const sessions = get().sessions;
         const nextSessions = sessions.some((s) => s.id === updated.id)
@@ -1044,6 +1049,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (e instanceof BackendApiError && e.status === 429) {
         sessionPollBackoffUntil = Date.now() + 60_000;
       }
+    }
+
+    const estimatedKwh = estimateSessionEnergyKwh(liveBase);
+    if (estimatedKwh > (liveBase.energyKwh ?? 0)) {
+      liveBase = { ...liveBase, energyKwh: estimatedKwh };
     }
 
     const updated = applyLiveSessionPricing(liveBase, user, fulfillment, rewardFulfillments);
