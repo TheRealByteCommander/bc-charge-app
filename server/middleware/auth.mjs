@@ -44,3 +44,19 @@ export async function optionalAuth(req, _res, next) {
   }
   next();
 }
+
+/** Setzt req.userId aus Session-Cookie für Rate-Limiting (ohne Auth-Fehler). */
+export async function attachUserForRateLimit(req, _res, next) {
+  const token = req.cookies?.[SESSION_COOKIE];
+  if (!token) {
+    next();
+    return;
+  }
+  try {
+    req.userId = await verifySessionToken(token);
+    req.bcUserId = req.userId;
+  } catch {
+    /* ignore */
+  }
+  next();
+}

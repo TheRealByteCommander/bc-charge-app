@@ -13,10 +13,18 @@ export function escapeStripeSearchValue(value) {
   return String(value).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 }
 
-export function createRateLimiter({ windowMs = 60_000, max = 300 } = {}) {
+export function createRateLimiter({ windowMs = 60_000, max = 300, keyFn } = {}) {
   const hits = new Map();
+  const resolveKey =
+    keyFn ??
+    ((req) => {
+      if (req.userId) return `user:${req.userId}`;
+      const ip = req.ip ?? req.socket?.remoteAddress ?? 'unknown';
+      return `ip:${ip}`;
+    });
+
   return (req, res, next) => {
-    const key = req.ip ?? req.socket?.remoteAddress ?? 'unknown';
+    const key = resolveKey(req);
     const now = Date.now();
     let bucket = hits.get(key);
     if (!bucket || now - bucket.start > windowMs) {

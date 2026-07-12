@@ -3,6 +3,7 @@ import cookieParser from 'cookie-parser';
 import express from 'express';
 import { initDb } from './db.mjs';
 import { getBindHost, getCorsOptions, createRateLimiter } from './security.mjs';
+import { attachUserForRateLimit } from './middleware/auth.mjs';
 import { seedDemoUser } from './services/seed.mjs';
 import authRouter from './routes/auth.mjs';
 import profileRouter from './routes/profile.mjs';
@@ -30,7 +31,8 @@ app.use(
 
 app.use(cookieParser());
 app.use(express.json({ limit: '256kb' }));
-app.use(createRateLimiter({ windowMs: 60_000, max: 300 }));
+app.use(attachUserForRateLimit);
+app.use(createRateLimiter({ windowMs: 60_000, max: 480 }));
 
 await initDb();
 await seedDemoUser();
