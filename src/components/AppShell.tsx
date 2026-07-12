@@ -31,7 +31,7 @@ export function AppShell() {
   useEffect(() => {
     if (!activeSession) return;
     void tickSession();
-    const id = setInterval(() => void tickSession(), 2000);
+    const id = setInterval(() => void tickSession(), 5000);
     return () => clearInterval(id);
   }, [activeSession, tickSession]);
 
@@ -39,7 +39,8 @@ export function AppShell() {
     const onVisible = () => {
       if (document.visibilityState !== 'visible') return;
       const state = useAppStore.getState();
-      if (state.user) void state.refreshActiveSession();
+      if (!state.user || state.activeSession) return;
+      void state.refreshActiveSession();
     };
     document.addEventListener('visibilitychange', onVisible);
     return () => document.removeEventListener('visibilitychange', onVisible);

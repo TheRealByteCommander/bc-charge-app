@@ -21,6 +21,15 @@ export async function stopRemoteActiveSession(): Promise<ChargingSession> {
   return res.session;
 }
 
+/** Hängende aktive Sitzung serverseitig abschließen (ohne erneuten Ladestart). */
+export async function abandonActiveSession(): Promise<ChargingSession> {
+  const res = await backendApi<{ session: ChargingSession; abandoned?: boolean }>(
+    '/api/sessions/active/abandon',
+    { method: 'POST' }
+  );
+  return res.session;
+}
+
 export async function saveSession(session: ChargingSession): Promise<ChargingSession> {
   const res = await backendApi<{ session: ChargingSession }>('/api/sessions', {
     method: 'POST',

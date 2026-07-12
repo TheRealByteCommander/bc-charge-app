@@ -92,6 +92,40 @@ router.post('/active/stop-remote', requireAuth, async (req, res) => {
   }
 });
 
+/** Hängende Sitzung beenden (z. B. wenn Remote-Stop fehlschlägt oder Säule offline). */
+router.post('/active/abandon', requireAuth, async (req, res) => {
+  try {
+    const sessions = await listSessions(req.userId);
+    let active = sessions.find((s) => s.status === 'active');
+    if (!active) {
+      res.status(404).json({ error: 'Keine aktive Sitzung.' });
+      return;
+    }
+
+    active = await syncAccountSessionFromCitrineos(active);
+
+    if (active.citrineosTransactionId && active.citrineosTxActive !== false) {
+      try {
+        active = await stopAndSyncAccountSession(active);
+      } catch (e) {
+        console.warn('[bc-charge] Stop vor Abandon fehlgeschlagen:', e);
+      }
+    }
+
+    const completed = {
+      ...active,
+      status: 'completed',
+      endedAt: new Date().toISOString(),
+      paymentStatus: active.costEur >= 0.5 ? active.paymentStatus ?? 'skipped' : 'skipped',
+    };
+
+    await upsertSession(req.userId, completed);
+    res.json({ session: completed, abandoned: true });
+  } catch (err) {
+    handleSessionError(res, err);
+  }
+});
+
 router.put('/', requireAuth, async (req, res) => {
   const { sessions } = req.body ?? {};
   if (!Array.isArray(sessions)) {

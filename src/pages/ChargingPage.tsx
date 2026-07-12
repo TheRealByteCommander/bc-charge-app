@@ -18,8 +18,11 @@ export function ChargingPage() {
   const initialized = useAppStore((s) => s.initialized);
   const refreshActiveSession = useAppStore((s) => s.refreshActiveSession);
   const stopSession = useAppStore((s) => s.stopSession);
+  const abandonStuckSession = useAppStore((s) => s.abandonStuckSession);
+  const setToast = useAppStore((s) => s.setToast);
   const navigate = useNavigate();
   const [stopping, setStopping] = useState(false);
+  const [abandoning, setAbandoning] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [now, setNow] = useState(Date.now());
 
@@ -65,6 +68,26 @@ export function ChargingPage() {
     await stopSession();
     setStopping(false);
     navigate('/historie');
+  };
+
+  const handleAbandon = async () => {
+    if (
+      !window.confirm(
+        locale === 'de'
+          ? 'Ladevorgang wirklich abbrechen? Nutzen Sie dies, wenn „Stoppen“ nicht funktioniert oder die Säule offline ist.'
+          : 'Really abandon this session? Use this if Stop does not work or the charger is offline.'
+      )
+    ) {
+      return;
+    }
+    setAbandoning(true);
+    const result = await abandonStuckSession();
+    setAbandoning(false);
+    if (result.ok) {
+      navigate('/historie');
+    } else {
+      setToast(result.error ?? (locale === 'de' ? 'Abbrechen fehlgeschlagen.' : 'Abandon failed.'));
+    }
   };
 
   return (
@@ -132,15 +155,29 @@ export function ChargingPage() {
         <ChevronRight className="h-4 w-4" />
       </button>
 
-      <div className="mt-auto pt-8">
+      <div className="mt-auto space-y-3 pt-8">
         <button
           type="button"
           className="btn-primary flex w-full items-center justify-center gap-2 bg-bc-danger from-bc-danger to-red-600 py-4 text-base"
           onClick={handleStop}
-          disabled={stopping}
+          disabled={stopping || abandoning}
         >
           <Square className="h-4 w-4" />
           {stopping ? t.common.loading : t.charging.stop}
+        </button>
+        <button
+          type="button"
+          className="btn-secondary w-full py-3 text-sm text-bc-muted"
+          onClick={() => void handleAbandon()}
+          disabled={stopping || abandoning}
+        >
+          {abandoning
+            ? locale === 'de'
+              ? 'Wird abgebrochen …'
+              : 'Abandoning …'
+            : locale === 'de'
+              ? 'Vorgang abbrechen (wenn Stoppen nicht klappt)'
+              : 'Abandon session (if stop fails)'}
         </button>
       </div>
 
