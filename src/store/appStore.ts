@@ -341,6 +341,7 @@ function resolveCurrentUser(): UserProfile | null {
 
 let initRun = 0;
 let sessionPollBackoffUntil = 0;
+let stationStatusPollInterval: NodeJS.Timeout | null = null;
 
 async function loadBackendUserBundles(user: UserProfile | null): Promise<{
   sessions: ChargingSession[];
@@ -448,6 +449,13 @@ export const useAppStore = create<AppState>((set, get) => ({
           void get().syncStripePayments();
           if (sessions.some((s) => s.status === 'active')) void get().refreshActiveSession();
         }
+        
+        // Start polling for station status updates
+        if (!stationStatusPollInterval) {
+          stationStatusPollInterval = setInterval(() => {
+            get().refreshCitrineosData();
+          }, 30000); // Poll every 30 seconds
+        }
         return;
       }
 
@@ -506,6 +514,13 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (user && runId === initRun) {
         await get().syncStripePayments();
       }
+      
+      // Start polling for station status updates
+      if (!stationStatusPollInterval) {
+        stationStatusPollInterval = setInterval(() => {
+          get().refreshCitrineosData();
+        }, 30000); // Poll every 30 seconds
+      }
     } catch (e) {
       console.error('[BC Charge] Init fehlgeschlagen:', e);
       finishInit(runId, {});
@@ -541,8 +556,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   refreshCitrineosData: async () => {
+    console.log('[BC Charge] Refreshing CitrineOS data...');
     set({ citrineosSyncing: true });
     const sync = await syncStationsFromCitrineos();
+    console.log('[BC Charge] CitrineOS sync result:', sync);
+    
     const tariffHint =
       sync.ok && sync.tariffCount != null && sync.tariffCount > 0
         ? ` · ${sync.tariffCount} Tarife`

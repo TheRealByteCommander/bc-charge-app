@@ -26,18 +26,34 @@ export async function syncStationsFromCitrineos(): Promise<{
   pricingSyncedAt?: string;
   tariffCount?: number;
 }> {
-  const healthy = await citrineosHealth();
-  if (!healthy) {
-    return { ok: false, count: 0, error: 'CitrineOS API nicht erreichbar' };
-  }
+  console.log('[BC Charge] Starting CitrineOS station sync...');
+  
   try {
+    const healthy = await citrineosHealth();
+    console.log('[BC Charge] CitrineOS health check result:', healthy);
+    
+    if (!healthy) {
+      console.warn('[BC Charge] CitrineOS API is not reachable');
+      return { ok: false, count: 0, error: 'CitrineOS API nicht erreichbar' };
+    }
+    
+    console.log('[BC Charge] Fetching stations and tariffs from CitrineOS...');
     const [rows, tariffs] = await Promise.all([
       fetchChargingStationsFromHasura(),
-      getTariffs().catch(() => []),
+      getTariffs().catch((error) => {
+        console.error('[BC Charge] Error fetching tariffs:', error);
+        return [];
+      }),
     ]);
+    
+    console.log('[BC Charge] Fetched', rows.length, 'stations and', tariffs.length, 'tariffs');
+    
     const catalog = buildTariffCatalog(tariffs);
     let mapped = mapHasuraStations(rows, catalog);
     mapped = applyTariffCatalogToStations(mapped, catalog);
+    
+    console.log('[BC Charge] Mapped', mapped.length, 'stations');
+    
     if (mapped.length > 0) {
       setStationsFromCitrineos(mapped);
       void saveStationsOfflineCache(getStations(), 'citrineos');
@@ -48,8 +64,11 @@ export async function syncStationsFromCitrineos(): Promise<{
         tariffCount: tariffs.length,
       };
     }
+    
+    console.warn('[BC Charge] No stations found in CitrineOS');
     return { ok: false, count: 0, error: 'Keine Ladestationen in CitrineOS gefunden' };
   } catch (e) {
+    console.error('[BC Charge] Error during CitrineOS sync:', e);
     return { ok: false, count: 0, error: e instanceof Error ? e.message : 'Hasura-Sync fehlgeschlagen' };
   }
 }
