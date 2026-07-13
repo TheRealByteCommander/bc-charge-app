@@ -56,7 +56,7 @@ export function PaymentPage() {
   };
 
   return (
-    <div className="page-shell pb-8">
+    <div className="page-shell">
       {returnTo ? (
         <Link to={returnTo} className="text-sm text-bc-accent">
           ← Zurück zur Station
@@ -68,7 +68,7 @@ export function PaymentPage() {
       )}
       <h1 className="mt-4 font-display text-2xl font-bold">Zahlung</h1>
       <p className="mt-2 text-sm text-bc-muted leading-relaxed">
-        Hinterlegen Sie Karte oder SEPA-Lastschrift. Nach jeder Ladesitzung wird der Betrag automatisch
+        Hinterlegen Sie Apple Pay, Kreditkarte oder SEPA-Lastschrift. Nach jeder Ladesitzung wird der Betrag automatisch
         abgebucht.
       </p>
 
@@ -141,7 +141,7 @@ export function PaymentPage() {
       {clientSecret ? (
         <div className="mt-6 rounded-2xl border border-bc-accent/30 bg-bc-elevated p-4">
           <h2 className="font-display font-semibold">Zahlungsmethode hinzufügen</h2>
-          <p className="mt-1 text-sm text-bc-muted">Kreditkarte, Debitkarte oder SEPA-Lastschrift</p>
+          <p className="mt-1 text-sm text-bc-muted">Apple Pay, Kreditkarte, SEPA-Lastschrift</p>
           <div className="mt-4">
             <StripePaymentSetup
               clientSecret={clientSecret}

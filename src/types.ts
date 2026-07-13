@@ -3,11 +3,28 @@ import type { GamificationState } from './types/gamification';
 export type ConnectorType = 'CCS' | 'Type2' | 'CHAdeMO';
 export type ConnectorStatus = 'available' | 'occupied' | 'offline' | 'reserved';
 
+/** Bekannte Hardware-Modelle mit spezifischen Features */
+export type KnownHardwareModel = 'CityCharge H2' | 'generic';
+
+/** Hardware-Features für spezifische Ladepunkt-Modelle */
+export interface HardwareFeatures {
+  /** MID-zertifizierte Zähler (Eichrecht-konform) */
+  midCertifiedMeters: boolean;
+  /** Dynamisches Lastmanagement aktiv */
+  dynamicLoadManagement: boolean;
+  /** OCPP-Version der Hardware (CitrineOS übersetzt ggf.) */
+  ocppVersion: '1.6' | '2.0.1';
+  /** Multi-Connector-Support (mehr als 1 EVSE) */
+  multiConnector: boolean;
+}
+
 export interface Connector {
   id: string;
   type: ConnectorType;
   powerKw: number;
   status: ConnectorStatus;
+  /** Rohstatus aus CitrineOS/OCPP (z. B. Preparing, Charging) */
+  ocppRawStatus?: string;
   evseId: string;
   pricePerKwh: number;
   pricePerMin?: number;
@@ -20,6 +37,10 @@ export interface Connector {
   livePricing?: boolean;
   /** false = Tarif in CitrineOS fehlt oder unvollständig */
   priceKnown?: boolean;
+  /** Numerische EVSE-ID für Multi-Connector-Anzeige (z.B. 1, 2) */
+  evseNumber?: number;
+  /** Numerische Connector-ID innerhalb des EVSE */
+  connectorNumber?: number;
 }
 
 export interface Station {
@@ -41,6 +62,16 @@ export interface Station {
   connectors: Connector[];
   greenEnergy: boolean;
   accessible: boolean;
+  /** Hardware-Hersteller (z.B. "Elinta Charge") */
+  chargePointVendor?: string;
+  /** Hardware-Modell (z.B. "CityCharge H2") */
+  chargePointModel?: string;
+  /** Erkanntes Hardware-Modell für Feature-Flags */
+  hardwareModel?: KnownHardwareModel;
+  /** Hardware-spezifische Features */
+  hardwareFeatures?: HardwareFeatures;
+  /** Numerische ChargingStations.id in CitrineOS/Hasura (Transactions.stationId) */
+  citrineosDatabaseId?: number;
 }
 
 export interface Vehicle {
@@ -94,6 +125,8 @@ export interface UserProfile {
   termsAcceptedAt?: string;
   /** Marketing-Einwilligung (ISO), nur wenn erteilt */
   marketingConsentAt?: string | null;
+  /** Priority Support aktiv bis (ISO) */
+  prioritySupportUntil?: string;
 }
 
 export type LoyaltyTier = 'bronze' | 'silver' | 'gold' | 'platinum';
@@ -134,6 +167,8 @@ export interface ChargingSession {
   pointsEarned: number;
   /** CitrineOS/OCPP Transaktions-ID */
   citrineosTransactionId?: string;
+  /** CitrineOS ChargingStations.id (Hasura) – für Live-Polling ohne Stations-Cache */
+  citrineosStationDbId?: number;
   remoteStartId?: number;
   /** true = Live-Daten von CitrineOS, false = lokale Simulation */
   citrineosBacked?: boolean;
@@ -143,12 +178,52 @@ export interface ChargingSession {
   invoiceNumber?: string;
   /** Zeitpunkt des E-Mail-Versands der Rechnung (ISO) */
   invoiceEmailedAt?: string | null;
+  /** MID-zertifizierte Messung (Eichrecht-konform) */
+  midCertified?: boolean;
+  /** Hardware-Modell der Ladestation */
+  chargePointModel?: string;
+  /** EVSE-Nummer (für Multi-Connector-Stationen) */
+  evseNumber?: number;
+  /** OCPP Charging State (Idle, EVConnected, Charging, SuspendedEVSE, SuspendedEV) */
+  chargingState?: string | null;
+  /** Angewendete Prämie (Fulfillment-ID) */
+  appliedFulfillmentId?: string;
+  /** Kosten vor Prämienrabatt */
+  baseCostEur?: number;
+  /** Rabatt durch Prämie in EUR */
+  rewardDiscountEur?: number;
+  /** Anzeige-Label der Prämie */
+  rewardLabel?: string;
+  pricePerMin?: number;
+}
+
+export type RewardFulfillmentType =
+  | 'voucher'
+  | 'energy_discount'
+  | 'free_kwh'
+  | 'night_points'
+  | 'priority_support';
+
+export interface RewardFulfillment {
+  id: string;
+  userId: string;
+  rewardId: string;
+  type: RewardFulfillmentType;
+  status: 'active' | 'used' | 'expired';
+  payload: Record<string, unknown>;
+  redeemedAt: string;
+  expiresAt: string | null;
+  usedAt: string | null;
+  sessionId: string | null;
+  isActive?: boolean;
 }
 
 export interface LoyaltyReward {
   id: string;
   title: string;
+  titleEn?: string;
   description: string;
+  descriptionEn?: string;
   pointsCost: number;
   category: 'charging' | 'partner' | 'exclusive';
   available: boolean;

@@ -1,19 +1,23 @@
 import {
   citrineosHealth,
+  fetchActiveTransaction,
   fetchChargingStationsFromHasura,
   fetchTransactionByRemoteStartId,
   getTariffs,
   getTransaction,
   mapHasuraStations,
-  requestStartTransaction,
-  requestStopTransaction,
+  requestStartTransactionForStation,
+  requestStopTransactionForStation,
 } from '../api/citrineos';
+import { getStationById } from '../data/stations';
+import { ensureCitrineosAuthorization } from '../api/backend/citrineos';
 import { applyTariffCatalogToStations, buildTariffCatalog } from '../api/citrineos/tariffPricing';
-import { citrineosConfig } from '../config/citrineos';
 import { getStationDataSource, getStations, setStationsFromCitrineos } from '../data/stations';
 import { saveStationsOfflineCache } from '../utils/offlineCache';
+import { isBackendMode } from './backendMode';
 import type { ChargingSession, Station } from '../types';
 import { parseConnectorRef } from '../api/citrineos/mappers';
+import { normalizeIdToken } from '../utils/ocpp16RemoteStart';
 
 export async function syncStationsFromCitrineos(): Promise<{
   ok: boolean;
@@ -36,7 +40,7 @@ export async function syncStationsFromCitrineos(): Promise<{
     mapped = applyTariffCatalogToStations(mapped, catalog);
     if (mapped.length > 0) {
       setStationsFromCitrineos(mapped);
-      saveStationsOfflineCache(getStations(), 'citrineos');
+      void saveStationsOfflineCache(getStations(), 'citrineos');
       return {
         ok: true,
         count: mapped.length,
@@ -71,12 +75,25 @@ export async function startCitrineosCharge(
   const ref = resolveEvseConnector(station, connectorAppId);
   if (!ref) return { ok: false, error: 'Anschluss-Referenz ungültig' };
 
+  const token = normalizeIdToken(idToken);
+  if (!token) return { ok: false, error: 'Ladeberechtigung (membershipId) fehlt' };
+
+  if (isBackendMode()) {
+    try {
+      const auth = await ensureCitrineosAuthorization(token);
+      if (!auth.ok && !auth.skipped) {
+        return { ok: false, error: 'Ladeberechtigung konnte nicht in CitrineOS hinterlegt werden' };
+      }
+    } catch (e) {
+      return {
+        ok: false,
+        error: e instanceof Error ? e.message : 'Ladeberechtigung fehlgeschlagen',
+      };
+    }
+  }
+
   const remoteStartId = Math.floor(Math.random() * 2_000_000_000);
-  const confirmations = await requestStartTransaction(station.id, {
-    evseId: ref.evseId,
-    remoteStartId,
-    idToken: { idToken, type: citrineosConfig.idTokenType },
-  });
+  const confirmations = await requestStartTransactionForStation(station, ref, token, remoteStartId);
 
   const first = confirmations[0];
   if (!first?.success) {
@@ -119,43 +136,85 @@ export async function startCitrineosCharge(
   };
 }
 
+function txToSessionPatch(
+  session: ChargingSession,
+  tx: {
+    transactionId?: string;
+    totalKwh?: number | null;
+    totalCost?: number;
+    chargingState?: string | null;
+    isActive?: boolean;
+  }
+): Partial<ChargingSession> {
+  const minutes = session.startedAt
+    ? (Date.now() - new Date(session.startedAt).getTime()) / 60000
+    : 0;
+  let energyKwh = tx.totalKwh ?? session.energyKwh;
+  if ((!energyKwh || energyKwh < 0.01) && minutes > 0.05 && tx.isActive !== false) {
+    const powerKw = session.powerKw || 11;
+    energyKwh = Math.round(Math.min((powerKw * 0.85 * minutes) / 60, 120) * 100) / 100;
+  }
+  return {
+    energyKwh,
+    costEur: tx.totalCost ?? session.costEur,
+    citrineosTransactionId: tx.transactionId ?? session.citrineosTransactionId,
+    chargingState: tx.chargingState,
+  };
+}
+
 export async function pollCitrineosSession(
   session: ChargingSession
 ): Promise<Partial<ChargingSession> | null> {
   if (!session.citrineosBacked || !session.stationId) return null;
 
   if (session.citrineosTransactionId) {
-    const tx = await getTransaction(session.stationId, session.citrineosTransactionId);
-    if (tx) {
-      return {
-        energyKwh: tx.totalKwh ?? session.energyKwh,
-        costEur: tx.totalCost ?? session.costEur,
-        citrineosTransactionId: tx.transactionId,
-      };
+    try {
+      const tx = await getTransaction(session.stationId, session.citrineosTransactionId);
+      if (tx) return txToSessionPatch(session, tx);
+    } catch {
+      /* Hasura-Fallback unten */
     }
   }
 
   if (session.remoteStartId != null) {
-    const tx = await fetchTransactionByRemoteStartId(session.stationId, session.remoteStartId);
-    if (tx) {
-      return {
-        energyKwh: tx.totalKwh ?? session.energyKwh,
-        costEur: tx.totalCost ?? session.costEur,
-        citrineosTransactionId: tx.transactionId,
-      };
+    try {
+      const tx = await fetchTransactionByRemoteStartId(session.stationId, session.remoteStartId);
+      if (tx) return txToSessionPatch(session, tx);
+    } catch {
+      /* Aktive Transaktion unten */
     }
+  }
+
+  try {
+    const tx = await fetchActiveTransaction(session.stationId);
+    if (tx) return txToSessionPatch(session, tx);
+  } catch {
+    /* kein Live-Update */
   }
 
   return null;
 }
 
 export async function stopCitrineosCharge(session: ChargingSession): Promise<{ ok: boolean; error?: string }> {
-  if (!session.citrineosTransactionId) {
+  let transactionId = session.citrineosTransactionId;
+
+  if (!transactionId) {
+    const patch = await pollCitrineosSession(session);
+    transactionId = patch?.citrineosTransactionId;
+  }
+
+  if (!transactionId) {
     return { ok: true };
   }
-  const confirmations = await requestStopTransaction(session.stationId, {
-    transactionId: session.citrineosTransactionId,
-  });
+
+  const station = getStationById(session.stationId);
+  const confirmations = station
+    ? await requestStopTransactionForStation(station, transactionId)
+    : await requestStopTransactionForStation(
+        { id: session.stationId, hardwareFeatures: { ocppVersion: '1.6' } } as Station,
+        transactionId
+      );
+
   const first = confirmations[0];
   if (!first?.success) {
     return {

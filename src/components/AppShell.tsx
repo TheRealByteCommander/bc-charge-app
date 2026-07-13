@@ -30,9 +30,21 @@ export function AppShell() {
 
   useEffect(() => {
     if (!activeSession) return;
-    const id = setInterval(() => tickSession(), 2000);
+    void tickSession();
+    const id = setInterval(() => void tickSession(), 5000);
     return () => clearInterval(id);
   }, [activeSession, tickSession]);
+
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return;
+      const state = useAppStore.getState();
+      if (!state.user || state.activeSession) return;
+      void state.refreshActiveSession();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, []);
 
   useEffect(() => {
     if (!message) return;
@@ -52,6 +64,20 @@ export function AppShell() {
     return () => clearInterval(id);
   }, [user, stationDataSource]);
 
+  useEffect(() => {
+    const { citrineosConnected, refreshCitrineosData } = useAppStore.getState();
+    if (!citrineosConnected) return;
+    
+    const refreshInterval = setInterval(() => {
+      const state = useAppStore.getState();
+      if (state.citrineosConnected && !state.citrineosSyncing) {
+        void refreshCitrineosData();
+      }
+    }, 120_000);
+    
+    return () => clearInterval(refreshInterval);
+  }, [stationDataSource]);
+
   return (
     <div className="mx-auto flex min-h-dvh max-w-lg flex-col bg-bc-gradient bg-hero-mesh">
       <a
@@ -66,7 +92,12 @@ export function AppShell() {
         </Suspense>
       </main>
       <GeoConsentBanner />
-      {showNav && <BottomNav />}
+      {showNav && (
+        <>
+          <div className="h-20 shrink-0" aria-hidden="true" />
+          <BottomNav />
+        </>
+      )}
       <InstallPrompt />
       <AnimatePresence>
         {message && (

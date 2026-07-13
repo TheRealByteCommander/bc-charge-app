@@ -1,6 +1,7 @@
-import { lazy, useEffect } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import { BrowserRouter, Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom';
 import { AppShell } from './components/AppShell';
+import { UpdateNotification } from './components/UpdateNotification';
 import { LoginPage, RegisterPage } from './pages/AuthPage';
 import { OnboardingPage } from './pages/OnboardingPage';
 import { useAppStore } from './store/appStore';
@@ -27,6 +28,9 @@ const SupportPage = lazy(() => import('./pages/SupportPage').then((m) => ({ defa
 const PrivacyPage = lazy(() => import('./pages/PrivacyPage').then((m) => ({ default: m.PrivacyPage })));
 const ImpressumPage = lazy(() => import('./pages/ImpressumPage').then((m) => ({ default: m.ImpressumPage })));
 const TermsPage = lazy(() => import('./pages/TermsPage').then((m) => ({ default: m.TermsPage })));
+const GuestChargePage = lazy(() =>
+  import('./pages/GuestChargePage').then((m) => ({ default: m.GuestChargePage }))
+);
 const AccessibilityPage = lazy(() =>
   import('./pages/AccessibilityPage').then((m) => ({ default: m.AccessibilityPage }))
 );
@@ -35,6 +39,8 @@ const PUBLIC_PATHS = [
   '/karte',
   '/stationen',
   '/station/',
+  '/laden/gast',
+  '/scan',
   '/hilfe',
   '/datenschutz',
   '/impressum',
@@ -54,13 +60,20 @@ function Bootstrap({ children }: { children: React.ReactNode }) {
 
   if (!initialized) {
     return (
-      <div className="flex min-h-dvh items-center justify-center bg-bc-ink">
+      <div className="flex min-h-dvh items-center justify-center bg-bc-surface">
         <div className="h-10 w-10 animate-spin rounded-full border-2 border-bc-accent border-t-transparent" />
       </div>
     );
   }
 
-  return <>{children}</>;
+  return (
+    <>
+      {children}
+      <Suspense fallback={null}>
+        <UpdateNotification />
+      </Suspense>
+    </>
+  );
 }
 
 function RequireOnboarding() {
@@ -101,6 +114,8 @@ export default function App() {
               <Route path="/karte" element={<MapPage />} />
               <Route path="/stationen" element={<StationsPage />} />
               <Route path="/station/:id" element={<StationDetailPage />} />
+              <Route path="/laden/gast" element={<GuestChargePage />} />
+              <Route path="/scan" element={<ScanPage />} />
               <Route path="/hilfe" element={<SupportPage />} />
               <Route path="/datenschutz" element={<PrivacyPage />} />
               <Route path="/impressum" element={<ImpressumPage />} />
@@ -109,7 +124,6 @@ export default function App() {
 
               <Route element={<RequireAuth />}>
                 <Route path="/" element={<HomePage />} />
-                <Route path="/scan" element={<ScanPage />} />
                 <Route path="/vorteile" element={<LoyaltyPage />} />
                 <Route path="/profil" element={<ProfilePage />} />
                 <Route path="/laden" element={<ChargingPage />} />

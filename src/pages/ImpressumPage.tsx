@@ -3,10 +3,13 @@ import { LegalPageLayout, LegalSection } from '../components/LegalPageLayout';
 
 export function ImpressumPage() {
   return (
-    <LegalPageLayout title="Impressum" subtitle={`Angaben gemäß § 5 TMG · ${companyInfo.brand}`}>
+    <LegalPageLayout
+      title="Impressum"
+      subtitle={`Angaben gemäß § 5 DDG · ${companyInfo.brand} · Stand Juli 2026`}
+    >
       <LegalSection title="Anbieter">
         <p>
-          {companyInfo.legalName}
+          {companyInfo.legalName} ({companyInfo.legalForm})
           <br />
           {companyInfo.street}
           <br />
@@ -16,12 +19,17 @@ export function ImpressumPage() {
         </p>
       </LegalSection>
 
-      <LegalSection title="Vertreten durch">
+      <LegalSection title="Vertretungsberechtigte">
         <p>{companyInfo.managingDirector} (Geschäftsführer)</p>
       </LegalSection>
 
       <LegalSection title="Kontakt">
         <p>
+          Website:{' '}
+          <a href={companyInfo.website} className="text-bc-accent" target="_blank" rel="noopener noreferrer">
+            {companyInfo.website.replace('https://', '')}
+          </a>
+          <br />
           Telefon:{' '}
           <a href={`tel:${companyInfo.phoneTel}`} className="text-bc-accent">
             {companyInfo.phoneDisplay}
@@ -38,6 +46,8 @@ export function ImpressumPage() {
 
       <LegalSection title="Registereintrag">
         <p>
+          Eingetragen im {companyInfo.registerType}
+          <br />
           Registergericht: {companyInfo.registerCourt}
           <br />
           Registernummer: {companyInfo.registerNumber}
@@ -58,17 +68,18 @@ export function ImpressumPage() {
 
       <LegalSection title="Streitbeilegung">
         <p>
-          Die EU-Kommission stellt eine Plattform zur Online-Streitbeilegung bereit:{' '}
+          Wir sind nicht verpflichtet und nicht bereit, an Streitbeilegungsverfahren vor einer
+          Verbraucherschlichtungsstelle teilzunehmen. Informationen zur außergerichtlichen
+          Streitbeilegung für Verbraucherinnen und Verbraucher in der EU:{' '}
           <a
-            href="https://ec.europa.eu/consumers/odr"
+            href="https://commission.europa.eu/topics/consumers/consumer-rights-and-complaints/resolve-your-consumer-complaint/alternative-dispute-resolution-consumers_de"
             className="text-bc-accent"
             target="_blank"
             rel="noopener noreferrer"
           >
-            https://ec.europa.eu/consumers/odr
+            Europäische Kommission – Alternative Streitbeilegung
           </a>
-          . Wir sind nicht verpflichtet und nicht bereit, an Streitbeilegungsverfahren vor einer
-          Verbraucherschlichtungsstelle teilzunehmen.
+          .
         </p>
       </LegalSection>
     </LegalPageLayout>

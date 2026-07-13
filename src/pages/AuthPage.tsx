@@ -2,9 +2,11 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Logo } from '../components/Logo';
 import { LegalFooterLinks } from '../components/LegalPageLayout';
+import { useLocale } from '../i18n/LocaleContext';
 import { useAppStore } from '../store/appStore';
 
 export function LoginPage() {
+  const { t } = useLocale();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -19,7 +21,7 @@ export function LoginPage() {
     try {
       const res = await login(email, password);
       if (res.ok) navigate('/', { replace: true });
-      else setError(res.error ?? 'Anmeldung fehlgeschlagen');
+      else setError(res.error ?? t.errors.invalidCredentials);
     } finally {
       setLoading(false);
     }
@@ -39,11 +41,11 @@ export function LoginPage() {
   return (
     <div className="flex min-h-dvh flex-col px-6 py-10">
       <Logo />
-      <h1 className="mt-10 font-display text-2xl font-bold">Willkommen zurück</h1>
-      <p className="mt-2 text-bc-muted">Melden Sie sich an, um zu laden und BC Points zu sammeln.</p>
+      <h1 className="mt-10 font-display text-2xl font-bold">{t.auth.login}</h1>
+      <p className="mt-2 text-bc-muted">{t.auth.loginSubtitle}</p>
       <form onSubmit={submit} className="mt-8 space-y-4">
         <div>
-          <label className="mb-1.5 block text-sm text-bc-muted">E-Mail</label>
+          <label className="mb-1.5 block text-sm text-bc-muted">{t.auth.email}</label>
           <input
             type="email"
             required
@@ -54,7 +56,7 @@ export function LoginPage() {
           />
         </div>
         <div>
-          <label className="mb-1.5 block text-sm text-bc-muted">Passwort</label>
+          <label className="mb-1.5 block text-sm text-bc-muted">{t.auth.password}</label>
           <input
             type="password"
             required
@@ -66,18 +68,18 @@ export function LoginPage() {
         </div>
         {error && <p className="text-sm text-bc-danger">{error}</p>}
         <button type="submit" className="btn-primary w-full" disabled={loading}>
-          {loading ? 'Wird angemeldet…' : 'Anmelden'}
+          {loading ? t.auth.loggingIn : t.auth.login}
         </button>
       </form>
       {import.meta.env.DEV && (
         <button type="button" onClick={demoLogin} className="btn-secondary mt-4 w-full" disabled={loading}>
-          Demo-Konto testen
+          {t.auth.demoLogin}
         </button>
       )}
       <p className="mt-6 text-center text-sm text-bc-muted">
-        Noch kein Konto?{' '}
+        {t.auth.noAccount}{' '}
         <Link to="/registrieren" className="font-medium text-bc-accent">
-          Registrieren
+          {t.auth.register}
         </Link>
       </p>
       <LegalFooterLinks className="mt-8" />
@@ -86,6 +88,7 @@ export function LoginPage() {
 }
 
 export function RegisterPage() {
+  const { t } = useLocale();
   const [form, setForm] = useState({
     firstName: '',
     lastName: '',
@@ -104,11 +107,11 @@ export function RegisterPage() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!acceptPrivacy || !acceptTerms) {
-      setError('Bitte Datenschutzerklärung und Nutzungsbedingungen bestätigen.');
+      setError(t.errors.generic);
       return;
     }
     if (form.password.length < 8) {
-      setError('Passwort muss mindestens 8 Zeichen haben.');
+      setError(t.errors.generic);
       return;
     }
     setLoading(true);
@@ -121,7 +124,7 @@ export function RegisterPage() {
         marketingOptIn,
       });
       if (res.ok) navigate('/', { replace: true });
-      else setError(res.error ?? 'Registrierung fehlgeschlagen');
+      else setError(res.error ?? t.errors.generic);
     } finally {
       setLoading(false);
     }
@@ -130,13 +133,13 @@ export function RegisterPage() {
   return (
     <div className="flex min-h-dvh flex-col px-6 py-10 pb-12">
       <Logo />
-      <h1 className="mt-10 font-display text-2xl font-bold">Konto erstellen</h1>
-      <p className="mt-2 text-bc-muted">Starten Sie mit 250 Willkommens-BC-Points.</p>
+      <h1 className="mt-10 font-display text-2xl font-bold">{t.auth.createAccount}</h1>
+      <p className="mt-2 text-bc-muted">{t.auth.welcomePoints}</p>
       <form onSubmit={submit} className="mt-6 space-y-3">
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label htmlFor="reg-firstName" className="mb-1.5 block text-sm text-bc-muted">
-              Vorname
+              {t.auth.firstName}
             </label>
             <input
               id="reg-firstName"
@@ -149,7 +152,7 @@ export function RegisterPage() {
           </div>
           <div>
             <label htmlFor="reg-lastName" className="mb-1.5 block text-sm text-bc-muted">
-              Nachname
+              {t.auth.lastName}
             </label>
             <input
               id="reg-lastName"
@@ -163,7 +166,7 @@ export function RegisterPage() {
         </div>
         <div>
           <label htmlFor="reg-email" className="mb-1.5 block text-sm text-bc-muted">
-            E-Mail
+            {t.auth.email}
           </label>
           <input
             id="reg-email"
@@ -177,7 +180,7 @@ export function RegisterPage() {
         </div>
         <div>
           <label htmlFor="reg-phone" className="mb-1.5 block text-sm text-bc-muted">
-            Telefon
+            {t.auth.phone}
           </label>
           <input
             id="reg-phone"
@@ -191,7 +194,7 @@ export function RegisterPage() {
         </div>
         <div>
           <label htmlFor="reg-password" className="mb-1.5 block text-sm text-bc-muted">
-            Passwort (min. 8 Zeichen)
+            {t.auth.passwordHint}
           </label>
           <input
             id="reg-password"
@@ -215,11 +218,7 @@ export function RegisterPage() {
               required
             />
             <span className="text-bc-muted">
-              Ich habe die{' '}
-              <Link to="/datenschutz" className="text-bc-accent underline" target="_blank">
-                Datenschutzerklärung
-              </Link>{' '}
-              gelesen. <span className="text-bc-danger">*</span>
+              {t.auth.privacyAccept} <span className="text-bc-danger">*</span>
             </span>
           </label>
           <label className="flex cursor-pointer items-start gap-3">
@@ -231,11 +230,7 @@ export function RegisterPage() {
               required
             />
             <span className="text-bc-muted">
-              Ich akzeptiere die{' '}
-              <Link to="/nutzungsbedingungen" className="text-bc-accent underline" target="_blank">
-                Nutzungsbedingungen
-              </Link>
-              . <span className="text-bc-danger">*</span>
+              {t.auth.termsAccept} <span className="text-bc-danger">*</span>
             </span>
           </label>
           <label className="flex cursor-pointer items-start gap-3">
@@ -245,22 +240,19 @@ export function RegisterPage() {
               onChange={(e) => setMarketingOptIn(e.target.checked)}
               className="mt-0.5 accent-bc-accent"
             />
-            <span className="text-bc-muted">
-              Ich möchte optional Werbe-Hinweise zu Aktionen per App-Benachrichtigung erhalten
-              (jederzeit widerrufbar).
-            </span>
+            <span className="text-bc-muted">{t.auth.marketingAccept}</span>
           </label>
         </div>
 
         {error && <p className="text-sm text-bc-danger">{error}</p>}
         <button type="submit" className="btn-primary w-full" disabled={loading}>
-          {loading ? 'Konto wird erstellt…' : 'Registrieren'}
+          {loading ? t.auth.registering : t.auth.register}
         </button>
       </form>
       <p className="mt-6 text-center text-sm text-bc-muted">
-        Bereits registriert?{' '}
+        {t.auth.alreadyHave}{' '}
         <Link to="/anmelden" className="font-medium text-bc-accent">
-          Anmelden
+          {t.auth.login}
         </Link>
       </p>
       <LegalFooterLinks className="mt-8" />

@@ -1,22 +1,27 @@
 import { Car, CheckCircle2, ChevronRight, CreditCard } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { useLocale } from '../i18n/LocaleContext';
 import type { UserProfile } from '../types';
 
 interface ChargingSetupChecklistProps {
   user: UserProfile;
   returnTo?: string;
+  compact?: boolean;
 }
 
-export function ChargingSetupChecklist({ user, returnTo }: ChargingSetupChecklistProps) {
+export function ChargingSetupChecklist({ user, returnTo, compact = false }: ChargingSetupChecklistProps) {
+  const { t, locale } = useLocale();
+  
   const hasVehicle = user.vehicles.length > 0;
   const hasPayment = user.paymentMethods.length > 0;
   const ready = hasVehicle && hasPayment;
 
   if (ready) {
+    if (compact) return null;
     return (
       <div className="mt-4 flex items-center gap-2 rounded-xl border border-bc-accent/30 bg-bc-accent/10 px-4 py-3 text-sm text-bc-accent">
         <CheckCircle2 className="h-4 w-4 shrink-0" />
-        Bereit zum Laden – Fahrzeug und Zahlung sind hinterlegt.
+        {locale === 'de' ? 'Bereit zum Laden – Fahrzeug und Zahlung sind hinterlegt.' : 'Ready to charge – vehicle and payment are set up.'}
       </div>
     );
   }
@@ -28,23 +33,45 @@ export function ChargingSetupChecklist({ user, returnTo }: ChargingSetupChecklis
       id: 'vehicle',
       done: hasVehicle,
       icon: Car,
-      title: 'Fahrzeug hinterlegen',
-      hint: 'Damit wir Ladeleistung und Verbrauch zuordnen können.',
+      title: t.charging.addVehicle,
+      hint: locale === 'de' ? 'Damit wir Ladeleistung und Verbrauch zuordnen können.' : 'So we can track charging power and consumption.',
       to: `/fahrzeuge${returnParam}`,
     },
     {
       id: 'payment',
       done: hasPayment,
       icon: CreditCard,
-      title: 'Zahlungsmethode hinterlegen',
-      hint: 'Für die Abrechnung nach dem Ladevorgang.',
+      title: t.charging.addPayment,
+      hint: locale === 'de' ? 'Für die Abrechnung nach dem Ladevorgang.' : 'For billing after charging.',
       to: `/zahlung${returnParam}`,
     },
   ];
 
+  const remaining = steps.filter((s) => !s.done).length;
+  const nextStep = steps.find((s) => !s.done);
+
+  if (compact && nextStep) {
+    return (
+      <Link
+        to={nextStep.to}
+        className="flex items-center gap-3 rounded-2xl border border-bc-warn/30 bg-bc-warn/10 p-4 text-sm"
+      >
+        <nextStep.icon className="h-5 w-5 shrink-0 text-bc-warn" />
+        <span className="flex-1 font-medium">
+          {locale === 'de' ? `Noch ${remaining} Schritt(e): ${nextStep.title}` : `${remaining} step(s): ${nextStep.title}`}
+        </span>
+        <ChevronRight className="h-4 w-4 text-bc-muted" />
+      </Link>
+    );
+  }
+
   return (
     <div className="mt-4 rounded-2xl border border-bc-warn/30 bg-bc-warn/10 p-4">
-      <p className="text-sm font-semibold text-bc-warn">Noch {steps.filter((s) => !s.done).length} Schritt(e) bis zum Laden</p>
+      <p className="text-sm font-semibold text-bc-warn">
+        {locale === 'de' 
+          ? `Noch ${remaining} Schritt(e) bis zum Laden` 
+          : `${remaining} step(s) remaining`}
+      </p>
       <ul className="mt-3 space-y-2">
         {steps.map((step) => (
           <li key={step.id}>

@@ -2,16 +2,54 @@
 <html lang="de">
   <head>
     <meta charset="UTF-8" />
+    
+    <!-- Favicon & Icons -->
     <link rel="icon" type="image/svg+xml" href="/bc-icon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/icons/icon-32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/icons/icon-16.png" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <link rel="apple-touch-icon" sizes="152x152" href="/icons/icon-152.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/icons/icon-180.png" />
+    <link rel="apple-touch-icon" sizes="167x167" href="/icons/icon-167.png" />
+    
+    <!-- PWA Manifest -->
     <link rel="manifest" href="/manifest.webmanifest" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    <meta name="theme-color" content="#06080c" />
-    <meta name="description" content="BC Charge – Öffentliches Laden mit Stil. Ladestationen finden, laden und Prämien sammeln." />
+    
+    <!-- Viewport & Display -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover" />
+    <meta name="theme-color" content="#10b981" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#10b981" media="(prefers-color-scheme: light)" />
+    <meta name="color-scheme" content="dark" />
+    
+    <!-- iOS PWA -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="BC Charge" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    
+    <!-- SEO & Social -->
+    <meta name="description" content="BC Charge – Öffentliches Laden mit Stil. Ladestationen finden, QR-Code scannen, laden und Prämien sammeln." />
+    <meta name="keywords" content="E-Auto, Ladestation, Elektromobilität, Laden, BC Charge, EV Charging" />
+    <meta name="author" content="BC Charge" />
+    <meta property="og:title" content="BC Charge – Laden mit Stil" />
+    <meta property="og:description" content="Ladestationen finden, laden und Prämien sammeln." />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="/icons/icon-512.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    
+    <!-- Android -->
+    <meta name="application-name" content="BC Charge" />
+    <meta name="msapplication-TileColor" content="#0f1419" />
+    <meta name="msapplication-config" content="/browserconfig.xml" />
+    
+    <!-- Permissions Policy -->
+    <meta http-equiv="Permissions-Policy" content="camera=(*), geolocation=(*), microphone=()" />
+    
+    <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet" />
+    
     <title>BC Charge – Laden mit Stil</title>
   </head>
   <body class="bg-bc-ink text-bc-text antialiased">

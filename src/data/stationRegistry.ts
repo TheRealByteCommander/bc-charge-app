@@ -1,7 +1,7 @@
 import type { Station } from '../types';
 import { staticStations } from './staticStations';
 
-export type StationDataSource = 'static' | 'citrineos';
+export type StationDataSource = 'static' | 'citrineos' | 'offline-cache';
 
 let stationsCache: Station[] = [...staticStations];
 let dataSource: StationDataSource = 'static';
@@ -24,6 +24,13 @@ export function setStationsFromCitrineos(stations: Station[]): void {
 export function resetStationsToStatic(): void {
   stationsCache = [...staticStations];
   dataSource = 'static';
+}
+
+export function setStationsFromOfflineCache(stations: Station[]): void {
+  if (stations.length > 0) {
+    stationsCache = stations;
+    dataSource = 'offline-cache';
+  }
 }
 
 export function getStationById(id: string): Station | undefined {

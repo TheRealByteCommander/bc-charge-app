@@ -1,4 +1,4 @@
-import type { ChargingSession, UserProfile } from '../types';
+import type { ChargingSession, RewardFulfillment, UserProfile } from '../types';
 
 const KEYS = {
   users: 'bc_users',
@@ -6,6 +6,7 @@ const KEYS = {
   sessions: 'bc_sessions',
   onboarding: 'bc_onboarding_done',
   redeemedRewards: 'bc_redeemed',
+  rewardFulfillments: 'bc_reward_fulfillments',
 } as const;
 
 export function loadUsers(): UserProfile[] {
@@ -47,6 +48,36 @@ export function saveSessions(userId: string, sessions: ChargingSession[]): void 
   localStorage.setItem(KEYS.sessions, JSON.stringify(all));
 }
 
+const ACTIVE_SESSION_CACHE = 'bc_active_session_cache';
+
+/** Kurzzeit-Cache der aktiven Session (Backend-Modus) – Wiederherstellung bei App-Neustart. */
+export function saveActiveSessionCache(userId: string, session: ChargingSession): void {
+  try {
+    sessionStorage.setItem(
+      ACTIVE_SESSION_CACHE,
+      JSON.stringify({ userId, session, savedAt: new Date().toISOString() })
+    );
+  } catch {
+    /* Quota / private mode */
+  }
+}
+
+export function loadActiveSessionCache(userId: string): ChargingSession | null {
+  try {
+    const raw = sessionStorage.getItem(ACTIVE_SESSION_CACHE);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { userId: string; session: ChargingSession };
+    if (parsed.userId !== userId || parsed.session.status !== 'active') return null;
+    return parsed.session;
+  } catch {
+    return null;
+  }
+}
+
+export function clearActiveSessionCache(): void {
+  sessionStorage.removeItem(ACTIVE_SESSION_CACHE);
+}
+
 export function isOnboardingDone(): boolean {
   return localStorage.getItem(KEYS.onboarding) === '1';
 }
@@ -70,4 +101,21 @@ export function saveRedeemed(userId: string, ids: string[]): void {
   const all = raw ? (JSON.parse(raw) as Record<string, string[]>) : {};
   all[userId] = ids;
   localStorage.setItem(KEYS.redeemedRewards, JSON.stringify(all));
+}
+
+export function loadFulfillments(userId: string): RewardFulfillment[] {
+  try {
+    const raw = localStorage.getItem(KEYS.rewardFulfillments);
+    const all = raw ? (JSON.parse(raw) as Record<string, RewardFulfillment[]>) : {};
+    return all[userId] ?? [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveFulfillments(userId: string, fulfillments: RewardFulfillment[]): void {
+  const raw = localStorage.getItem(KEYS.rewardFulfillments);
+  const all = raw ? (JSON.parse(raw) as Record<string, RewardFulfillment[]>) : {};
+  all[userId] = fulfillments;
+  localStorage.setItem(KEYS.rewardFulfillments, JSON.stringify(all));
 }

@@ -5,26 +5,27 @@ import { MapContainer, Marker, Polyline, Popup, TileLayer, useMap } from 'react-
 import { Link } from 'react-router-dom';
 import { getAvailableCount } from '../data/stations';
 import type { Station } from '../types';
+import { isValidStationPosition } from '../utils/geo';
 
 const iconAvailable = L.divIcon({
   className: '',
-  html: `<div style="width:28px;height:28px;border-radius:50%;background:#2ee59d;border:3px solid #06080c;box-shadow:0 0 12px rgba(46,229,157,0.6)"></div>`,
-  iconSize: [28, 28],
-  iconAnchor: [14, 14],
+  html: `<div style="width:32px;height:32px;border-radius:50%;background:#10b981;border:3px solid #ffffff;box-shadow:0 2px 8px rgba(0,0,0,0.2)"></div>`,
+  iconSize: [32, 32],
+  iconAnchor: [16, 16],
 });
 
 const iconBusy = L.divIcon({
   className: '',
-  html: `<div style="width:28px;height:28px;border-radius:50%;background:#ffb347;border:3px solid #06080c"></div>`,
-  iconSize: [28, 28],
-  iconAnchor: [14, 14],
+  html: `<div style="width:32px;height:32px;border-radius:50%;background:#f59e0b;border:3px solid #ffffff;box-shadow:0 2px 8px rgba(0,0,0,0.2)"></div>`,
+  iconSize: [32, 32],
+  iconAnchor: [16, 16],
 });
 
 const iconHighlight = L.divIcon({
   className: '',
-  html: `<div style="width:32px;height:32px;border-radius:50%;background:#5dffb8;border:3px solid #2ee59d;box-shadow:0 0 16px rgba(46,229,157,0.9)"></div>`,
-  iconSize: [32, 32],
-  iconAnchor: [16, 16],
+  html: `<div style="width:36px;height:36px;border-radius:50%;background:#10b981;border:4px solid #34d399;box-shadow:0 2px 12px rgba(16,185,129,0.5)"></div>`,
+  iconSize: [36, 36],
+  iconAnchor: [18, 18],
 });
 
 function MapController({
@@ -66,7 +67,7 @@ export function ChargeMap({
 
   const markers = useMemo(
     () =>
-      stations.map((s) => {
+      stations.filter((s) => isValidStationPosition(s.lat, s.lng)).map((s) => {
         const highlighted = highlightSet.has(s.id);
         const available = getAvailableCount(s) > 0;
         return {
@@ -85,13 +86,13 @@ export function ChargeMap({
       <MapContainer center={center} zoom={zoom} scrollWheelZoom className="z-0" style={{ height: '100%', width: '100%' }}>
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>'
-          url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+          url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
         />
         <MapController center={center} zoom={zoom} fitPoints={fitPoints} />
         {routeLine.length > 1 && (
           <Polyline
             positions={routeLine}
-            pathOptions={{ color: '#2ee59d', weight: 4, opacity: 0.75, dashArray: '8 8' }}
+            pathOptions={{ color: '#3b82f6', weight: 4, opacity: 0.85, dashArray: '8 8' }}
           />
         )}
         {markers.map(({ station, pos, icon }) => (

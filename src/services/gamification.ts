@@ -219,7 +219,7 @@ export function processSessionGamification(user: UserProfile, session: ChargingS
     return res;
   };
 
-  let badgeRes = runBadges(tierBefore);
+  const badgeRes = runBadges(tierBefore);
   pointsDelta += badgeRes.bonusPoints;
   loyaltyPoints += badgeRes.bonusPoints;
   const newBadgeIds = [...badgeRes.newBadgeIds];
@@ -344,33 +344,18 @@ export function claimChallengeReward(
   };
 }
 
-const DEMO_LEADERBOARD: Omit<LeaderboardEntry, 'isCurrentUser'>[] = [
-  { rank: 1, displayName: 'Lena M.', points: 12480, tier: 'Platin' },
-  { rank: 2, displayName: 'Tom K.', points: 9820, tier: 'Gold' },
-  { rank: 3, displayName: 'Sven R.', points: 8650, tier: 'Gold' },
-  { rank: 4, displayName: 'Mia L.', points: 7200, tier: 'Gold' },
-  { rank: 5, displayName: 'Jonas P.', points: 6100, tier: 'Silber' },
-  { rank: 6, displayName: 'Eva H.', points: 5400, tier: 'Silber' },
-  { rank: 7, displayName: 'Paul W.', points: 4800, tier: 'Silber' },
-  { rank: 8, displayName: 'Nina F.', points: 4200, tier: 'Silber' },
-  { rank: 9, displayName: 'Chris B.', points: 3600, tier: 'Bronze' },
-  { rank: 10, displayName: 'Alex D.', points: 3100, tier: 'Bronze' },
-];
-
 export function buildLeaderboard(user: UserProfile | null): LeaderboardEntry[] {
-  if (!user) return DEMO_LEADERBOARD.map((e) => ({ ...e }));
+  if (!user) return [];
 
   const you: LeaderboardEntry = {
-    rank: 0,
+    rank: 1,
     displayName: `${user.firstName} ${user.lastName[0]}.`,
     points: user.loyaltyPoints,
     tier: user.loyaltyTier,
     isCurrentUser: true,
   };
 
-  return [...DEMO_LEADERBOARD, you]
-    .sort((a, b) => b.points - a.points)
-    .map((e, i) => ({ ...e, rank: i + 1 }));
+  return [you];
 }
 
 export function countUnlockedBadges(state: GamificationState): number {

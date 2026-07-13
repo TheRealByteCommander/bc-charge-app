@@ -1,6 +1,7 @@
 import { apiConfig } from '../../config/api';
 import { citrineosConfig } from '../../config/citrineos';
 import { isBackendMode } from '../../services/backendMode';
+import { fetchWithTimeout } from '../../utils/fetchWithTimeout';
 import { citrineosPaths } from './paths';
 
 export class CitrineosApiError extends Error {
@@ -33,11 +34,12 @@ export async function citrineosFetch<T>(
     method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
     query?: Record<string, string | number | undefined>;
     body?: unknown;
+    timeoutMs?: number;
   } = {}
 ): Promise<T> {
-  const { method = 'GET', query, body } = options;
+  const { method = 'GET', query, body, timeoutMs = CITRINEOS_FETCH_MS } = options;
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), CITRINEOS_FETCH_MS);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   let res: Response;
   try {
     if (isBackendMode()) {
@@ -89,7 +91,7 @@ export async function citrineosFetch<T>(
 export async function citrineosHealth(): Promise<boolean> {
   try {
     if (isBackendMode()) {
-      const r = await fetch(`${apiConfig.baseUrl}/api/citrineos/health`, { credentials: 'include' });
+      const r = await fetchWithTimeout(`${apiConfig.baseUrl}/api/citrineos/health`, { credentials: 'include' }, 5000);
       const json = (await r.json()) as { ok?: boolean };
       return Boolean(json.ok);
     }

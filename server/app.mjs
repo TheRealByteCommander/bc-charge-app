@@ -3,6 +3,7 @@ import cookieParser from 'cookie-parser';
 import express from 'express';
 import { initDb } from './db.mjs';
 import { getBindHost, getCorsOptions, createRateLimiter } from './security.mjs';
+import { attachUserForRateLimit } from './middleware/auth.mjs';
 import { seedDemoUser } from './services/seed.mjs';
 import authRouter from './routes/auth.mjs';
 import profileRouter from './routes/profile.mjs';
@@ -11,11 +12,16 @@ import stripeRouter from './routes/stripe.mjs';
 import citrineosRouter from './routes/citrineos.mjs';
 import invoicesRouter from './routes/invoices.mjs';
 import webhooksRouter from './routes/webhooks.mjs';
+import gamificationRouter from './routes/gamification.mjs';
+import adhocRouter from './routes/adhoc.mjs';
+import rewardsRouter from './routes/rewards.mjs';
 
 const PORT = Number(process.env.BC_SERVER_PORT ?? process.env.STRIPE_SERVER_PORT ?? 4242);
 
 const app = express();
 app.disable('x-powered-by');
+/** Hinter Nginx/Caddy: echte Client-IP für Rate-Limit-Fallback (nicht nur 127.0.0.1). */
+app.set('trust proxy', Number(process.env.BC_TRUST_PROXY_HOPS ?? 1));
 
 const corsOptions = getCorsOptions();
 app.use(
@@ -27,14 +33,16 @@ app.use(
 
 app.use(cookieParser());
 app.use(express.json({ limit: '256kb' }));
-app.use(createRateLimiter({ windowMs: 60_000, max: 300 }));
-
-await initDb();
-await seedDemoUser();
 
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true, service: 'bc-charge-api' });
 });
+
+app.use(attachUserForRateLimit);
+app.use(createRateLimiter({ windowMs: 60_000, max: 900 }));
+
+await initDb();
+await seedDemoUser();
 
 app.use('/api/auth', authRouter);
 app.use('/api/profile', profileRouter);
@@ -42,6 +50,9 @@ app.use('/api/sessions', sessionsRouter);
 app.use('/api/stripe', stripeRouter);
 app.use('/api/citrineos', citrineosRouter);
 app.use('/api/invoices', invoicesRouter);
+app.use('/api/gamification', gamificationRouter);
+app.use('/api/rewards', rewardsRouter);
+app.use('/api/adhoc', adhocRouter);
 app.use(
   '/api/webhooks/stripe',
   express.raw({ type: 'application/json' }),

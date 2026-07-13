@@ -12,11 +12,11 @@ export const citrineosConfig = {
   /** REST-API (Swagger: /docs) – Standard docker-compose Port 8080 */
   apiUrl:
     (import.meta.env.VITE_CITRINEOS_API_URL as string | undefined)?.replace(/\/$/, '') ??
-    (useDevProxy ? '/citrineos-api' : 'http://localhost:8080'),
+    (import.meta.env.PROD ? '/citrineos-api' : (useDevProxy ? '/citrineos-api' : 'http://localhost:8080')),
   /** Hasura GraphQL – Standard Port 8090 */
   hasuraUrl:
     (import.meta.env.VITE_CITRINEOS_HASURA_URL as string | undefined)?.replace(/\/$/, '') ??
-    (useDevProxy ? '/citrineos-hasura/v1/graphql' : 'http://localhost:8090/v1/graphql'),
+    (import.meta.env.PROD ? '/citrineos-hasura/v1/graphql' : (useDevProxy ? '/citrineos-hasura/v1/graphql' : 'http://localhost:8090/v1/graphql')),
   hasuraAdminSecret: (import.meta.env.VITE_CITRINEOS_HASURA_ADMIN_SECRET as string | undefined) ?? '',
   tenantId: Number(import.meta.env.VITE_CITRINEOS_TENANT_ID ?? '1'),
   /** IdToken-Typ für RequestStartTransaction (OCPP 2.0.1) */

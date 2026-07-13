@@ -1,4 +1,4 @@
-import type { UserProfile } from '../../types';
+import type { UserProfile, RewardFulfillment } from '../../types';
 import { backendApi } from './client';
 
 export async function patchProfile(patch: Partial<UserProfile>): Promise<UserProfile> {
@@ -17,7 +17,7 @@ export async function fetchRedeemedRewards(): Promise<string[]> {
 export async function redeemRewardRemote(
   rewardId: string,
   pointsCost: number
-): Promise<{ user: UserProfile; rewardIds: string[] }> {
+): Promise<{ user: UserProfile; rewardIds: string[]; fulfillment: RewardFulfillment }> {
   return backendApi('/api/profile/redeem', {
     method: 'POST',
     body: JSON.stringify({ rewardId, pointsCost }),

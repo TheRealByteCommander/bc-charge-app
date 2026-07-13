@@ -1,4 +1,13 @@
-import type { Connector, ConnectorStatus, ConnectorType, Station } from '../../types';
+import type {
+  Connector,
+  ConnectorStatus,
+  ConnectorType,
+  HardwareFeatures,
+  KnownHardwareModel,
+  Station,
+} from '../../types';
+import { parseGeoPoint } from '../../utils/geo';
+import { mapUnifiedOcppConnectorStatusToApp } from '../../utils/ocppStateMapping';
 import { mapTariffToConnectorPricing, type TariffCatalog } from './tariffPricing';
 import type { HasuraChargingStationRow } from './types';
 
@@ -10,14 +19,92 @@ const GRADIENTS = [
   'from-amber-900/50 to-bc-surface',
 ];
 
+/** Hardware-Konfigurationen für bekannte Modelle (basierend auf Arias CITRINE_H2_CONFIG.json) */
+const HARDWARE_CONFIGS: Record<string, { model: KnownHardwareModel; features: HardwareFeatures }> = {
+  'CityCharge H2': {
+    model: 'CityCharge H2',
+    features: {
+      midCertifiedMeters: true,
+      dynamicLoadManagement: true,
+      ocppVersion: '1.6',
+      multiConnector: true,
+    },
+  },
+  'Elinta CityCharge H2': {
+    model: 'CityCharge H2',
+    features: {
+      midCertifiedMeters: true,
+      dynamicLoadManagement: true,
+      ocppVersion: '1.6',
+      multiConnector: true,
+    },
+  },
+  'go-e': {
+    model: 'generic',
+    features: {
+      midCertifiedMeters: false,
+      dynamicLoadManagement: false,
+      ocppVersion: '1.6',
+      multiConnector: false,
+    },
+  },
+  GO_E_HOMEPLUS: {
+    model: 'generic',
+    features: {
+      midCertifiedMeters: false,
+      dynamicLoadManagement: false,
+      ocppVersion: '1.6',
+      multiConnector: false,
+    },
+  },
+};
+
+/** Erkennt Hardware-Modell und Features basierend auf chargePointModel/Vendor */
+function detectHardwareFeatures(
+  chargePointModel?: string | null,
+  chargePointVendor?: string | null
+): { hardwareModel: KnownHardwareModel; hardwareFeatures: HardwareFeatures } {
+  const modelKey = chargePointModel ?? '';
+  const vendorModelKey = `${chargePointVendor ?? ''} ${modelKey}`.trim();
+  const vendorLower = (chargePointVendor ?? '').toLowerCase();
+
+  const config = HARDWARE_CONFIGS[modelKey] ?? HARDWARE_CONFIGS[vendorModelKey];
+  
+  if (config) {
+    return { hardwareModel: config.model, hardwareFeatures: config.features };
+  }
+
+  if (vendorLower.includes('go-e') || vendorLower.includes('goe')) {
+    return {
+      hardwareModel: 'generic',
+      hardwareFeatures: {
+        midCertifiedMeters: false,
+        dynamicLoadManagement: false,
+        ocppVersion: '1.6',
+        multiConnector: false,
+      },
+    };
+  }
+  
+  return {
+    hardwareModel: 'generic',
+    hardwareFeatures: {
+      midCertifiedMeters: false,
+      dynamicLoadManagement: false,
+      ocppVersion: '2.0.1',
+      multiConnector: false,
+    },
+  };
+}
+
 function mapConnectorStatus(ocppStatus: string, stationOnline: boolean): ConnectorStatus {
+  const mapped = mapUnifiedOcppConnectorStatusToApp(ocppStatus);
+  // Fahrzeug angesteckt: Connector-Status vertrauen, auch wenn isOnline kurz falsch ist.
+  if (!stationOnline && (mapped === 'occupied' || mapped === 'reserved')) {
+    return mapped;
+  }
   if (!stationOnline) return 'offline';
-  const s = ocppStatus.toLowerCase();
-  if (s.includes('available')) return 'available';
-  if (s.includes('occupied') || s.includes('charging')) return 'occupied';
-  if (s.includes('reserved')) return 'reserved';
-  if (s.includes('unavailable') || s.includes('fault')) return 'offline';
-  return 'offline';
+  return mapped;
 }
 
 function mapConnectorType(type?: string | null): ConnectorType {
@@ -32,6 +119,44 @@ function connectorId(evseId: number, connectorId: number): string {
   return `evse-${evseId}-conn-${connectorId}`;
 }
 
+/**
+ * go-e & Co.: nur ein physischer Anschluss – Hasura kann fälschlich 2 EVSEs haben
+ * (z. B. nach seed-h2-connectors.sh). Zeigt nur den primären Ladepunkt.
+ */
+function normalizeConnectorsForHardware(
+  connectors: Connector[],
+  hardwareFeatures: HardwareFeatures,
+  stationLabel: string
+): Connector[] {
+  if (hardwareFeatures.multiConnector || connectors.length <= 1) {
+    return connectors;
+  }
+
+  const sorted = [...connectors].sort((a, b) => {
+    const evseDiff = (a.evseNumber ?? 99) - (b.evseNumber ?? 99);
+    if (evseDiff !== 0) return evseDiff;
+    return (a.connectorNumber ?? 99) - (b.connectorNumber ?? 99);
+  });
+
+  if (connectors.length > 1 && import.meta.env.DEV) {
+    console.warn(
+      `[BC Charge] „${stationLabel}“: ${connectors.length} Hasura-Connectors, Anzeige auf Ladepunkt 1 reduziert (multiConnector=false)`
+    );
+  }
+
+  return [sorted[0]];
+}
+
+/** Ob die UI mehrere Ladepunkte anzeigen soll (H2 ja, go-e nein). */
+export function isMultiConnectorStation(station: {
+  hardwareFeatures?: HardwareFeatures;
+  connectors: Connector[];
+}): boolean {
+  if (station.hardwareFeatures?.multiConnector === true) return true;
+  if (station.hardwareFeatures?.multiConnector === false) return false;
+  return station.connectors.length > 1;
+}
+
 export function parseConnectorRef(
   connectorAppId: string
 ): { evseId: number; connectorId: number } | null {
@@ -40,31 +165,46 @@ export function parseConnectorRef(
   return { evseId: Number(m[1]), connectorId: Number(m[2]) };
 }
 
+function resolveStationCoordinates(row: HasuraChargingStationRow): { lat: number; lng: number } {
+  // Operator UI: „Standort-Koordinaten verwenden“ → coordinates an der Station sind null,
+  // die Position liegt dann an der verknüpften Location.
+  const parsed =
+    parseGeoPoint(row.coordinates) ?? parseGeoPoint(row.Location?.coordinates ?? null);
+  return parsed ?? { lat: 0, lng: 0 };
+}
+
 export function mapHasuraStationToApp(
   row: HasuraChargingStationRow,
   index: number,
   tariffCatalog?: TariffCatalog
 ): Station | null {
-  const coords = row.coordinates?.coordinates;
-  if (!coords || coords.length < 2) return null;
-
-  const [lng, lat] = coords;
-  const loc = row.location;
+  const stationId = row.ocppConnectionName || String(row.id);
+  
+  const loc = row.Location;
   const name =
     loc?.name ??
-    `${row.chargePointVendor ?? 'BC Charge'} ${row.chargePointModel ?? row.id}`.trim();
+    `${row.chargePointVendor ?? 'BC Charge'} ${row.chargePointModel ?? stationId}`.trim();
+
+  const { hardwareModel, hardwareFeatures } = detectHardwareFeatures(
+    row.chargePointModel,
+    row.chargePointVendor
+  );
 
   const connectors: Connector[] = [];
-  for (const evse of row.evses ?? []) {
-    for (const conn of evse.connectors ?? []) {
-      const pricing = mapTariffToConnectorPricing(conn.tariff, tariffCatalog);
+  for (const evse of row.Evses ?? []) {
+    for (const conn of evse.Connectors ?? []) {
+      const tariff = conn.Tariff ?? (conn.tariffId ? tariffCatalog?.get(conn.tariffId) : undefined) ?? null;
+      const pricing = mapTariffToConnectorPricing(tariff, tariffCatalog);
       const powerKw = conn.maximumPowerWatts ? Math.round(conn.maximumPowerWatts / 1000) : 22;
       connectors.push({
         id: connectorId(evse.evseId, conn.connectorId),
         type: mapConnectorType(conn.type),
         powerKw: powerKw > 0 ? powerKw : 22,
-        status: mapConnectorStatus(conn.status, row.isOnline),
-        evseId: `DE*BCC*${row.id}*${evse.evseId}*${conn.connectorId}`,
+        status: mapConnectorStatus(conn.status, row.isOnline ?? false),
+        ocppRawStatus: conn.status ?? undefined,
+        evseId: `DE*BCC*${stationId}*${evse.evseId}*${conn.connectorId}`,
+        evseNumber: evse.evseId,
+        connectorNumber: conn.connectorId,
         ...pricing,
       });
     }
@@ -72,9 +212,14 @@ export function mapHasuraStationToApp(
 
   if (connectors.length === 0) return null;
 
+  const normalizedConnectors = normalizeConnectorsForHardware(connectors, hardwareFeatures, name);
+
+  const { lat, lng } = resolveStationCoordinates(row);
+
   return {
-    id: row.id,
-    evseCode: row.id.toUpperCase(),
+    id: stationId,
+    citrineosDatabaseId: row.id,
+    evseCode: stationId.toUpperCase(),
     name,
     address: loc?.address ?? '—',
     city: loc?.city ?? '—',
@@ -90,7 +235,11 @@ export function mapHasuraStationToApp(
     imageGradient: GRADIENTS[index % GRADIENTS.length],
     greenEnergy: true,
     accessible: true,
-    connectors,
+    connectors: normalizedConnectors,
+    chargePointVendor: row.chargePointVendor ?? undefined,
+    chargePointModel: row.chargePointModel ?? undefined,
+    hardwareModel,
+    hardwareFeatures,
   };
 }
 

@@ -7,7 +7,7 @@ export const citrineosIntegrationContract = {
   operator: {
     brand: 'BC Charge',
     company: 'Byte Commander GmbH',
-    website: 'https://bc-charge.com',
+    website: 'https://main.bc-charge.com',
     email: 'hello@bc-charge.com',
     phone: '+49 (0) 34292 43340',
     address: 'Grüner Weg 3, 04827 Machern, Deutschland',
@@ -83,6 +83,7 @@ export const citrineosIntegrationContract = {
     { method: 'GET', path: '/api/citrineos/tariffs' },
     { method: 'POST', path: '/api/citrineos/hasura' },
     { method: 'POST', path: '/api/citrineos/proxy' },
+    { method: 'POST', path: '/api/citrineos/ensure-authorization' },
   ],
   connectorIdFormat: 'evse-{evseId}-conn-{connectorId}',
   deploymentRepo: 'https://github.com/TheRealByteCommander/bc-citrineos',

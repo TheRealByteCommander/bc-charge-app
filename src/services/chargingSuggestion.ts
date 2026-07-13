@@ -1,5 +1,5 @@
 import { getStations } from '../data/stations';
-import { haversineKm } from '../utils/geo';
+import { haversineKm, isValidStationPosition } from '../utils/geo';
 import type { Connector, Station, Vehicle } from '../types';
 
 export const MAX_NEARBY_STATION_SUGGESTIONS = 2;
@@ -49,9 +49,10 @@ export function pickNearestAvailableStations(
   const fallback: (ChargeSuggestion & { sortKey: number })[] = [];
 
   for (const station of getStations()) {
-    const distanceKm = userLocation
-      ? Math.round(haversineKm(userLocation.lat, userLocation.lng, station.lat, station.lng) * 10) / 10
-      : null;
+    const distanceKm =
+      userLocation && isValidStationPosition(station.lat, station.lng)
+        ? Math.round(haversineKm(userLocation.lat, userLocation.lng, station.lat, station.lng) * 10) / 10
+        : null;
     const sortKey = distanceKm ?? Number.POSITIVE_INFINITY;
 
     const freePick = pickConnector(station, vehicle, true);
@@ -82,6 +83,7 @@ export function pickNearestAvailableStations(
   fallback.sort((a, b) => a.sortKey - b.sortKey);
 
   const merged = [...withFree, ...fallback.filter((f) => !withFree.some((w) => w.station.id === f.station.id))];
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   return merged.slice(0, limit).map(({ sortKey: _sortKey, ...suggestion }) => suggestion);
 }
 

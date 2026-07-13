@@ -1,0 +1,36 @@
+diff --git a/src/lib/client/pages/charging-stations/detail/connectors/connectors.upsert.tsx b/src/lib/client/pages/charging-stations/detail/connectors/connectors.upsert.tsx
+index 40c7d65..b8f3a21 100644
+--- a/src/lib/client/pages/charging-stations/detail/connectors/connectors.upsert.tsx
++++ b/src/lib/client/pages/charging-stations/detail/connectors/connectors.upsert.tsx
+@@ -52,6 +52,22 @@ interface ConnectorUpsertProps {
+   evseId?: number | null;
+ }
+ 
++/** OCPP ConnectorTypeEnum → lesbare Bezeichnung (Suche z. B. "Type 2" statt IEC62196T2) */
++const CONNECTOR_TYPE_LABELS: Record<string, string> = {
++  IEC62196T2: 'Type 2 AC (IEC62196T2)',
++  IEC62196T2COMBO: 'CCS Combo 2 (IEC62196T2COMBO)',
++  IEC62196T1: 'Type 1 (IEC62196T1)',
++  IEC62196T1COMBO: 'CCS Combo 1 (IEC62196T1COMBO)',
++  CHAdeMO: 'CHAdeMO',
++  Tesla: 'Tesla',
++  GBTAC: 'GB/T AC',
++  GBTDC: 'GB/T DC',
++};
++
++function connectorTypeOptionLabel(type: string): string {
++  return CONNECTOR_TYPE_LABELS[type] ?? type;
++}
++
+ const connectorTypes = Object.keys(ConnectorTypeEnum);
+ 
+ const formats = Object.keys(ConnectorFormatEnum);
+@@ -192,7 +208,7 @@ export const ConnectorsUpsert: React.FC<ConnectorUpsertProps> = ({
+                 </FieldLabel>
+                 <Combobox<string>
+                   options={connectorTypes.map((ct) => ({
+-                    label: ct,
++                    label: connectorTypeOptionLabel(ct),
+                     value: ct,
+                   }))}
+                   value={field.value ?? undefined}

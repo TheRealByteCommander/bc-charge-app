@@ -3,6 +3,11 @@ import { Pool } from 'pg';
 import { mkdirSync } from 'fs';
 import { dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
+import {
+  assertCanActivateSession,
+  assertSingleActiveInPayload,
+  formatConcurrentSessionError,
+} from './services/sessionGuard.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const dbPath = process.env.BC_DB_PATH ?? resolve(root, 'data', 'bc-charge.sqlite');
@@ -52,12 +57,59 @@ export async function initDb() {
 
       CREATE INDEX IF NOT EXISTS idx_sessions_user ON charging_sessions(user_id);
 
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_one_active_per_user
+        ON charging_sessions(user_id) WHERE status = 'active';
+
       CREATE TABLE IF NOT EXISTS redeemed_rewards (
         user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         reward_id TEXT NOT NULL,
         redeemed_at TIMESTAMPTZ NOT NULL,
         PRIMARY KEY (user_id, reward_id)
       );
+
+      CREATE TABLE IF NOT EXISTS reward_fulfillments (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        reward_id TEXT NOT NULL,
+        type TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'active',
+        payload_json JSONB NOT NULL,
+        redeemed_at TIMESTAMPTZ NOT NULL,
+        expires_at TIMESTAMPTZ,
+        used_at TIMESTAMPTZ,
+        session_id TEXT
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_reward_fulfillments_user ON reward_fulfillments(user_id);
+      CREATE INDEX IF NOT EXISTS idx_reward_fulfillments_user_status ON reward_fulfillments(user_id, status);
+
+      CREATE TABLE IF NOT EXISTS adhoc_sessions (
+        id TEXT PRIMARY KEY,
+        access_token TEXT NOT NULL,
+        station_id TEXT NOT NULL,
+        connector_id TEXT NOT NULL,
+        status TEXT NOT NULL,
+        payment_intent_id TEXT,
+        data_json JSONB NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_adhoc_sessions_station ON adhoc_sessions(station_id);
+
+      CREATE TABLE IF NOT EXISTS invoice_counters (
+        year INTEGER PRIMARY KEY,
+        last_number INTEGER NOT NULL DEFAULT 0
+      );
+
+      CREATE TABLE IF NOT EXISTS invoice_registry (
+        invoice_number TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL UNIQUE,
+        user_id TEXT NOT NULL,
+        issued_at TIMESTAMPTZ NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_invoice_registry_user ON invoice_registry(user_id);
     `);
     return pgPool;
   }
@@ -90,12 +142,59 @@ export async function initDb() {
 
     CREATE INDEX IF NOT EXISTS idx_sessions_user ON charging_sessions(user_id);
 
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_one_active_per_user
+      ON charging_sessions(user_id) WHERE status = 'active';
+
     CREATE TABLE IF NOT EXISTS redeemed_rewards (
       user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       reward_id TEXT NOT NULL,
       redeemed_at TEXT NOT NULL,
       PRIMARY KEY (user_id, reward_id)
     );
+
+    CREATE TABLE IF NOT EXISTS reward_fulfillments (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      reward_id TEXT NOT NULL,
+      type TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active',
+      payload_json TEXT NOT NULL,
+      redeemed_at TEXT NOT NULL,
+      expires_at TEXT,
+      used_at TEXT,
+      session_id TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_reward_fulfillments_user ON reward_fulfillments(user_id);
+    CREATE INDEX IF NOT EXISTS idx_reward_fulfillments_user_status ON reward_fulfillments(user_id, status);
+
+    CREATE TABLE IF NOT EXISTS adhoc_sessions (
+      id TEXT PRIMARY KEY,
+      access_token TEXT NOT NULL,
+      station_id TEXT NOT NULL,
+      connector_id TEXT NOT NULL,
+      status TEXT NOT NULL,
+      payment_intent_id TEXT,
+      data_json TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_adhoc_sessions_station ON adhoc_sessions(station_id);
+
+    CREATE TABLE IF NOT EXISTS invoice_counters (
+      year INTEGER PRIMARY KEY,
+      last_number INTEGER NOT NULL DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS invoice_registry (
+      invoice_number TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL UNIQUE,
+      user_id TEXT NOT NULL,
+      issued_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_invoice_registry_user ON invoice_registry(user_id);
   `);
   return sqliteDb;
 }
@@ -221,6 +320,29 @@ export async function listSessions(userId) {
   return rows.map((r) => JSON.parse(r.data_json));
 }
 
+export async function findActiveSessionForUser(userId, excludeSessionId = null) {
+  if (isPostgres()) {
+    const params = [userId];
+    let sql = `SELECT data_json FROM charging_sessions WHERE user_id = $1 AND status = 'active'`;
+    if (excludeSessionId) {
+      sql += ' AND id != $2';
+      params.push(excludeSessionId);
+    }
+    sql += ' ORDER BY updated_at DESC LIMIT 1';
+    const { rows } = await pgPool.query(sql, params);
+    return rows[0] ? parseJson(rows[0].data_json) : null;
+  }
+
+  const rows = sqliteDb
+    .prepare(
+      `SELECT data_json FROM charging_sessions
+       WHERE user_id = ? AND status = 'active'${excludeSessionId ? ' AND id != ?' : ''}
+       ORDER BY updated_at DESC LIMIT 1`
+    )
+    .all(...(excludeSessionId ? [userId, excludeSessionId] : [userId]));
+  return rows[0] ? JSON.parse(rows[0].data_json) : null;
+}
+
 export async function findSessionById(userId, sessionId) {
   if (isPostgres()) {
     const { rows } = await pgPool.query(
@@ -236,38 +358,66 @@ export async function findSessionById(userId, sessionId) {
 }
 
 export async function upsertSession(userId, session) {
+  await assertCanActivateSession(userId, session);
+
   const now = new Date().toISOString();
   const dataJson = JSON.stringify(session);
-  if (isPostgres()) {
-    await pgPool.query(
-      `INSERT INTO charging_sessions (id, user_id, data_json, status, created_at, updated_at)
-       VALUES ($1, $2, $3::jsonb, $4, $5, $6)
-       ON CONFLICT (id) DO UPDATE
-       SET data_json = EXCLUDED.data_json,
-           status = EXCLUDED.status,
-           updated_at = EXCLUDED.updated_at`,
-      [session.id, userId, dataJson, session.status, session.startedAt ?? now, now]
-    );
-    return;
-  }
-  const existing = sqliteDb
-    .prepare('SELECT id FROM charging_sessions WHERE id = ? AND user_id = ?')
-    .get(session.id, userId);
-  if (existing) {
-    sqliteDb
-      .prepare('UPDATE charging_sessions SET data_json = ?, status = ?, updated_at = ? WHERE id = ?')
-      .run(dataJson, session.status, now, session.id);
-  } else {
-    sqliteDb
-      .prepare(
+  try {
+    if (isPostgres()) {
+      await pgPool.query(
         `INSERT INTO charging_sessions (id, user_id, data_json, status, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?)`
-      )
-      .run(session.id, userId, dataJson, session.status, session.startedAt ?? now, now);
+         VALUES ($1, $2, $3::jsonb, $4, $5, $6)
+         ON CONFLICT (id) DO UPDATE
+         SET data_json = EXCLUDED.data_json,
+             status = EXCLUDED.status,
+             updated_at = EXCLUDED.updated_at`,
+        [session.id, userId, dataJson, session.status, session.startedAt ?? now, now]
+      );
+      return;
+    }
+    const existing = sqliteDb
+      .prepare('SELECT id FROM charging_sessions WHERE id = ? AND user_id = ?')
+      .get(session.id, userId);
+    if (existing) {
+      sqliteDb
+        .prepare('UPDATE charging_sessions SET data_json = ?, status = ?, updated_at = ? WHERE id = ?')
+        .run(dataJson, session.status, now, session.id);
+    } else {
+      sqliteDb
+        .prepare(
+          `INSERT INTO charging_sessions (id, user_id, data_json, status, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?)`
+        )
+        .run(session.id, userId, dataJson, session.status, session.startedAt ?? now, now);
+    }
+  } catch (e) {
+    if (isUniqueActiveSessionViolation(e)) {
+      const existing = await findActiveSessionForUser(userId, session.id);
+      throw Object.assign(new Error(formatConcurrentSessionError(existing)), {
+        status: 409,
+        code: 'CONCURRENT_SESSION',
+        activeSession: existing,
+      });
+    }
+    throw e;
   }
 }
 
+function isUniqueActiveSessionViolation(err) {
+  if (!err) return false;
+  if (err.code === '23505') return true;
+  if (String(err.message ?? '').includes('idx_sessions_one_active_per_user')) return true;
+  if (String(err.message ?? '').includes('UNIQUE constraint failed')) return true;
+  return false;
+}
+
 export async function replaceSessions(userId, sessions) {
+  assertSingleActiveInPayload(sessions);
+  const active = sessions.find((s) => s?.status === 'active');
+  if (active) {
+    await assertCanActivateSession(userId, active);
+  }
+
   if (isPostgres()) {
     const client = await pgPool.connect();
     try {
@@ -364,4 +514,373 @@ export async function setRedeemed(userId, rewardIds) {
     }
   });
   tx(rewardIds);
+}
+
+function computeTier(points) {
+  if (points >= 8000) return 'platinum';
+  if (points >= 4000) return 'gold';
+  if (points >= 1500) return 'silver';
+  return 'bronze';
+}
+
+const tierLabels = {
+  bronze: 'Bronze',
+  silver: 'Silber',
+  gold: 'Gold',
+  platinum: 'Platin',
+};
+
+export async function insertAdhocSession(session) {
+  const now = new Date().toISOString();
+  const dataJson = JSON.stringify(session);
+  if (isPostgres()) {
+    await pgPool.query(
+      `INSERT INTO adhoc_sessions (id, access_token, station_id, connector_id, status, payment_intent_id, data_json, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9)`,
+      [
+        session.id,
+        session.accessToken,
+        session.stationId,
+        session.connectorId,
+        session.status,
+        session.paymentIntentId ?? null,
+        dataJson,
+        now,
+        now,
+      ]
+    );
+    return session;
+  }
+  sqliteDb
+    .prepare(
+      `INSERT INTO adhoc_sessions (id, access_token, station_id, connector_id, status, payment_intent_id, data_json, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    )
+    .run(
+      session.id,
+      session.accessToken,
+      session.stationId,
+      session.connectorId,
+      session.status,
+      session.paymentIntentId ?? null,
+      dataJson,
+      now,
+      now
+    );
+  return session;
+}
+
+export async function updateAdhocSession(session) {
+  const now = new Date().toISOString();
+  const dataJson = JSON.stringify(session);
+  if (isPostgres()) {
+    await pgPool.query(
+      `UPDATE adhoc_sessions
+       SET status = $1,
+           payment_intent_id = COALESCE($2, payment_intent_id),
+           data_json = $3::jsonb,
+           updated_at = $4
+       WHERE id = $5 AND access_token = $6`,
+      [session.status, session.paymentIntentId ?? null, dataJson, now, session.id, session.accessToken]
+    );
+    return session;
+  }
+  sqliteDb
+    .prepare(
+      `UPDATE adhoc_sessions
+       SET status = ?, payment_intent_id = COALESCE(?, payment_intent_id), data_json = ?, updated_at = ?
+       WHERE id = ? AND access_token = ?`
+    )
+    .run(
+      session.status,
+      session.paymentIntentId ?? null,
+      dataJson,
+      now,
+      session.id,
+      session.accessToken
+    );
+  return session;
+}
+
+export async function findAdhocSession(id, accessToken) {
+  if (isPostgres()) {
+    const { rows } = await pgPool.query(
+      'SELECT data_json FROM adhoc_sessions WHERE id = $1 AND access_token = $2',
+      [id, accessToken]
+    );
+    return rows[0] ? parseJson(rows[0].data_json) : null;
+  }
+  const row = sqliteDb
+    .prepare('SELECT data_json FROM adhoc_sessions WHERE id = ? AND access_token = ?')
+    .get(id, accessToken);
+  return row ? JSON.parse(row.data_json) : null;
+}
+
+export async function getLeaderboardData(limit = 20) {
+  if (isPostgres()) {
+    const { rows } = await pgPool.query(
+      `SELECT id, email, profile_json
+       FROM users
+       ORDER BY (profile_json->>'loyaltyPoints')::int DESC NULLS LAST
+       LIMIT $1`,
+      [limit]
+    );
+    return rows.map((row) => {
+      const profile = parseJson(row.profile_json);
+      const points = profile.loyaltyPoints ?? 0;
+      const tier = computeTier(points);
+      const firstName = profile.firstName ?? 'Nutzer';
+      const lastName = profile.lastName ?? '';
+      return {
+        userId: row.id,
+        displayName: `${firstName} ${lastName.charAt(0) || ''}.`.trim(),
+        points,
+        tier: tierLabels[tier] ?? 'Bronze',
+      };
+    });
+  }
+
+  const rows = sqliteDb
+    .prepare(
+      `SELECT id, email, profile_json
+       FROM users
+       ORDER BY json_extract(profile_json, '$.loyaltyPoints') DESC
+       LIMIT ?`
+    )
+    .all(limit);
+
+  return rows.map((row) => {
+    const profile = JSON.parse(row.profile_json ?? '{}');
+    const points = profile.loyaltyPoints ?? 0;
+    const tier = computeTier(points);
+    const firstName = profile.firstName ?? 'Nutzer';
+    const lastName = profile.lastName ?? '';
+    return {
+      userId: row.id,
+      displayName: `${firstName} ${lastName.charAt(0) || ''}.`.trim(),
+      points,
+      tier: tierLabels[tier] ?? 'Bronze',
+    };
+  });
+}
+
+function rowToFulfillment(row) {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    rewardId: row.reward_id,
+    type: row.type,
+    status: row.status,
+    payload: parseJson(row.payload_json) ?? {},
+    redeemedAt: row.redeemed_at,
+    expiresAt: row.expires_at ?? null,
+    usedAt: row.used_at ?? null,
+    sessionId: row.session_id ?? null,
+  };
+}
+
+export async function insertFulfillment(fulfillment) {
+  const payloadJson = JSON.stringify(fulfillment.payload ?? {});
+  if (isPostgres()) {
+    await pgPool.query(
+      `INSERT INTO reward_fulfillments
+        (id, user_id, reward_id, type, status, payload_json, redeemed_at, expires_at, used_at, session_id)
+       VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10)`,
+      [
+        fulfillment.id,
+        fulfillment.userId,
+        fulfillment.rewardId,
+        fulfillment.type,
+        fulfillment.status ?? 'active',
+        payloadJson,
+        fulfillment.redeemedAt,
+        fulfillment.expiresAt ?? null,
+        fulfillment.usedAt ?? null,
+        fulfillment.sessionId ?? null,
+      ]
+    );
+    return fulfillment;
+  }
+  sqliteDb
+    .prepare(
+      `INSERT INTO reward_fulfillments
+        (id, user_id, reward_id, type, status, payload_json, redeemed_at, expires_at, used_at, session_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    )
+    .run(
+      fulfillment.id,
+      fulfillment.userId,
+      fulfillment.rewardId,
+      fulfillment.type,
+      fulfillment.status ?? 'active',
+      payloadJson,
+      fulfillment.redeemedAt,
+      fulfillment.expiresAt ?? null,
+      fulfillment.usedAt ?? null,
+      fulfillment.sessionId ?? null
+    );
+  return fulfillment;
+}
+
+export async function listFulfillments(userId, { status } = {}) {
+  if (isPostgres()) {
+    const query = status
+      ? `SELECT * FROM reward_fulfillments WHERE user_id = $1 AND status = $2 ORDER BY redeemed_at DESC`
+      : `SELECT * FROM reward_fulfillments WHERE user_id = $1 ORDER BY redeemed_at DESC`;
+    const params = status ? [userId, status] : [userId];
+    const { rows } = await pgPool.query(query, params);
+    return rows.map(rowToFulfillment);
+  }
+  const query = status
+    ? `SELECT * FROM reward_fulfillments WHERE user_id = ? AND status = ? ORDER BY redeemed_at DESC`
+    : `SELECT * FROM reward_fulfillments WHERE user_id = ? ORDER BY redeemed_at DESC`;
+  const stmt = sqliteDb.prepare(query);
+  const rows = status ? stmt.all(userId, status) : stmt.all(userId);
+  return rows.map(rowToFulfillment);
+}
+
+export async function getFulfillmentById(userId, fulfillmentId) {
+  if (isPostgres()) {
+    const { rows } = await pgPool.query(
+      `SELECT * FROM reward_fulfillments WHERE user_id = $1 AND id = $2 LIMIT 1`,
+      [userId, fulfillmentId]
+    );
+    return rows[0] ? rowToFulfillment(rows[0]) : null;
+  }
+  const row = sqliteDb
+    .prepare(`SELECT * FROM reward_fulfillments WHERE user_id = ? AND id = ? LIMIT 1`)
+    .get(userId, fulfillmentId);
+  return row ? rowToFulfillment(row) : null;
+}
+
+export async function markFulfillmentUsed(userId, fulfillmentId, sessionId) {
+  const usedAt = new Date().toISOString();
+  if (isPostgres()) {
+    await pgPool.query(
+      `UPDATE reward_fulfillments
+       SET status = 'used', used_at = $3, session_id = $4
+       WHERE user_id = $1 AND id = $2`,
+      [userId, fulfillmentId, usedAt, sessionId ?? null]
+    );
+    return getFulfillmentById(userId, fulfillmentId);
+  }
+  sqliteDb
+    .prepare(
+      `UPDATE reward_fulfillments SET status = 'used', used_at = ?, session_id = ? WHERE user_id = ? AND id = ?`
+    )
+    .run(usedAt, sessionId ?? null, userId, fulfillmentId);
+  return getFulfillmentById(userId, fulfillmentId);
+}
+
+export async function listUserMembershipIds() {
+  if (isPostgres()) {
+    const { rows } = await pgPool.query(
+      `SELECT id, profile_json->>'membershipId' AS membership_id
+       FROM users
+       WHERE profile_json->>'membershipId' IS NOT NULL`
+    );
+    return rows
+      .map((row) => ({ userId: row.id, membershipId: row.membership_id }))
+      .filter((row) => row.membershipId);
+  }
+  const rows = sqliteDb.prepare('SELECT id, profile_json FROM users').all();
+  return rows
+    .map((row) => {
+      const profile = parseJson(row.profile_json);
+      return { userId: row.id, membershipId: profile?.membershipId };
+    })
+    .filter((row) => row.membershipId);
+}
+
+function formatInvoiceNumber(year, seq) {
+  return `BC-${year}-${String(seq).padStart(6, '0')}`;
+}
+
+export async function findInvoiceNumberBySessionId(sessionId) {
+  if (isPostgres()) {
+    const { rows } = await pgPool.query(
+      `SELECT invoice_number FROM invoice_registry WHERE session_id = $1 LIMIT 1`,
+      [sessionId]
+    );
+    return rows[0]?.invoice_number ?? null;
+  }
+  const row = sqliteDb
+    .prepare(`SELECT invoice_number FROM invoice_registry WHERE session_id = ? LIMIT 1`)
+    .get(sessionId);
+  return row?.invoice_number ?? null;
+}
+
+/** Fortlaufende, einmalige Rechnungsnummer (§14 UStG) – idempotent pro sessionId. */
+export async function allocateInvoiceNumber(userId, sessionId) {
+  const existing = await findInvoiceNumberBySessionId(sessionId);
+  if (existing) return existing;
+
+  const year = new Date().getFullYear();
+  const issuedAt = new Date().toISOString();
+
+  if (isPostgres()) {
+    const client = await pgPool.connect();
+    try {
+      await client.query('BEGIN');
+      const again = await client.query(
+        `SELECT invoice_number FROM invoice_registry WHERE session_id = $1 LIMIT 1`,
+        [sessionId]
+      );
+      if (again.rows[0]?.invoice_number) {
+        await client.query('COMMIT');
+        return again.rows[0].invoice_number;
+      }
+
+      const counter = await client.query(
+        `INSERT INTO invoice_counters (year, last_number)
+         VALUES ($1, 1)
+         ON CONFLICT (year) DO UPDATE
+         SET last_number = invoice_counters.last_number + 1
+         RETURNING last_number`,
+        [year]
+      );
+      const seq = counter.rows[0].last_number;
+      const invoiceNumber = formatInvoiceNumber(year, seq);
+
+      await client.query(
+        `INSERT INTO invoice_registry (invoice_number, session_id, user_id, issued_at)
+         VALUES ($1, $2, $3, $4)`,
+        [invoiceNumber, sessionId, userId, issuedAt]
+      );
+      await client.query('COMMIT');
+      return invoiceNumber;
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
+  }
+
+  const allocate = sqliteDb.transaction(() => {
+    const row = sqliteDb
+      .prepare(`SELECT invoice_number FROM invoice_registry WHERE session_id = ? LIMIT 1`)
+      .get(sessionId);
+    if (row?.invoice_number) return row.invoice_number;
+
+    const existing = sqliteDb.prepare(`SELECT last_number FROM invoice_counters WHERE year = ?`).get(year);
+    let seq;
+    if (existing) {
+      seq = existing.last_number + 1;
+      sqliteDb.prepare(`UPDATE invoice_counters SET last_number = ? WHERE year = ?`).run(seq, year);
+    } else {
+      seq = 1;
+      sqliteDb.prepare(`INSERT INTO invoice_counters (year, last_number) VALUES (?, 1)`).run(year);
+    }
+
+    const invoiceNumber = formatInvoiceNumber(year, seq);
+    sqliteDb
+      .prepare(
+        `INSERT INTO invoice_registry (invoice_number, session_id, user_id, issued_at)
+         VALUES (?, ?, ?, ?)`
+      )
+      .run(invoiceNumber, sessionId, userId, issuedAt);
+    return invoiceNumber;
+  });
+  return allocate();
 }

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { getStationById, getStationDataSource, getStations } from '../data/stations';
+import { getStationById, getStationDataSource, getStations, setStationsFromOfflineCache } from '../data/stations';
 import type { StationDataSource } from '../data/stationRegistry';
 import { defaultChargingPlan, normalizeChargingPlan } from '../data/chargingPlan';
 import { computeTier, tierThresholds } from '../data/rewards';
@@ -15,8 +15,8 @@ import {
 } from '../services/gamification';
 import { defaultStationFilters, type StationFilterState } from '../types/filters';
 import { applyStationFilters, searchStations } from '../utils/stationFilters';
-import { saveStationsOfflineCache } from '../utils/offlineCache';
-import { haversineKm } from '../utils/geo';
+import { loadStationsOfflineCache, saveStationsOfflineCache } from '../utils/offlineCache';
+import { haversineKm, isValidStationPosition } from '../utils/geo';
 import { notifySessionComplete } from '../services/browserNotifications';
 import { checkFavoriteAvailability } from '../services/favoriteAvailability';
 import { recordStationSuccess } from '../services/stationTrust';
@@ -36,9 +36,9 @@ import {
 } from '../services/stripeService';
 import type {
   ChargingSession,
-  Connector,
   NotificationPrefs,
   PaymentMethod,
+  RewardFulfillment,
   Station,
   UserProfile,
   Vehicle,
@@ -56,25 +56,49 @@ import {
   registerUser,
 } from '../api/backend/auth';
 import { fetchRedeemedRewards, patchProfile, redeemRewardRemote } from '../api/backend/profile';
+import { fetchRewardFulfillments } from '../api/backend/rewards';
 import {
+  abandonActiveSession,
   completeSessionRemote,
+  fetchActiveSessionOnly,
   fetchSessions,
   saveSession,
-  updateSession,
+  stopRemoteActiveSession,
+  syncActiveSession,
 } from '../api/backend/sessions';
+import { BackendApiError } from '../api/backend/client';
+import { isConnectorFinishing, isConnectorStartable } from '../utils/ocppStateMapping';
+import { formatConcurrentSessionError, findActiveSession } from '../utils/sessionConcurrency';
 import { isBackendMode } from '../services/backendMode';
 import {
+  clearActiveSessionCache,
   getCurrentUserId,
   isOnboardingDone,
+  loadActiveSessionCache,
+  loadFulfillments,
   loadRedeemed,
   loadSessions,
   loadUsers,
+  saveActiveSessionCache,
+  saveFulfillments,
   saveRedeemed,
   saveSessions,
   saveUsers,
   setCurrentUserId,
   setOnboardingDone,
 } from '../utils/storage';
+import {
+  applyChargingFulfillment,
+  buildFulfillmentRecord,
+  findFulfillmentById,
+  getNightPointsMultiplier,
+  isFulfillmentActive,
+  listActiveChargingFulfillments,
+  profilePatchFromFulfillment,
+  shouldConsumeFulfillment,
+} from '../services/rewardFulfillment';
+import { findRewardById } from '../data/rewards';
+import { estimateSessionEnergyKwh } from '../utils/chargeEstimate';
 
 interface AppState {
   initialized: boolean;
@@ -83,6 +107,9 @@ interface AppState {
   sessions: ChargingSession[];
   activeSession: ChargingSession | null;
   redeemedRewardIds: string[];
+  rewardFulfillments: RewardFulfillment[];
+  selectedChargingFulfillmentId: string | null;
+  lastRedeemedFulfillment: RewardFulfillment | null;
   userLocation: { lat: number; lng: number } | null;
   searchQuery: string;
   stationFilters: StationFilterState;
@@ -98,6 +125,7 @@ interface AppState {
   init: () => Promise<void>;
   syncStripePayments: () => Promise<void>;
   refreshCitrineosData: () => Promise<void>;
+  refreshActiveSession: () => Promise<void>;
   completeOnboarding: () => void;
   setToast: (msg: string | null) => void;
   setUserLocation: (loc: { lat: number; lng: number } | null) => void;
@@ -135,12 +163,16 @@ interface AppState {
     stationId: string,
     connectorId: string,
     vehicleId: string,
-    paymentMethodId: string
+    paymentMethodId: string,
+    fulfillmentId?: string | null
   ) => Promise<{ ok: boolean; error?: string }>;
   tickSession: () => Promise<void>;
   stopSession: () => Promise<void>;
+  abandonStuckSession: () => Promise<{ ok: boolean; error?: string }>;
 
   redeemReward: (rewardId: string, pointsCost: number) => { ok: boolean; error?: string };
+  syncRewardFulfillments: () => Promise<void>;
+  setSelectedChargingFulfillment: (id: string | null) => void;
   recordCommunityReport: () => void;
   claimWeeklyChallenge: (challengeId: string) => { ok: boolean; error?: string };
   syncGamification: () => void;
@@ -260,14 +292,35 @@ function notifyIfSessionComplete(user: UserProfile, session: ChargingSession): v
   }
 }
 
-function calcCost(energyKwh: number, connector: Connector, minutes: number): number {
-  let cost = energyKwh * connector.pricePerKwh + (connector.sessionFee ?? 0);
-  if (connector.pricePerMin) cost += minutes * connector.pricePerMin;
-  return Math.round(cost * 100) / 100;
-}
-
 function calcPoints(energyKwh: number, tier: UserProfile['loyaltyTier']): number {
   return Math.round(energyKwh * 1.2 * tierThresholds[tier].multiplier);
+}
+
+function applyLiveSessionPricing(
+  base: ChargingSession,
+  user: UserProfile,
+  fulfillment: RewardFulfillment | undefined,
+  rewardFulfillments: RewardFulfillment[]
+): ChargingSession {
+  const elapsedMin = (Date.now() - new Date(base.startedAt).getTime()) / 60000;
+  const applied = applyChargingFulfillment({
+    energyKwh: base.energyKwh,
+    pricePerKwh: base.pricePerKwh,
+    sessionFee: base.sessionFee ?? 0,
+    pricePerMin: base.pricePerMin ?? 0,
+    minutes: elapsedMin,
+    fulfillment,
+  });
+  const nightMult = getNightPointsMultiplier(rewardFulfillments, base.startedAt);
+  return {
+    ...base,
+    baseCostEur: applied.baseCostEur,
+    costEur: applied.costEur,
+    rewardDiscountEur: applied.rewardDiscountEur,
+    appliedFulfillmentId: applied.appliedFulfillmentId ?? base.appliedFulfillmentId,
+    rewardLabel: applied.rewardLabel ?? base.rewardLabel,
+    pointsEarned: Math.round(calcPoints(base.energyKwh, user.loyaltyTier) * nightMult),
+  };
 }
 
 /** Aktuellen Nutzer immer frisch aus dem Storage lesen (wichtig nach Registrierung während init läuft). */
@@ -287,6 +340,40 @@ function resolveCurrentUser(): UserProfile | null {
 }
 
 let initRun = 0;
+let sessionPollBackoffUntil = 0;
+
+async function loadBackendUserBundles(user: UserProfile | null): Promise<{
+  sessions: ChargingSession[];
+  redeemedRewardIds: string[];
+  rewardFulfillments: RewardFulfillment[];
+}> {
+  if (!user) {
+    return { sessions: [], redeemedRewardIds: [], rewardFulfillments: [] };
+  }
+  try {
+    const [sessions, redeemedRewardIds, rewardFulfillments] = await Promise.all([
+      fetchSessions(),
+      fetchRedeemedRewards(),
+      fetchRewardFulfillments(),
+    ]);
+    const active = sessions.find((s) => s.status === 'active');
+    if (active) saveActiveSessionCache(user.id, active);
+    else clearActiveSessionCache();
+    return { sessions, redeemedRewardIds, rewardFulfillments };
+  } catch (e) {
+    console.warn('[BC Charge] Nutzerdaten beim Start nicht geladen:', e);
+    const cached = loadActiveSessionCache(user.id);
+    if (cached) {
+      return { sessions: [cached], redeemedRewardIds: [], rewardFulfillments: [] };
+    }
+    return { sessions: [], redeemedRewardIds: [], rewardFulfillments: [] };
+  }
+}
+
+function finishInit(runId: number, patch: Partial<AppState>): void {
+  if (runId !== initRun) return;
+  useAppStore.setState({ initialized: true, ...patch });
+}
 
 export const useAppStore = create<AppState>((set, get) => ({
   initialized: false,
@@ -295,6 +382,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   sessions: [],
   activeSession: null,
   redeemedRewardIds: [],
+  rewardFulfillments: [],
+  selectedChargingFulfillmentId: null,
+  lastRedeemedFulfillment: null,
   userLocation: null,
   searchQuery: '',
   stationFilters: defaultStationFilters(),
@@ -309,86 +399,116 @@ export const useAppStore = create<AppState>((set, get) => ({
   init: async () => {
     const runId = ++initRun;
 
-    if (isBackendMode()) {
-      const sync = await syncStationsFromCitrineos();
-      if (runId !== initRun) return;
+    try {
+      if (isBackendMode()) {
+        const sync = await syncStationsFromCitrineos();
+        if (runId !== initRun) return;
 
-      const userRaw = await fetchCurrentUser();
-      const user = userRaw ? enrichUser(userRaw) : null;
-      if (user) setCurrentUserId(user.id);
+        const userRaw = await fetchCurrentUser();
+        const user = userRaw ? enrichUser(userRaw) : null;
+        if (user) setCurrentUserId(user.id);
+
+        let citrineosConnected = false;
+        let citrineosSyncError: string | null = null;
+        let stationDataSource: StationDataSource = getStationDataSource();
+        if (sync.ok) {
+          citrineosConnected = true;
+          stationDataSource = 'citrineos';
+          void saveStationsOfflineCache(getStations(), 'citrineos');
+        } else {
+          if (sync.error && !sync.error.includes('nicht erreichbar')) {
+            citrineosSyncError = sync.error;
+          }
+          const cached = await loadStationsOfflineCache();
+          if (cached && cached.stations.length > 0) {
+            setStationsFromOfflineCache(cached.stations);
+            stationDataSource = 'offline-cache';
+            console.log(`[BC Charge] ${cached.stations.length} Stationen aus Offline-Cache geladen (${cached.source}, ${cached.savedAt})`);
+          }
+        }
+        void saveStationsOfflineCache(getStations(), getStationDataSource());
+
+        const { sessions, redeemedRewardIds, rewardFulfillments } = await loadBackendUserBundles(user);
+
+        finishInit(runId, {
+          onboardingDone: isOnboardingDone() || get().onboardingDone,
+          user,
+          sessions,
+          activeSession: sessions.find((s) => s.status === 'active') ?? null,
+          redeemedRewardIds,
+          rewardFulfillments,
+          selectedChargingFulfillmentId: listActiveChargingFulfillments(rewardFulfillments)[0]?.id ?? null,
+          citrineosConnected,
+          citrineosSyncError,
+          stationDataSource,
+          pricingSyncedAt: sync.ok ? (sync.pricingSyncedAt ?? null) : null,
+        });
+
+        if (user && runId === initRun) {
+          void get().syncStripePayments();
+          if (sessions.some((s) => s.status === 'active')) void get().refreshActiveSession();
+        }
+        return;
+      }
+
+      const users = loadUsers();
+      if (import.meta.env.DEV && !users.some((u) => u.email === 'demo@bc-charge.com')) {
+        const demoUsers = [...users, seedDemoUser()];
+        saveUsers(demoUsers);
+        const demo = demoUsers.find((u) => u.email === 'demo@bc-charge.com')!;
+        if (!loadSessions(demo.id).length) saveSessions(demo.id, seedDemoSessions());
+      }
 
       let citrineosConnected = false;
       let citrineosSyncError: string | null = null;
       let stationDataSource: StationDataSource = getStationDataSource();
+
+      const sync = await syncStationsFromCitrineos();
+      if (runId !== initRun) return;
+
       if (sync.ok) {
         citrineosConnected = true;
         stationDataSource = 'citrineos';
-      } else if (sync.error && !sync.error.includes('nicht erreichbar')) {
-        citrineosSyncError = sync.error;
+        citrineosSyncError = null;
+        void saveStationsOfflineCache(getStations(), 'citrineos');
+      } else {
+        if (sync.error && !sync.error.includes('nicht erreichbar')) {
+          citrineosSyncError = sync.error;
+        }
+        const cached = await loadStationsOfflineCache();
+        if (cached && cached.stations.length > 0) {
+          setStationsFromOfflineCache(cached.stations);
+          stationDataSource = 'offline-cache';
+          console.log(`[BC Charge] ${cached.stations.length} Stationen aus Offline-Cache geladen (${cached.source}, ${cached.savedAt})`);
+        }
       }
-      saveStationsOfflineCache(getStations(), getStationDataSource());
+      void saveStationsOfflineCache(getStations(), getStationDataSource());
 
-      const sessions = user ? await fetchSessions() : [];
-      const redeemedRewardIds = user ? await fetchRedeemedRewards() : [];
+      const user = resolveCurrentUser() ?? get().user;
+      const fulfillments = user ? loadFulfillments(user.id) : [];
 
-      set({
-        initialized: true,
+      finishInit(runId, {
         onboardingDone: isOnboardingDone() || get().onboardingDone,
         user,
-        sessions,
-        activeSession: sessions.find((s) => s.status === 'active') ?? null,
-        redeemedRewardIds,
+        sessions: user ? loadSessions(user.id) : [],
+        activeSession: user ? loadSessions(user.id).find((s) => s.status === 'active') ?? null : null,
+        redeemedRewardIds: user ? loadRedeemed(user.id) : [],
+        rewardFulfillments: fulfillments,
+        selectedChargingFulfillmentId: user
+          ? listActiveChargingFulfillments(fulfillments)[0]?.id ?? null
+          : null,
         citrineosConnected,
         citrineosSyncError,
         stationDataSource,
         pricingSyncedAt: sync.ok ? (sync.pricingSyncedAt ?? null) : null,
       });
 
-      if (user) await get().syncStripePayments();
-      return;
-    }
-
-    let users = loadUsers();
-    if (!users.some((u) => u.email === 'demo@bc-charge.com')) {
-      users = [...users, seedDemoUser()];
-      saveUsers(users);
-      const demo = users.find((u) => u.email === 'demo@bc-charge.com')!;
-      if (!loadSessions(demo.id).length) saveSessions(demo.id, seedDemoSessions());
-    }
-
-    let citrineosConnected = false;
-    let citrineosSyncError: string | null = null;
-    let stationDataSource: StationDataSource = getStationDataSource();
-
-    const sync = await syncStationsFromCitrineos();
-    if (runId !== initRun) return;
-
-    if (sync.ok) {
-      citrineosConnected = true;
-      stationDataSource = 'citrineos';
-      citrineosSyncError = null;
-    } else if (sync.error && !sync.error.includes('nicht erreichbar')) {
-      citrineosSyncError = sync.error;
-    }
-    saveStationsOfflineCache(getStations(), getStationDataSource());
-
-    const user = resolveCurrentUser() ?? get().user;
-
-    set({
-      initialized: true,
-      onboardingDone: isOnboardingDone() || get().onboardingDone,
-      user,
-      sessions: user ? loadSessions(user.id) : [],
-      activeSession: user ? loadSessions(user.id).find((s) => s.status === 'active') ?? null : null,
-      redeemedRewardIds: user ? loadRedeemed(user.id) : [],
-      citrineosConnected,
-      citrineosSyncError,
-      stationDataSource,
-      pricingSyncedAt: sync.ok ? (sync.pricingSyncedAt ?? null) : null,
-    });
-
-    if (user) {
-      await get().syncStripePayments();
+      if (user && runId === initRun) {
+        await get().syncStripePayments();
+      }
+    } catch (e) {
+      console.error('[BC Charge] Init fehlgeschlagen:', e);
+      finishInit(runId, {});
     }
   },
 
@@ -435,9 +555,48 @@ export const useAppStore = create<AppState>((set, get) => ({
       pricingSyncedAt: sync.ok ? (sync.pricingSyncedAt ?? null) : get().pricingSyncedAt,
       toast: sync.ok
         ? `${sync.count} Stationen aktualisiert${tariffHint.replace('Tarife', 'Preise')}`
-        : 'Stationen konnten nicht aktualisiert werden',
+        : sync.error?.includes('Zu viele Anfragen')
+          ? null
+          : 'Stationen konnten nicht aktualisiert werden',
     });
     if (sync.ok) checkFavoriteAvailability(get().user);
+  },
+
+  refreshActiveSession: async () => {
+    const { user, rewardFulfillments } = get();
+    if (!user || !isBackendMode()) return;
+    try {
+      const synced = await syncActiveSession();
+      if (synced) {
+        const withEnergy = {
+          ...synced,
+          energyKwh: estimateSessionEnergyKwh(synced),
+        };
+        const fulfillment = findFulfillmentById(rewardFulfillments, withEnergy.appliedFulfillmentId);
+        const updated = applyLiveSessionPricing(withEnergy, user, fulfillment, rewardFulfillments);
+        saveActiveSessionCache(user.id, updated);
+        const sessions = get().sessions;
+        const nextSessions = sessions.some((s) => s.id === updated.id)
+          ? sessions.map((s) => (s.id === updated.id ? updated : s))
+          : [updated, ...sessions];
+        set({ activeSession: updated, sessions: nextSessions });
+        return;
+      }
+
+      const sessions = await fetchSessions();
+      const active = sessions.find((s) => s.status === 'active') ?? null;
+      if (active) saveActiveSessionCache(user.id, active);
+      else clearActiveSessionCache();
+      set({ sessions, activeSession: active });
+    } catch {
+      const cached = loadActiveSessionCache(user.id);
+      if (!cached) return;
+      const sessions = get().sessions;
+      const nextSessions = sessions.some((s) => s.id === cached.id)
+        ? sessions.map((s) => (s.id === cached.id ? cached : s))
+        : [cached, ...sessions];
+      set({ activeSession: cached, sessions: nextSessions });
+    }
   },
 
   completeOnboarding: () => {
@@ -634,8 +793,9 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   logout: () => {
     if (isBackendMode()) void logoutUser();
+    clearActiveSessionCache();
     setCurrentUserId(null);
-    set({ user: null, sessions: [], activeSession: null, redeemedRewardIds: [] });
+    set({ user: null, sessions: [], activeSession: null, redeemedRewardIds: [], rewardFulfillments: [], selectedChargingFulfillmentId: null, lastRedeemedFulfillment: null });
   },
 
   updateProfile: (patch) => {
@@ -721,22 +881,70 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
   },
 
-  startSession: async (stationId, connectorId, vehicleId, paymentMethodId) => {
-    const { user, activeSession, citrineosConnected, stripeReady } = get();
+  startSession: async (stationId, connectorId, vehicleId, paymentMethodId, fulfillmentId) => {
+    const { user, activeSession, citrineosConnected, rewardFulfillments, selectedChargingFulfillmentId } =
+      get();
     if (!user) return { ok: false, error: 'Bitte melden Sie sich an.' };
-    if (activeSession) return { ok: false, error: 'Es läuft bereits eine Ladesitzung.' };
-    if (stripeReady && user.paymentMethods.length === 0) {
-      return { ok: false, error: 'Bitte hinterlegen Sie eine Zahlungsmethode unter Profil → Zahlung.' };
+
+    if (isBackendMode()) {
+      if (activeSession) {
+        return { ok: false, error: formatConcurrentSessionError(activeSession) };
+      }
+      try {
+        const remoteActive = await fetchActiveSessionOnly();
+        if (remoteActive) {
+          const sessions = get().sessions.some((s) => s.id === remoteActive.id)
+            ? get().sessions.map((s) => (s.id === remoteActive.id ? remoteActive : s))
+            : [remoteActive, ...get().sessions];
+          set({ sessions, activeSession: remoteActive });
+          return { ok: false, error: formatConcurrentSessionError(remoteActive) };
+        }
+      } catch (e) {
+        if (e instanceof BackendApiError && e.status === 429) {
+          return {
+            ok: false,
+            error:
+              'Server ausgelastet (zu viele Anfragen). Bitte 1 Minute warten und erneut versuchen – oder unter Laden den Vorgang abbrechen.',
+          };
+        }
+        /* Offline – lokaler Check weiter unten */
+      }
+    } else if (activeSession) {
+      return { ok: false, error: formatConcurrentSessionError(activeSession) };
     }
-    if (!stripeReady && user.paymentMethods.length === 0) {
-      return { ok: false, error: 'Bitte hinterlegen Sie eine Zahlungsmethode.' };
+
+    const currentActive = get().activeSession;
+    if (currentActive) {
+      return { ok: false, error: formatConcurrentSessionError(currentActive) };
+    }
+
+    if (user.paymentMethods.length === 0) {
+      return { ok: false, error: 'Bitte hinterlegen Sie eine Zahlungsmethode unter Profil → Zahlung.' };
     }
     const station = getStationById(stationId);
     if (!station) return { ok: false, error: 'Station nicht gefunden.' };
     const connector = station.connectors.find((c) => c.id === connectorId);
     if (!connector) return { ok: false, error: 'Anschluss nicht gefunden.' };
-    if (connector.status !== 'available') {
+    if (isConnectorFinishing(connector.ocppRawStatus)) {
+      return {
+        ok: false,
+        error: 'Vorheriger Ladevorgang noch aktiv. Bitte Stecker kurz ab- und wieder anstecken.',
+      };
+    }
+    if (!isConnectorStartable(connector.status, connector.ocppRawStatus)) {
       return { ok: false, error: 'Dieser Anschluss ist derzeit nicht verfügbar.' };
+    }
+
+    const appliedFulfillmentId =
+      fulfillmentId !== undefined ? fulfillmentId : selectedChargingFulfillmentId;
+    let rewardLabel: string | undefined;
+    if (appliedFulfillmentId) {
+      const fulfillment = findFulfillmentById(rewardFulfillments, appliedFulfillmentId);
+      if (!fulfillment || !isFulfillmentActive(fulfillment)) {
+        return { ok: false, error: 'Die gewählte Prämie ist nicht mehr gültig.' };
+      }
+      const reward = findRewardById(fulfillment.rewardId);
+      rewardLabel = reward?.title;
     }
 
     let session: ChargingSession = {
@@ -754,15 +962,26 @@ export const useAppStore = create<AppState>((set, get) => ({
       costEur: connector.sessionFee ?? 0,
       pricePerKwh: connector.pricePerKwh,
       sessionFee: connector.sessionFee ?? 0,
+      pricePerMin: connector.pricePerMin,
       pointsEarned: 0,
       citrineosBacked: false,
+      midCertified: station.hardwareFeatures?.midCertifiedMeters ?? false,
+      chargePointModel: station.chargePointModel,
+      evseNumber: connector.evseNumber,
+      appliedFulfillmentId: appliedFulfillmentId ?? undefined,
+      rewardLabel,
     };
 
     if (citrineosConnected && getStationDataSource() === 'citrineos') {
       try {
         const cs = await startCitrineosCharge(station, connectorId, user.membershipId);
         if (!cs.ok) return { ok: false, error: cs.error };
-        session = { ...session, ...cs.sessionPatch, citrineosBacked: true };
+        session = {
+          ...session,
+          ...cs.sessionPatch,
+          citrineosBacked: true,
+          citrineosStationDbId: station.citrineosDatabaseId,
+        };
       } catch (e) {
         return {
           ok: false,
@@ -776,6 +995,18 @@ export const useAppStore = create<AppState>((set, get) => ({
       try {
         await saveSession(session);
       } catch (e) {
+        if (e instanceof BackendApiError && e.status === 409) {
+          try {
+            const remoteSessions = await fetchSessions();
+            const remoteActive = findActiveSession(remoteSessions);
+            set({
+              sessions: remoteSessions,
+              activeSession: remoteActive ?? null,
+            });
+          } catch {
+            /* ignore */
+          }
+        }
         return {
           ok: false,
           error: e instanceof Error ? e.message : 'Sitzung konnte nicht gespeichert werden.',
@@ -784,82 +1015,136 @@ export const useAppStore = create<AppState>((set, get) => ({
     } else {
       saveSessions(user.id, sessions);
     }
+    if (isBackendMode()) saveActiveSessionCache(user.id, session);
     set({ activeSession: session, sessions });
     return { ok: true };
   },
 
   tickSession: async () => {
-    const { activeSession, user } = get();
+    const { activeSession, user, rewardFulfillments } = get();
     if (!activeSession || !user || activeSession.status !== 'active') return;
+    if (Date.now() < sessionPollBackoffUntil) return;
+
     const station = getStationById(activeSession.stationId);
     const connector = station?.connectors.find((c) => c.id === activeSession.connectorId);
-    if (!connector) return;
+    const fulfillment = findFulfillmentById(rewardFulfillments, activeSession.appliedFulfillmentId);
 
-    let updated: ChargingSession = { ...activeSession };
+    let liveBase: ChargingSession = { ...activeSession };
 
-    if (activeSession.citrineosBacked) {
-      try {
+    try {
+      if (activeSession.citrineosBacked !== false && isBackendMode()) {
+        const synced = await syncActiveSession();
+        if (synced) liveBase = synced;
+      } else if (activeSession.citrineosBacked) {
         const patch = await pollCitrineosSession(activeSession);
-        if (patch) {
-          updated = {
-            ...updated,
-            ...patch,
-            pointsEarned: calcPoints(patch.energyKwh ?? updated.energyKwh, user.loyaltyTier),
-          };
-        }
-      } catch {
-        /* Fallback auf Simulation bei API-Fehler */
+        if (patch) liveBase = { ...liveBase, ...patch };
+      } else if (connector) {
+        const elapsedMin = (Date.now() - new Date(activeSession.startedAt).getTime()) / 60000;
+        const efficiency = 0.85;
+        const maxKwh = (connector.powerKw * efficiency * elapsedMin) / 60;
+        const energyKwh = Math.min(maxKwh, 80);
+        liveBase = { ...liveBase, energyKwh: Math.round(energyKwh * 100) / 100 };
+      }
+    } catch (e) {
+      if (e instanceof BackendApiError && e.status === 429) {
+        sessionPollBackoffUntil = Date.now() + 60_000;
       }
     }
 
-    if (!activeSession.citrineosBacked) {
-      const elapsedMin = (Date.now() - new Date(activeSession.startedAt).getTime()) / 60000;
-      const efficiency = 0.85;
-      const maxKwh = (connector.powerKw * efficiency * elapsedMin) / 60;
-      const energyKwh = Math.min(maxKwh, 80);
-      const costEur = calcCost(energyKwh, connector, elapsedMin);
-      updated = {
-        ...updated,
-        energyKwh: Math.round(energyKwh * 100) / 100,
-        costEur,
-        pointsEarned: calcPoints(energyKwh, user.loyaltyTier),
-      };
-    } else if (updated.energyKwh > 0) {
-      updated.pointsEarned = calcPoints(updated.energyKwh, user.loyaltyTier);
+    const estimatedKwh = estimateSessionEnergyKwh(liveBase);
+    if (estimatedKwh > (liveBase.energyKwh ?? 0)) {
+      liveBase = { ...liveBase, energyKwh: estimatedKwh };
     }
 
+    const updated = applyLiveSessionPricing(liveBase, user, fulfillment, rewardFulfillments);
     const sessions = get().sessions.map((s) => (s.id === updated.id ? updated : s));
+
     if (isBackendMode()) {
-      try {
-        await updateSession(updated);
-      } catch {
-        /* lokaler Stand bleibt sichtbar */
-      }
+      saveActiveSessionCache(user.id, updated);
     } else {
       saveSessions(user.id, sessions);
     }
     set({ activeSession: updated, sessions });
   },
 
+  abandonStuckSession: async () => {
+    const { user, activeSession } = get();
+    if (!user) return { ok: false, error: 'Bitte melden Sie sich an.' };
+    if (!isBackendMode()) return { ok: false, error: 'Nur mit Backend verfügbar.' };
+    if (!activeSession) return { ok: false, error: 'Keine aktive Sitzung in der App.' };
+
+    try {
+      const completed = await abandonActiveSession(activeSession);
+      clearActiveSessionCache();
+      const sessions = get().sessions.map((s) => (s.id === completed.id ? completed : s));
+      if (!sessions.some((s) => s.id === completed.id)) {
+        sessions.unshift(completed);
+      }
+      set({ activeSession: null, sessions });
+      void get().refreshCitrineosData();
+      set({ toast: 'Hängender Ladevorgang wurde beendet.' });
+      return { ok: true };
+    } catch (e) {
+      const msg =
+        e instanceof BackendApiError && e.status === 404
+          ? 'Server-API noch nicht aktualisiert. Bitte auf dem Server pm2 restart bc-charge-api ausführen.'
+          : e instanceof Error
+            ? e.message
+            : 'Abbrechen fehlgeschlagen';
+      return { ok: false, error: msg };
+    }
+  },
+
   stopSession: async () => {
-    const { activeSession, user } = get();
+    const { activeSession, user, rewardFulfillments } = get();
     if (!activeSession || !user) return;
 
-    if (activeSession.citrineosBacked && activeSession.citrineosTransactionId) {
+    let current: ChargingSession = { ...activeSession };
+
+    if (isBackendMode()) {
       try {
-        const stop = await stopCitrineosCharge(activeSession);
-        if (!stop.ok) {
-          set({ toast: stop.error ?? 'Stoppen fehlgeschlagen' });
-          return;
-        }
-        await pollCitrineosSession(activeSession);
+        const synced = await stopRemoteActiveSession();
+        const fulfillment = findFulfillmentById(rewardFulfillments, synced.appliedFulfillmentId);
+        current = applyLiveSessionPricing(synced, user, fulfillment, rewardFulfillments);
+        set({
+          activeSession: current,
+          sessions: get().sessions.map((s) => (s.id === current.id ? current : s)),
+        });
       } catch (e) {
-        set({ toast: e instanceof Error ? e.message : 'Ladevorgang konnte nicht beendet werden' });
-        return;
+        try {
+          const synced = await syncActiveSession();
+          if (synced) {
+            const fulfillment = findFulfillmentById(rewardFulfillments, synced.appliedFulfillmentId);
+            current = applyLiveSessionPricing(synced, user, fulfillment, rewardFulfillments);
+          }
+        } catch {
+          /* weiter mit lokalem Stand */
+        }
+        if (e instanceof Error && !e.message.includes('Keine aktive')) {
+          set({ toast: `${e.message} – Sitzung wird trotzdem beendet.` });
+        }
+      }
+    } else if (current.citrineosBacked) {
+      try {
+        const patch = await pollCitrineosSession(current);
+        if (patch) current = { ...current, ...patch };
+        const stop = await stopCitrineosCharge(current);
+        if (!stop.ok) {
+          set({ toast: stop.error ?? 'Remote-Stop fehlgeschlagen – Sitzung wird trotzdem beendet.' });
+        } else {
+          const finalPatch = await pollCitrineosSession(current);
+          if (finalPatch) current = { ...current, ...finalPatch };
+        }
+      } catch (e) {
+        set({
+          toast:
+            e instanceof Error
+              ? `${e.message} – Sitzung wird trotzdem beendet.`
+              : 'Remote-Stop fehlgeschlagen – Sitzung wird trotzdem beendet.',
+        });
       }
     }
 
-    const current = get().activeSession ?? activeSession;
     let paymentStatus: ChargingSession['paymentStatus'] = 'skipped';
     let stripePaymentIntentId: string | undefined;
 
@@ -919,14 +1204,17 @@ export const useAppStore = create<AppState>((set, get) => ({
           : result.invoice?.error
             ? ' · Rechnung konnte nicht per E-Mail versendet werden'
             : '';
+        clearActiveSessionCache();
         set({
           user: mergedUser,
           sessions: sessions.map((s) => (s.id === result.session.id ? result.session : s)),
           activeSession: null,
+          selectedChargingFulfillmentId: null,
           toast: `Laden beendet · ${formatGamificationToast(gam, 'de')}${invoiceHint}`,
         });
         notifyIfSessionComplete(mergedUser, result.session);
         recordStationSuccess(result.session.stationId);
+        void get().syncRewardFulfillments();
         return;
       } catch (e) {
         set({ toast: e instanceof Error ? e.message : 'Sitzung konnte nicht abgeschlossen werden.' });
@@ -937,11 +1225,31 @@ export const useAppStore = create<AppState>((set, get) => ({
     const users = loadUsers().map((u) => (u.id === user.id ? updatedUser : u));
     saveUsers(users);
     saveSessions(user.id, sessions);
+
+    let updatedFulfillments = get().rewardFulfillments;
+    if (ended.appliedFulfillmentId) {
+      updatedFulfillments = updatedFulfillments.map((f) =>
+        f.id === ended.appliedFulfillmentId && shouldConsumeFulfillment(f)
+          ? {
+              ...f,
+              status: 'used' as const,
+              usedAt: new Date().toISOString(),
+              sessionId: ended.id,
+              isActive: false,
+            }
+          : f
+      );
+      saveFulfillments(user.id, updatedFulfillments);
+    }
+
     const toastMsg = `Laden beendet · ${formatGamificationToast(gam, 'de')}`;
+    clearActiveSessionCache();
     set({
       user: updatedUser,
       sessions,
       activeSession: null,
+      rewardFulfillments: updatedFulfillments,
+      selectedChargingFulfillmentId: listActiveChargingFulfillments(updatedFulfillments)[0]?.id ?? null,
       toast: toastMsg,
     });
     notifyIfSessionComplete(updatedUser, ended);
@@ -1023,7 +1331,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   redeemReward: (rewardId, pointsCost) => {
-    const { user, redeemedRewardIds } = get();
+    const { user, redeemedRewardIds, rewardFulfillments } = get();
     if (!user) return { ok: false, error: 'Bitte anmelden.' };
     if (redeemedRewardIds.includes(rewardId)) {
       return { ok: false, error: 'Prämie wurde bereits eingelöst.' };
@@ -1033,24 +1341,78 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
     if (isBackendMode()) {
       void redeemRewardRemote(rewardId, pointsCost)
-        .then((res) =>
+        .then(async (res) => {
+          const fulfillments = await fetchRewardFulfillments();
           set({
             user: enrichUser(res.user),
             redeemedRewardIds: res.rewardIds,
-            toast: 'Prämie erfolgreich eingelöst!',
-          })
-        )
+            rewardFulfillments: fulfillments,
+            lastRedeemedFulfillment: res.fulfillment,
+            selectedChargingFulfillmentId:
+              listActiveChargingFulfillments(fulfillments)[0]?.id ?? get().selectedChargingFulfillmentId,
+            toast:
+              res.fulfillment?.type === 'voucher'
+                ? `Gutscheincode: ${String(res.fulfillment.payload.voucherCode)}`
+                : 'Prämie erfolgreich eingelöst!',
+          });
+        })
         .catch((e) =>
           set({ toast: e instanceof Error ? e.message : 'Einlösung fehlgeschlagen.' })
         );
       return { ok: true };
     }
+    const fulfillment = buildFulfillmentRecord({ userId: user.id, rewardId });
     const newPoints = user.loyaltyPoints - pointsCost;
-    get().updateProfile({ loyaltyPoints: newPoints, loyaltyTier: computeTier(newPoints) });
+    const profilePatch = profilePatchFromFulfillment(fulfillment);
+    get().updateProfile({
+      loyaltyPoints: newPoints,
+      loyaltyTier: computeTier(newPoints),
+      ...profilePatch,
+    });
     const ids = [...redeemedRewardIds, rewardId];
+    const nextFulfillments = [...rewardFulfillments, fulfillment];
     saveRedeemed(user.id, ids);
-    set({ redeemedRewardIds: ids, toast: 'Prämie erfolgreich eingelöst!' });
+    saveFulfillments(user.id, nextFulfillments);
+    const chargingPerks = listActiveChargingFulfillments(nextFulfillments);
+    set({
+      redeemedRewardIds: ids,
+      rewardFulfillments: nextFulfillments,
+      lastRedeemedFulfillment: fulfillment,
+      selectedChargingFulfillmentId: chargingPerks[0]?.id ?? null,
+      toast:
+        fulfillment.type === 'voucher'
+          ? `Gutscheincode: ${String(fulfillment.payload.voucherCode)}`
+          : 'Prämie erfolgreich eingelöst!',
+    });
     return { ok: true };
+  },
+
+  syncRewardFulfillments: async () => {
+    const { user } = get();
+    if (!user) return;
+    if (isBackendMode()) {
+      try {
+        const fulfillments = await fetchRewardFulfillments();
+        set({
+          rewardFulfillments: fulfillments,
+          selectedChargingFulfillmentId:
+            listActiveChargingFulfillments(fulfillments)[0]?.id ?? get().selectedChargingFulfillmentId,
+        });
+      } catch {
+        /* ignore */
+      }
+      return;
+    }
+    const fulfillments = loadFulfillments(user.id);
+    set({
+      rewardFulfillments: fulfillments,
+      selectedChargingFulfillmentId:
+        listActiveChargingFulfillments(fulfillments)[0]?.id ?? get().selectedChargingFulfillmentId,
+    });
+  },
+
+  setSelectedChargingFulfillment: (id) => {
+    set({ selectedChargingFulfillmentId: id });
   },
 
   getFilteredStations: () => {
@@ -1065,13 +1427,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     const list = get().getFilteredStations();
     if (!userLocation) return list.slice(0, limit);
     return [...list]
-      .sort((a, b) => haversineKm(userLocation.lat, userLocation.lng, a.lat, a.lng) - haversineKm(userLocation.lat, userLocation.lng, b.lat, b.lng))
+      .filter((s) => isValidStationPosition(s.lat, s.lng))
+      .sort((a, b) => haversineKm(userLocation.lat, userLocation.lng, a.lat, a.lng) - haversineKm(userLocation.lat, userLocation.lng, b.lat, a.lng))
       .slice(0, limit);
   },
 
   distanceKm: (station) => {
     const { userLocation } = get();
-    if (!userLocation) return null;
+    if (!userLocation || !isValidStationPosition(station.lat, station.lng)) return null;
     return Math.round(haversineKm(userLocation.lat, userLocation.lng, station.lat, station.lng) * 10) / 10;
   },
 }));

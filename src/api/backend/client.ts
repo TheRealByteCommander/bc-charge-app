@@ -1,4 +1,5 @@
 import { apiConfig } from '../../config/api';
+import { fetchWithTimeout } from '../../utils/fetchWithTimeout';
 
 export class BackendApiError extends Error {
   constructor(
@@ -10,20 +11,24 @@ export class BackendApiError extends Error {
   }
 }
 
-export async function backendApi<T>(path: string, options: RequestInit = {}): Promise<T> {
+export async function backendApi<T>(path: string, options: RequestInit = {}, timeoutMs = 12_000): Promise<T> {
   const url = `${apiConfig.baseUrl}${path}`;
-  const res = await fetch(url, {
-    ...options,
-    credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-      ...options.headers,
+  const res = await fetchWithTimeout(
+    url,
+    {
+      ...options,
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        ...options.headers,
+      },
     },
-  });
+    timeoutMs
+  );
 
   const data = (await res.json().catch(() => ({}))) as { error?: string } & T;
   if (!res.ok) {
-    throw new BackendApiError(data.error ?? `API ${res.status}`, res.status);
+    throw new BackendApiError(data.error ?? `Anfrage fehlgeschlagen (HTTP ${res.status})`, res.status);
   }
   return data as T;
 }

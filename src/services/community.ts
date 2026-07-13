@@ -5,6 +5,7 @@ export interface StationReport {
   stationId: string;
   category: ReportCategory;
   message: string;
+  photoBase64?: string;
   createdAt: string;
   helpfulVotes: number;
 }
@@ -34,12 +35,14 @@ export function addStationReport(params: {
   stationId: string;
   category: ReportCategory;
   message: string;
+  photoBase64?: string;
 }): StationReport {
   const report: StationReport = {
     id: `rep_${Date.now()}`,
     stationId: params.stationId,
     category: params.category,
     message: params.message.trim(),
+    photoBase64: params.photoBase64,
     createdAt: new Date().toISOString(),
     helpfulVotes: 0,
   };

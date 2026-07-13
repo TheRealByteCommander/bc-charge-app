@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Download, FileText, LifeBuoy } from 'lucide-react';
+import { AlertTriangle, Download, FileText, LifeBuoy, Scale } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { downloadInvoicePdf } from '../api/backend/invoices';
 import { useAppStore } from '../store/appStore';
@@ -8,6 +8,14 @@ import type { ChargingSession } from '../types';
 import { formatCurrency, formatDate, formatKwh } from '../utils/format';
 import { displayInvoiceNumber } from '../utils/invoice';
 import { buildSessionSupportMailto } from '../utils/supportContact';
+
+const MID_CERTIFIED_MODELS = ['CityCharge H2', 'Elinta CityCharge H2'];
+
+function isMidCertifiedSession(session: ChargingSession): boolean {
+  if (session.midCertified) return true;
+  if (session.chargePointModel && MID_CERTIFIED_MODELS.includes(session.chargePointModel)) return true;
+  return false;
+}
 
 function SessionDisputeActions({ session }: { session: ChargingSession }) {
   return (
@@ -24,9 +32,28 @@ function SessionDisputeActions({ session }: { session: ChargingSession }) {
 export function HistoryPage() {
   const user = useAppStore((s) => s.user);
   const setToast = useAppStore((s) => s.setToast);
+  const activeSession = useAppStore((s) => s.activeSession);
+  const abandonStuckSession = useAppStore((s) => s.abandonStuckSession);
   const sessions = useAppStore((s) => s.sessions).filter((s) => s.status === 'completed');
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [abandoning, setAbandoning] = useState(false);
   const backend = isBackendMode();
+
+  async function handleAbandon() {
+    if (
+      !window.confirm(
+        'Laufenden Vorgang wirklich abbrechen? Die Sitzung wird beendet, damit Sie neu laden können.'
+      )
+    ) {
+      return;
+    }
+    setAbandoning(true);
+    const result = await abandonStuckSession();
+    setAbandoning(false);
+    if (!result.ok) {
+      setToast(result.error ?? 'Abbrechen fehlgeschlagen.');
+    }
+  }
 
   async function handleDownload(sessionId: string, invoiceNumber: string) {
     if (!backend) {
@@ -61,6 +88,44 @@ export function HistoryPage() {
       <p className="mt-1 text-bc-muted">
         {sessions.length} abgeschlossene Sessions · Rechnung prüfen oder Support kontaktieren
       </p>
+
+      {activeSession && (
+        <div
+          className="mt-6 rounded-2xl border border-bc-warn/40 bg-bc-warn/10 p-4 text-sm"
+          role="alert"
+        >
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-bc-warn" />
+            <div className="min-w-0 flex-1">
+              <p className="font-medium">Noch ein aktiver Ladevorgang</p>
+              <p className="mt-1 text-bc-muted">
+                {activeSession.stationName} · {formatKwh(activeSession.energyKwh)} · seit{' '}
+                {formatDate(activeSession.startedAt)}
+              </p>
+              <p className="mt-2 text-bc-muted">
+                Solange dieser Vorgang offen ist, starten keine neuen Ladungen und Status-Updates können
+                ausbleiben.
+              </p>
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                <Link to="/laden" className="btn-primary flex-1 py-2.5 text-center text-sm">
+                  Zur laufenden Sitzung
+                </Link>
+                {backend && (
+                  <button
+                    type="button"
+                    className="btn-secondary flex-1 py-2.5 text-sm text-bc-danger border-bc-danger/30"
+                    onClick={() => void handleAbandon()}
+                    disabled={abandoning}
+                  >
+                    {abandoning ? 'Wird beendet …' : 'Vorgang abbrechen'}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="mt-6 space-y-3">
         {sessions.length === 0 ? (
           <p className="rounded-xl border border-bc-border p-6 text-center text-bc-muted">
@@ -88,6 +153,11 @@ export function HistoryPage() {
                     <span className="text-bc-danger">Zahlung fehlgeschlagen</span>
                   )}
                   {sess.invoiceEmailedAt && <span>E-Rechnung versendet</span>}
+                  {isMidCertifiedSession(sess) && (
+                    <span className="flex items-center gap-1 text-bc-blue" title="MID-zertifizierte Messung nach deutschem Eichrecht">
+                      <Scale className="h-3 w-3" /> Eichrecht
+                    </span>
+                  )}
                 </div>
                 <button
                   type="button"

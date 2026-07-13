@@ -9,6 +9,10 @@ export const citrineosPaths = {
     requestStartTransaction: '/ocpp/2.0.1/evdriver/requestStartTransaction',
     requestStopTransaction: '/ocpp/2.0.1/evdriver/requestStopTransaction',
   },
+  ocpp16: {
+    remoteStartTransaction: '/ocpp/1.6/evdriver/remoteStartTransaction',
+    remoteStopTransaction: '/ocpp/1.6/evdriver/remoteStopTransaction',
+  },
   transactions: {
     getTransaction: '/data/transactions/transactionType',
     getTariffs: '/data/transactions/tariff',

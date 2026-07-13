@@ -49,7 +49,7 @@ export function NotificationsPage() {
   const browserEnabled = canSendBrowserNotifications();
 
   return (
-    <div className="page-shell pb-8">
+    <div className="page-shell">
       <Link to="/profil" className="text-sm text-bc-accent">
         ← Profil
       </Link>

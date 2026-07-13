@@ -1,31 +1,39 @@
 import { apiConfig } from '../../config/api';
 import { citrineosConfig } from '../../config/citrineos';
 import { isBackendMode } from '../../services/backendMode';
+import { fetchWithTimeout } from '../../utils/fetchWithTimeout';
+import { resolveCitrineosStationDbId } from './stationId';
 import type { CitrineosTransaction, HasuraChargingStationRow } from './types';
 
 const STATIONS_QUERY = `
   query BcChargeStations($tenantId: Int!) {
-    ChargingStation(where: { tenantId: { _eq: $tenantId } }, order_by: { id: asc }) {
+    ChargingStations(where: { tenantId: { _eq: $tenantId } }, order_by: { id: asc }) {
       id
+      ocppConnectionName
       isOnline
       chargePointVendor
       chargePointModel
       coordinates
-      location {
+      Location {
+        id
         name
         address
         city
         postalCode
         country
+        coordinates
       }
-      evses {
+      Evses {
+        id
         evseId
-        connectors {
+        Connectors {
+          id
           connectorId
           status
           type
           maximumPowerWatts
-          tariff {
+          tariffId
+          Tariff {
             id
             pricePerKwh
             pricePerMin
@@ -39,33 +47,31 @@ const STATIONS_QUERY = `
 `;
 
 const ACTIVE_TX_QUERY = `
-  query BcChargeActiveTransaction($stationId: String!, $tenantId: Int!) {
-    Transaction(
+  query BcChargeActiveTransaction($stationId: Int!, $tenantId: Int!) {
+    Transactions(
       where: {
         stationId: { _eq: $stationId }
         tenantId: { _eq: $tenantId }
         isActive: { _eq: true }
       }
-      order_by: { startTime: desc }
+      order_by: { timeSpentCharging: desc }
       limit: 1
     ) {
       transactionId
       stationId
       evseId
-      connectorId
       isActive
       totalKwh
       totalCost
-      startTime
-      endTime
+      timeSpentCharging
       chargingState
     }
   }
 `;
 
 const TX_BY_REMOTE_START_QUERY = `
-  query BcChargeTxByRemoteStart($stationId: String!, $tenantId: Int!, $remoteStartId: Int!) {
-    Transaction(
+  query BcChargeTxByRemoteStart($stationId: Int!, $tenantId: Int!, $remoteStartId: Int!) {
+    Transactions(
       where: {
         stationId: { _eq: $stationId }
         tenantId: { _eq: $tenantId }
@@ -76,29 +82,32 @@ const TX_BY_REMOTE_START_QUERY = `
       transactionId
       stationId
       evseId
-      connectorId
       isActive
       totalKwh
       totalCost
-      startTime
+      timeSpentCharging
       chargingState
     }
   }
 `;
 
-async function hasuraRequest<T>(query: string, variables: Record<string, unknown>): Promise<T> {
+export async function hasuraGraphql<T>(query: string, variables: Record<string, unknown>): Promise<T> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   const url = isBackendMode() ? `${apiConfig.baseUrl}/api/citrineos/hasura` : citrineosConfig.hasuraUrl;
   if (!isBackendMode() && citrineosConfig.hasuraAdminSecret) {
     headers['x-hasura-admin-secret'] = citrineosConfig.hasuraAdminSecret;
   }
 
-  const res = await fetch(url, {
-    method: 'POST',
-    credentials: isBackendMode() ? 'include' : 'same-origin',
-    headers,
-    body: JSON.stringify({ query, variables }),
-  });
+  const res = await fetchWithTimeout(
+    url,
+    {
+      method: 'POST',
+      credentials: isBackendMode() ? 'include' : 'same-origin',
+      headers,
+      body: JSON.stringify({ query, variables }),
+    },
+    12_000
+  );
 
   const json = (await res.json()) as { data?: T; errors?: Array<{ message: string }> };
   if (!res.ok || json.errors?.length) {
@@ -108,30 +117,30 @@ async function hasuraRequest<T>(query: string, variables: Record<string, unknown
 }
 
 export async function fetchChargingStationsFromHasura(): Promise<HasuraChargingStationRow[]> {
-  const data = await hasuraRequest<{ ChargingStation: HasuraChargingStationRow[] }>(STATIONS_QUERY, {
+  const data = await hasuraGraphql<{ ChargingStations: HasuraChargingStationRow[] }>(STATIONS_QUERY, {
     tenantId: citrineosConfig.tenantId,
   });
-  return data.ChargingStation ?? [];
+  return data.ChargingStations ?? [];
 }
 
 export async function fetchActiveTransaction(
-  stationId: string
+  stationAppId: string
 ): Promise<CitrineosTransaction | undefined> {
-  const data = await hasuraRequest<{ Transaction: CitrineosTransaction[] }>(ACTIVE_TX_QUERY, {
-    stationId,
+  const data = await hasuraGraphql<{ Transactions: CitrineosTransaction[] }>(ACTIVE_TX_QUERY, {
+    stationId: resolveCitrineosStationDbId(stationAppId),
     tenantId: citrineosConfig.tenantId,
   });
-  return data.Transaction?.[0];
+  return data.Transactions?.[0];
 }
 
 export async function fetchTransactionByRemoteStartId(
-  stationId: string,
+  stationAppId: string,
   remoteStartId: number
 ): Promise<CitrineosTransaction | undefined> {
-  const data = await hasuraRequest<{ Transaction: CitrineosTransaction[] }>(TX_BY_REMOTE_START_QUERY, {
-    stationId,
+  const data = await hasuraGraphql<{ Transactions: CitrineosTransaction[] }>(TX_BY_REMOTE_START_QUERY, {
+    stationId: resolveCitrineosStationDbId(stationAppId),
     tenantId: citrineosConfig.tenantId,
     remoteStartId,
   });
-  return data.Transaction?.[0];
+  return data.Transactions?.[0];
 }

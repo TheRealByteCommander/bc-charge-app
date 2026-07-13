@@ -51,7 +51,7 @@ export function AccessibilityPage() {
   const scales: FontScale[] = ['normal', 'large', 'xlarge'];
 
   return (
-    <div className="page-shell pb-8">
+    <div className="page-shell">
       <button
         type="button"
         onClick={() => navigate(user ? '/profil' : '/karte')}

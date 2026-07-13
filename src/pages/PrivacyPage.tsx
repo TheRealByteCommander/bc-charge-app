@@ -7,7 +7,7 @@ export function PrivacyPage() {
   return (
     <LegalPageLayout
       title="Datenschutzerklärung"
-      subtitle={`${companyInfo.brand} · Stand Juni 2026 · Art. 13/14 DSGVO`}
+      subtitle={`${companyInfo.brand} · Stand Juli 2026 · Art. 13/14 DSGVO · § 25 TDDDG`}
     >
       <LegalSection title="1. Verantwortlicher">
         <p>
@@ -36,6 +36,7 @@ export function PrivacyPage() {
           <li>Konto: Name, E-Mail, Telefon, Mitglieds-ID, Fahrzeuge, Favoriten</li>
           <li>Laden: Sessions, kWh, Kosten, Zahlungsreferenzen</li>
           <li>Standort (optional): GPS-Koordinaten nur nach Einwilligung, für Entfernungen</li>
+          <li>Kamera (optional): nur nach Einwilligung für QR-Scan und Community-Fotos</li>
           <li>Technisch: App-Einstellungen, Offline-Karten-Cache, Community-Meldungen</li>
           <li>Marketing (optional): Werbe-Benachrichtigungen nur mit Einwilligung</li>
         </ul>
@@ -47,7 +48,8 @@ export function PrivacyPage() {
             <strong>Art. 6 Abs. 1 lit. b DSGVO</strong> – Vertrag: Konto, Laden, Abrechnung
           </li>
           <li>
-            <strong>Art. 6 Abs. 1 lit. a DSGVO</strong> – Einwilligung: Standort, Marketing
+            <strong>Art. 6 Abs. 1 lit. a DSGVO</strong> in Verbindung mit{' '}
+            <strong>§ 25 Abs. 1 TDDDG</strong> – Einwilligung: Standort, Kamera, Marketing
           </li>
           <li>
             <strong>Art. 6 Abs. 1 lit. f DSGVO</strong> – Berechtigtes Interesse: IT-Sicherheit,
@@ -58,8 +60,10 @@ export function PrivacyPage() {
 
       <LegalSection title="4. Speicherung auf Ihrem Gerät">
         <p>
-          In dieser App werden Daten primär im Browser-Speicher (localStorage) gehalten, bis ein
-          serverseitiges Backend aktiv ist. Übersicht:
+          Zusätzlich zu den serverseitig verarbeiteten Kontodaten speichert die App technische und
+          Einstellungsdaten lokal auf Ihrem Endgerät (Browser-Speicher, Service Worker). Für den
+          Zugriff auf Standort und Kamera holen wir vorab Ihre Einwilligung nach § 25 Abs. 1 TDDDG
+          ein. Übersicht der lokalen Speicher:
         </p>
         <div className="mt-2 overflow-hidden rounded-xl border border-bc-border">
           <table className="w-full text-left text-xs">
@@ -85,7 +89,7 @@ export function PrivacyPage() {
         <ul className="list-disc space-y-1 pl-5">
           <li>Kontodaten: bis zur Löschung des Kontos (Profil oder Anfrage an uns)</li>
           <li>Ladehistorie: steuer- und handelsrechtlich ggf. bis zu 10 Jahre (Produktion)</li>
-          <li>Standort-Einwilligung: bis Widerruf in der App</li>
+          <li>Standort-Einwilligung: bis Widerruf in der App (§ 25 TDDDG)</li>
           <li>Marketing-Einwilligung: bis Widerruf unter Benachrichtigungen</li>
         </ul>
       </LegalSection>
@@ -138,7 +142,7 @@ export function PrivacyPage() {
 
       <LegalSection title="8. Beschwerderecht">
         <p>
-          Sie können sich bei einer Aufsichtsbehörde beschweren, z. B. beim{' '}
+          Sie können sich bei einer Aufsichtsbehörde beschweren, z. B. beim{' '}
           {dataProtectionAuthority.name}, {dataProtectionAuthority.street},{' '}
           {dataProtectionAuthority.zip} {dataProtectionAuthority.city},{' '}
           <a href={dataProtectionAuthority.website} className="text-bc-accent" target="_blank" rel="noopener noreferrer">
@@ -150,8 +154,9 @@ export function PrivacyPage() {
 
       <LegalSection title="9. Pflicht zur Bereitstellung">
         <p>
-          Die Bereitstellung von Kontodaten ist für den Vertrag erforderlich. Standort und Marketing
-          sind freiwillig. Ohne Standort nutzen Sie Karte und Suche ohne exakte Entfernungsanzeige.
+          Die Bereitstellung von Kontodaten ist für den Vertrag erforderlich. Standort, Kamera und
+          Marketing sind freiwillig. Ohne Standort nutzen Sie Karte und Suche ohne exakte
+          Entfernungsanzeige. Ohne Kamera können Sie Ladepunkt-IDs manuell eingeben.
         </p>
       </LegalSection>
 

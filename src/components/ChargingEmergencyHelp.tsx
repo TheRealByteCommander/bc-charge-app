@@ -1,7 +1,8 @@
-import { Copy, Mail, Phone } from 'lucide-react';
+import { Copy, Mail, Phone, Star } from 'lucide-react';
 import { useState } from 'react';
 import { companyInfo } from '../data/company';
 import type { ChargingSession } from '../types';
+import { useAppStore } from '../store/appStore';
 import {
   buildSessionSupportMailto,
   buildSupportPhoneUri,
@@ -10,6 +11,9 @@ import {
 
 export function ChargingEmergencyHelp({ session }: { session: ChargingSession }) {
   const [copied, setCopied] = useState(false);
+  const user = useAppStore((s) => s.user);
+  const priorityActive =
+    Boolean(user?.prioritySupportUntil) && new Date(user!.prioritySupportUntil!) > new Date();
 
   const handleCopy = async () => {
     try {
@@ -28,6 +32,12 @@ export function ChargingEmergencyHelp({ session }: { session: ChargingSession })
         Wenn „Laden beenden“ nicht reagiert oder das Kabel blockiert bleibt, kontaktieren Sie uns mit Ihrer
         Session-ID – wir stoppen den Vorgang remote.
       </p>
+      {priorityActive && (
+        <p className="mt-2 flex items-center gap-2 text-sm font-medium text-bc-accent">
+          <Star className="h-4 w-4" />
+          Priority Support aktiv
+        </p>
+      )}
       <p className="mt-2 font-mono text-xs text-bc-muted">Session: {session.id}</p>
 
       <div className="mt-4 grid gap-2">
