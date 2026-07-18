@@ -180,6 +180,11 @@ interface AppState {
   getFilteredStations: () => Station[];
   getNearbyStations: (limit?: number) => Station[];
   distanceKm: (station: Station) => number | null;
+  
+  /**
+   * Stop real-time updates when the app is closed
+   */
+  stopRealTimeUpdates: () => void;
 }
 
 function seedDemoUser(): UserProfile {
@@ -341,6 +346,8 @@ function resolveCurrentUser(): UserProfile | null {
 
 let initRun = 0;
 let sessionPollBackoffUntil = 0;
+// Remove polling interval as we're now using event-based updates
+// let stationStatusPollInterval: NodeJS.Timeout | null = null;
 
 async function loadBackendUserBundles(user: UserProfile | null): Promise<{
   sessions: ChargingSession[];
@@ -448,6 +455,13 @@ export const useAppStore = create<AppState>((set, get) => ({
           void get().syncStripePayments();
           if (sessions.some((s) => s.status === 'active')) void get().refreshActiveSession();
         }
+        
+        // No need to start polling as we're using event-based updates now
+        // if (!stationStatusPollInterval) {
+        //   stationStatusPollInterval = setInterval(() => {
+        //     get().refreshCitrineosData();
+        //   }, 30000); // Poll every 30 seconds
+        // }
         return;
       }
 
@@ -506,6 +520,13 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (user && runId === initRun) {
         await get().syncStripePayments();
       }
+      
+      // No need to start polling as we're using event-based updates now
+      // if (!stationStatusPollInterval) {
+      //   stationStatusPollInterval = setInterval(() => {
+      //     get().refreshCitrineosData();
+      //   }, 30000); // Poll every 30 seconds
+      // }
     } catch (e) {
       console.error('[BC Charge] Init fehlgeschlagen:', e);
       finishInit(runId, {});
@@ -541,8 +562,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   refreshCitrineosData: async () => {
+    console.log('[BC Charge] Refreshing CitrineOS data...');
     set({ citrineosSyncing: true });
     const sync = await syncStationsFromCitrineos();
+    console.log('[BC Charge] CitrineOS sync result:', sync);
+    
     const tariffHint =
       sync.ok && sync.tariffCount != null && sync.tariffCount > 0
         ? ` · ${sync.tariffCount} Tarife`
@@ -771,6 +795,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   deleteAccount: () => {
     const { user } = get();
     if (!user) return;
+    
+    // Stop real-time updates
+    get().stopRealTimeUpdates();
+    
     if (isBackendMode()) {
       void deleteAccountRemote();
     } else {
@@ -792,10 +820,25 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   logout: () => {
+    // Stop real-time updates
+    get().stopRealTimeUpdates();
+    
     if (isBackendMode()) void logoutUser();
     clearActiveSessionCache();
     setCurrentUserId(null);
     set({ user: null, sessions: [], activeSession: null, redeemedRewardIds: [], rewardFulfillments: [], selectedChargingFulfillmentId: null, lastRedeemedFulfillment: null });
+  },
+
+  /**
+   * Stop real-time updates when the app is closed
+   */
+  stopRealTimeUpdates: () => {
+    // Stop CitrineOS subscription
+    import('../services/citrineosSync').then(({ stopCitrineosSubscription }) => {
+      stopCitrineosSubscription();
+    }).catch((error) => {
+      console.error('[BC Charge] Error stopping CitrineOS subscription:', error);
+    });
   },
 
   updateProfile: (patch) => {
