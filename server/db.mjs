@@ -111,6 +111,8 @@ export async function initDb() {
 
       CREATE INDEX IF NOT EXISTS idx_invoice_registry_user ON invoice_registry(user_id);
     `);
+    const { initPricingTables } = await import('./services/pricing/repository.mjs');
+    await initPricingTables();
     return pgPool;
   }
 
@@ -196,7 +198,13 @@ export async function initDb() {
 
     CREATE INDEX IF NOT EXISTS idx_invoice_registry_user ON invoice_registry(user_id);
   `);
+  const { initPricingTables } = await import('./services/pricing/repository.mjs');
+  await initPricingTables();
   return sqliteDb;
+}
+
+export function getDbHandles() {
+  return { isPostgres: isPostgres(), pgPool, sqliteDb };
 }
 
 export function rowToProfile(row) {

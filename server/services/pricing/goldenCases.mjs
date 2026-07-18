@@ -1,0 +1,106 @@
+/** Golden-Master-Fälle für CostEngine (deterministisch). */
+export const goldenCases = [
+  {
+    id: 'basic_energy_10kwh',
+    tariff: {
+      tariffId: 't1',
+      version: 1,
+      name: 'Standard',
+      timezone: 'Europe/Berlin',
+      currency: 'EUR',
+      taxRateBp: 1900,
+      components: [{ kind: 'energy', rate: '0.4500', priority: 10 }],
+      minPrice: null,
+      maxPrice: null,
+    },
+    events: [
+      { at: '2026-07-01T10:00:00.000Z', type: 'authorization' },
+      { at: '2026-07-01T10:00:00.000Z', type: 'session_start' },
+      { at: '2026-07-01T10:45:00.000Z', type: 'meter_value', energyWh: 10_000, midCertified: true },
+      { at: '2026-07-01T10:45:00.000Z', type: 'session_stop' },
+    ],
+    expect: { netEur: '4.5', grossEur: '5.36', energyWh: 10_000 },
+  },
+  {
+    id: 'session_fee_plus_energy',
+    tariff: {
+      tariffId: 't2',
+      version: 1,
+      name: 'Mit Session-Fee',
+      timezone: 'Europe/Berlin',
+      currency: 'EUR',
+      taxRateBp: 0,
+      components: [
+        { kind: 'session', rate: '1.0000', priority: 5 },
+        { kind: 'energy', rate: '0.4000', priority: 10 },
+      ],
+    },
+    events: [
+      { at: '2026-06-01T08:00:00.000Z', type: 'session_start' },
+      { at: '2026-06-01T08:30:00.000Z', type: 'meter_value', energyWh: 5000 },
+      { at: '2026-06-01T08:30:00.000Z', type: 'session_stop' },
+    ],
+    expect: { netEur: '3', grossEur: '3', energyWh: 5000 },
+  },
+  {
+    id: 'idle_after_grace',
+    tariff: {
+      tariffId: 't3',
+      version: 1,
+      name: 'Idle',
+      timezone: 'Europe/Berlin',
+      currency: 'EUR',
+      taxRateBp: 0,
+      components: [
+        { kind: 'energy', rate: '0.4500', priority: 10 },
+        { kind: 'idle', rate: '0.1000', priority: 30, idleGraceSeconds: 300 },
+      ],
+    },
+    events: [
+      { at: '2026-07-01T12:00:00.000Z', type: 'session_start' },
+      { at: '2026-07-01T12:10:00.000Z', type: 'charging_state', chargingState: 'Charging' },
+      { at: '2026-07-01T12:20:00.000Z', type: 'charging_state', chargingState: 'SuspendedEV' },
+      { at: '2026-07-01T12:35:00.000Z', type: 'session_stop' },
+      { at: '2026-07-01T12:20:00.000Z', type: 'meter_value', energyWh: 3000 },
+    ],
+    expect: { idleSeconds: 900 },
+  },
+  {
+    id: 'min_price_floor',
+    tariff: {
+      tariffId: 't4',
+      version: 1,
+      name: 'Min',
+      timezone: 'Europe/Berlin',
+      currency: 'EUR',
+      taxRateBp: 0,
+      components: [{ kind: 'energy', rate: '0.4500', priority: 10 }],
+      minPrice: '2.0000',
+    },
+    events: [
+      { at: '2026-07-01T10:00:00.000Z', type: 'session_start' },
+      { at: '2026-07-01T10:05:00.000Z', type: 'meter_value', energyWh: 100 },
+      { at: '2026-07-01T10:05:00.000Z', type: 'session_stop' },
+    ],
+    expect: { netEur: '2', grossEur: '2' },
+  },
+  {
+    id: 'max_price_cap',
+    tariff: {
+      tariffId: 't5',
+      version: 1,
+      name: 'Max',
+      timezone: 'Europe/Berlin',
+      currency: 'EUR',
+      taxRateBp: 0,
+      components: [{ kind: 'energy', rate: '0.4500', priority: 10 }],
+      maxPrice: '5.0000',
+    },
+    events: [
+      { at: '2026-07-01T10:00:00.000Z', type: 'session_start' },
+      { at: '2026-07-01T11:00:00.000Z', type: 'meter_value', energyWh: 20_000 },
+      { at: '2026-07-01T11:00:00.000Z', type: 'session_stop' },
+    ],
+    expect: { netEur: '5', grossEur: '5' },
+  },
+];

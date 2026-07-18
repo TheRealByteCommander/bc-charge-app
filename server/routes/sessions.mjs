@@ -21,6 +21,7 @@ import {
   shouldConsumeFulfillment,
 } from '../services/rewardFulfillment.mjs';
 import { syncAccountSessionFromCitrineos, stopAndSyncAccountSession } from '../services/citrineosServer.mjs';
+import { attachTariffSnapshotToSession } from '../services/pricing/sessionBinding.mjs';
 
 const router = Router();
 
@@ -162,8 +163,22 @@ router.post('/', requireAuth, async (req, res) => {
     return;
   }
   try {
-    await upsertSession(req.userId, session);
-    res.status(201).json({ session });
+    let toSave = session;
+    if (session.status === 'active') {
+      toSave = await attachTariffSnapshotToSession(session, {
+        tariffId: session.tariffVersionId,
+        citrineosTariff: {
+          id: session.tariffId,
+          pricePerKwh: session.pricePerKwh,
+          pricePerMin: session.pricePerMin,
+          pricePerSession: session.sessionFee,
+          currency: session.currency ?? 'EUR',
+        },
+        midCertified: session.midCertified,
+      });
+    }
+    await upsertSession(req.userId, toSave);
+    res.status(201).json({ session: toSave });
   } catch (err) {
     handleSessionError(res, err);
   }

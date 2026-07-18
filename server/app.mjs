@@ -17,6 +17,7 @@ import adhocRouter from './routes/adhoc.mjs';
 import rewardsRouter from './routes/rewards.mjs';
 import priceOptimizationRouter from './routes/priceOptimization.mjs';
 import pvSurplusChargingRouter from './routes/pvSurplusCharging.mjs';
+import pricingRouter from './routes/pricing.mjs';
 
 const PORT = Number(process.env.BC_SERVER_PORT ?? process.env.STRIPE_SERVER_PORT ?? 4242);
 
@@ -56,6 +57,7 @@ app.use('/api/pv-surplus', pvSurplusChargingRouter);
 app.use('/api/invoices', invoicesRouter);
 app.use('/api/gamification', gamificationRouter);
 app.use('/api/rewards', rewardsRouter);
+app.use('/api/pricing', pricingRouter);
 app.use('/api/adhoc', adhocRouter);
 app.use(
   '/api/webhooks/stripe',
