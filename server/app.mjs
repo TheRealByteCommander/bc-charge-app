@@ -15,6 +15,8 @@ import webhooksRouter from './routes/webhooks.mjs';
 import gamificationRouter from './routes/gamification.mjs';
 import adhocRouter from './routes/adhoc.mjs';
 import rewardsRouter from './routes/rewards.mjs';
+import priceOptimizationRouter from './routes/priceOptimization.mjs';
+import pvSurplusChargingRouter from './routes/pvSurplusCharging.mjs';
 
 const PORT = Number(process.env.BC_SERVER_PORT ?? process.env.STRIPE_SERVER_PORT ?? 4242);
 
@@ -49,6 +51,8 @@ app.use('/api/profile', profileRouter);
 app.use('/api/sessions', sessionsRouter);
 app.use('/api/stripe', stripeRouter);
 app.use('/api/citrineos', citrineosRouter);
+app.use('/api/price-optimization', priceOptimizationRouter);
+app.use('/api/pv-surplus', pvSurplusChargingRouter);
 app.use('/api/invoices', invoicesRouter);
 app.use('/api/gamification', gamificationRouter);
 app.use('/api/rewards', rewardsRouter);
