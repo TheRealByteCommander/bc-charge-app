@@ -1,116 +1,72 @@
-# Price-Driven Charging Optimization
+# Price-Driven Charging (Ladeoptimierung)
 
-## Overview
+## Übersicht
 
-This feature implements time-based charging optimization that pauses or throttles charging when electricity prices exceed a defined threshold. The system fetches day-ahead electricity prices and automatically adjusts charging behavior to minimize energy costs.
+Dieses Feature **steuert die Ladeleistung** anhand von Day-Ahead-Strompreisen – es berechnet **keine** Endabrechnung. Für Tarife, Idle-Fees und Rechnungen siehe [`dynamic-pricing-engine.md`](dynamic-pricing-engine.md).
 
-## Architecture
+| | Price-Driven Charging | Dynamic Pricing Engine |
+|--|----------------------|------------------------|
+| Ziel | Wann/wie stark laden | Was der Kunde zahlt |
+| API | `/api/price-optimization` | `/api/pricing` |
+| OCPP-Ausgang | `SetChargingProfile` | Liest States & MeterValues |
+| Host | BC Charge App Server | BC Charge App Server |
 
-### Backend Components
+## Architektur
 
-1. **Price Optimizer Service** (`server/services/priceOptimization/priceOptimizer.mjs`)
-   - Fetches day-ahead electricity prices from external APIs
-   - Determines optimal charging windows based on price thresholds
-   - Controls charging profiles via OCPP SetChargingProfile commands
+### Backend (App Server)
 
-2. **API Routes** (`server/routes/priceOptimization.mjs`)
-   - `/api/price-optimization/price-data` - Fetch electricity prices
-   - `/api/price-optimization/config` - Get/update configuration
-   - `/api/price-optimization/charging-recommendation` - Get charging recommendations
-   - `/api/price-optimization/optimize-charging` - Optimize charging for a connector
+1. **Price Optimizer** (`server/services/priceOptimization/priceOptimizer.mjs`)
+   - Day-Ahead-Strompreise von externer API
+   - Schwellenwert-Logik mit Hysterese
+   - `SetChargingProfile` über CitrineOS API
 
-3. **Frontend Client** (`src/api/priceOptimization/client.ts`)
-   - TypeScript client for interacting with the price optimization API
+2. **API-Routen** (`server/routes/priceOptimization.mjs`)
+   - `GET /api/price-optimization/price-data` – Strompreise
+   - `GET/PUT /api/price-optimization/config` – Konfiguration
+   - `GET /api/price-optimization/charging-recommendation` – Empfehlung
+   - `POST /api/price-optimization/optimize-charging` – Optimierung für Connector
 
-### Key Features
+3. **Frontend-Client** (`src/api/priceOptimization/client.ts`)
 
-- **Dynamic Price Thresholds**: Configurable price thresholds for pausing charging
-- **Hysteresis Control**: Prevents frequent switching when prices are near the threshold
-- **Throttling Mode**: Reduces charging power to a minimum instead of completely pausing
-- **OCPP Integration**: Uses standard OCPP SetChargingProfile commands for control
-- **Fallback Behavior**: Continues normal charging if price data is unavailable
+### CitrineOS Server
 
-## Configuration
+- Empfängt `SetChargingProfile` und setzt Ladeleistung an der Hardware um.
+- Liefert `MeterValues` und Ladezustände zurück an die App (für Abrechnung, nicht für diese Optimierung).
 
-The price optimization service can be configured through environment variables:
+## Konfiguration
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `PRICE_THRESHOLD_EUR_PER_KWH` | Price threshold above which charging is paused | 0.35 |
-| `PRICE_HYSTERESIS_EUR` | Hysteresis to prevent frequent switching | 0.02 |
-| `MIN_CHARGING_POWER_PERCENT` | Minimum power when throttling (%) | 20 |
-| `ELECTRICITY_PRICE_API_URL` | API endpoint for electricity prices | https://api.energy-price-data.de/day-ahead |
-| `PRICE_CHECK_INTERVAL_MINUTES` | How often to check prices | 15 |
+| Variable | Beschreibung | Standard |
+|----------|--------------|----------|
+| `PRICE_THRESHOLD_EUR_PER_KWH` | Preis-Schwelle (Pause/Drossel) | `0.35` |
+| `PRICE_HYSTERESIS_EUR` | Hysterese gegen Flattern | `0.02` |
+| `MIN_CHARGING_POWER_PERCENT` | Mindestleistung beim Drosseln (%) | `20` |
+| `ELECTRICITY_PRICE_API_URL` | Day-Ahead-API | `https://api.energy-price-data.de/day-ahead` |
+| `PRICE_CHECK_INTERVAL_MINUTES` | Preis-Check-Intervall | `15` |
 
-## Implementation Details
-
-### Price Data Integration
-
-The system expects day-ahead electricity prices in the following format:
+## Preisdaten-Format
 
 ```json
 [
-  {
-    "timestamp": "2026-07-14T00:00:00.000Z",
-    "price": 0.32
-  },
-  {
-    "timestamp": "2026-07-14T01:00:00.000Z",
-    "price": 0.30
-  }
+  { "timestamp": "2026-07-14T00:00:00.000Z", "price": 0.32 },
+  { "timestamp": "2026-07-14T01:00:00.000Z", "price": 0.30 }
 ]
 ```
 
-### Charging Profile Control
+## Hysterese
 
-When prices exceed the threshold, the system sends a `SetChargingProfile` command to the charging station:
+- Laden aktiv → pausieren wenn `Preis > Schwelle + Hysterese`
+- Laden pausiert → fortsetzen wenn `Preis < Schwelle − Hysterese`
 
-```json
-{
-  "evseId": 1,
-  "chargingProfile": {
-    "chargingProfileId": 123456,
-    "stackLevel": 1,
-    "chargingProfilePurpose": "TxProfile",
-    "chargingProfileKind": "Absolute",
-    "chargingSchedule": {
-      "startSchedule": "2026-07-14T10:00:00.000Z",
-      "chargingRateUnit": "W",
-      "chargingSchedulePeriod": [
-        {
-          "startPeriod": 0,
-          "limit": 4.4,
-          "numberPhases": 3
-        }
-      ]
-    }
-  }
-}
-```
-
-### Hysteresis Logic
-
-To prevent frequent switching when prices are near the threshold:
-
-- When charging is active: Pause if price > (threshold + hysteresis)
-- When charging is paused: Resume if price < (threshold - hysteresis)
-
-## Testing
-
-Run the test suite with:
+## Tests
 
 ```bash
-node server/services/priceOptimization/priceOptimizer.test.mjs
+npm test
 ```
 
-## Monitoring
+Unit-Tests: `server/services/priceOptimization/priceOptimizer.test.mjs`
 
-The system logs optimization decisions and OCPP command results for monitoring and debugging.
+## Geplante Erweiterungen
 
-## Future Enhancements
-
-1. Integration with real electricity price APIs (Entsoe-E, local providers)
-2. Machine learning for price prediction
-3. User preferences for charging urgency vs. cost savings
-4. Multi-tier pricing with different charging levels
-5. Integration with PV surplus data for hybrid optimization
+1. Entsoe-E und weitere Preis-APIs
+2. Nutzerpräferenz „Eil-Ladung“ vs. Kostenersparnis
+3. Kombination mit PV-Überschuss (`/api/pv-surplus`)

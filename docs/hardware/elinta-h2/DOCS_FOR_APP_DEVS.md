@@ -1,23 +1,47 @@
 # Technical Briefing for App Developers: Elinta H2 & CitrineOS Integration
 
-This document outlines the necessary frontend adjustments to support the Elinta CityCharge H2 hardware via CitrineOS.
+This document outlines frontend adjustments to support the Elinta CityCharge H2 hardware via CitrineOS.
 
-## 1. Protocol Discrepancy: OCPP 1.6 vs 2.0.1
-The hardware (H2) communicates via **OCPP 1.6 JSON**, while the app is built for **OCPP 2.0.1**. CitrineOS handles the translation, but the app needs to be aware of the following:
-- **IdToken:** The `idTokenType` in the app should be treated as "Central" for the translation layer, but it maps to the physical RFID/H2-ID.
-- **Charging States:** Ensure that states from 1.6 (e.g., `Preparing`, `Charging`) are mapped correctly to the 2.0.1 enum expected by the `ChargingPage.tsx`.
+## Architecture: CitrineOS Server vs. BC Charge App
 
-## 2. H2 Specific Features for UI Implementation
-The Elinta H2 has specific capabilities that should be reflected in the App UI:
-- **Dual Connector Support:** The H2 has 2 connectors. The `StationDetailPage.tsx` and `ChargeStartConfirmSheet.tsx` must clearly allow the user to select which connector (EVSE 1 or 2) they are using.
-- **Dynamic Load Management:** Since the H2 supports dynamic load balancing, the `ChargePriceEstimate.tsx` should inform the user that charging speeds might vary based on the current grid load.
-- **MID Metering:** The `HistoryPage.tsx` should highlight that the billed kWh are based on a MID-certified meter (legal requirement for Eichrecht).
+| Layer | Responsibility |
+|-------|----------------|
+| **CitrineOS Server** (`bc-citrineos`) | OCPP 1.6 ↔ 2.0.1 translation, MeterValues, charging states, `SetChargingProfile` |
+| **BC Charge App Server** (`server/`) | Sessions, billing (`/api/pricing`), load/cost optimization (`/api/price-optimization`, `/api/pv-surplus`) |
+| **Frontend** (`src/`) | UI, Hasura subscriptions, CitrineOS REST client |
 
-## 3. Required Data Field Mappings
-Please check the following types in `src/api/citrineos/types.ts`:
-- **`HasuraChargingStationRow`**: Ensure `chargePointModel` is correctly rendered as "CityCharge H2" to trigger specific UI layouts.
-- **`CitrineosTransaction`**: Validate that `totalKwh` is retrieved from the `MeterValue` samples provided by the H2.
+## 1. Protocol: OCPP 1.6 vs 2.0.1
 
-## 4. UX Recommendations
-- **Connector Selection:** For H2 stations, the "Start Charging" flow should explicitly ask: "Connector 1 or Connector 2?".
-- **Status Indicators:** Use the LED-strip status from the H2 to reflect the state in the app (e.g., Green pulse = Charging).
+The H2 uses **OCPP 1.6 JSON**; the app targets **OCPP 2.0.1** enums. CitrineOS translates between them:
+
+- **IdToken:** Treat `idTokenType` as `"Central"` for the translation layer; maps to physical RFID/H2-ID.
+- **Charging states:** Map 1.6 states (`Preparing`, `Charging`, `SuspendedEV`, …) via `src/utils/ocppStateMapping.ts` for `ChargingPage.tsx` and billing idle detection.
+
+### Idle / blocking fees (billing)
+
+Idle fees are computed on the **App Server** from OCPP state transitions (`SuspendedEV`, `SuspendedEVSE`, `Idle` after `Charging`) — **not** from flat MeterValues. See `docs/dynamic-pricing-engine.md`.
+
+## 2. H2-specific UI
+
+- **Connectors:** H2 has 2 connectors; `StationDetailPage` / `ChargeStartConfirmSheet` must allow EVSE selection. (go-e stations: single connector only — see `normalizeConnectorsForHardware` in `mappers.ts`.)
+- **Dynamic load management:** Inform users in `ChargePriceEstimate.tsx` that speed may vary with grid load.
+- **MID metering:** `HistoryPage` should note billed kWh come from MID-certified meters (Eichrecht).
+
+## 3. Data mappings
+
+Check `src/api/citrineos/types.ts`:
+
+- **`HasuraChargingStationRow`:** `chargePointModel` → `"CityCharge H2"` for H2-specific layouts.
+- **`CitrineosTransaction`:** `totalKwh` from H2 `MeterValue` samples (prefer signed/MID values for billing events).
+
+## 4. Pricing integration
+
+- Display prices from connector/CitrineOS tariff for estimates.
+- Final invoice uses **TariffSnapshot** from `/api/pricing` when backend mode is active.
+- `TariffsPage` shows versioned tariffs, preview, and audit — not the same as price-driven charging optimization.
+
+## 5. UX recommendations
+
+- H2: explicit “Connector 1 or 2?” in start flow.
+- Use live connector status from Hasura subscriptions (`src/api/citrineos/subscription.ts`).
+- Do not promise “no idle fee” globally — depend on active tariff; standard BC tariffs often have no idle component.

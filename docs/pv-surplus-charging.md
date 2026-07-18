@@ -1,118 +1,66 @@
-# PV Surplus Charging Feature
+# PV-Überschussladen (Ladeoptimierung)
 
-## Overview
+## Übersicht
 
-The PV Surplus Charging feature enables integration with external Energy Management Systems (EMS) to optimize charging based on locally generated solar power. This feature allows the charging infrastructure to prioritize renewable energy by adjusting charging power in real-time based on reported solar surplus.
+Integration externer Energiemanagementsysteme (EMS), um die Ladeleistung an lokal erzeugten Solarstrom anzupassen. **Keine Abrechnungslogik** – Endpreise über die [Dynamic Pricing Engine](dynamic-pricing-engine.md).
 
-## API Endpoints
+| | PV-Überschussladen | Dynamic Pricing Engine |
+|--|-------------------|------------------------|
+| Ziel | Erneuerbare Energie nutzen | Kosten berechnen |
+| API | `/api/pv-surplus` | `/api/pricing` |
+| Host | BC Charge App Server | BC Charge App Server |
 
-### Update PV Surplus
+## API-Endpunkte
+
+### PV-Überschuss melden
 
 ```
 POST /api/pv-surplus
 ```
 
-Updates the current PV surplus value reported by an external energy management system.
-
-**Request Body:**
 ```json
-{
-  "surplus": 15.5  // Current PV surplus in kW
-}
+{ "surplus": 15.5 }
 ```
 
-**Response:**
-```json
-{
-  "success": true,
-  "message": "PV surplus updated successfully",
-  "data": {
-    "surplus": 15.5,
-    "updateTime": "2023-07-14T10:30:00.000Z"
-  }
-}
-```
+Antwort: `{ "success": true, "data": { "surplus": 15.5, "updateTime": "..." } }`
 
-### Get Current PV Surplus
+### Aktuellen Überschuss abfragen
 
 ```
 GET /api/pv-surplus
 ```
 
-Retrieves the current PV surplus value.
-
-**Response:**
-```json
-{
-  "success": true,
-  "data": {
-    "surplus": 15.5,
-    "updateTime": "2023-07-14T10:30:00.000Z"
-  }
-}
-```
-
-### Optimize Charging with PV Surplus
+### Ladeoptimierung auslösen (Admin)
 
 ```
 POST /api/pv-surplus/optimize-charging
 ```
 
-Manually trigger optimization of charging based on current PV surplus (admin only).
+Verteilt den gemeldeten Überschuss auf aktive Sessions und setzt `SetChargingProfile` via CitrineOS.
 
-**Response:**
-```json
-{
-  "success": true,
-  "message": "Distributed 15.5 kW of PV surplus among 2 active sessions",
-  "surplus": 15.5,
-  "sessionsAffected": 2
-}
-```
+## Implementierung
 
-## Implementation Details
+| Modul | Aufgabe |
+|-------|---------|
+| `server/services/pvSurplusCharging.mjs` | Überschuss speichern, auf Sessions verteilen |
+| `server/routes/pvSurplusCharging.mjs` | REST-API, Validierung |
 
-The PV Surplus Charging service (`pvSurplusCharging.mjs`) is responsible for:
+### CitrineOS Server
 
-1. Managing the current PV surplus value
-2. Distributing surplus power among active charging sessions
-3. Adjusting charging profiles to prioritize renewable energy
-4. Maintaining normal charging when no surplus is available
+- Aktive Sessions über CitrineOS API
+- Leistungsanpassung per `SetChargingProfile` (OCPP)
 
-The PV Surplus Charging routes (`pvSurplusCharging.mjs`) handle:
+## Konfiguration
 
-1. REST API endpoints for external systems
-2. Input validation and error handling
-3. Communication with the PV Surplus Charging service
+- `CITRINEOS_API_URL` – CitrineOS-API
+- `CITRINEOS_TENANT_ID` – Mandant
 
-## Integration with CitrineOS
+## Tests
 
-The feature integrates with CitrineOS through:
+Manuell: `POST /api/pv-surplus` mit Überschusswert, danach `GET` und optional `optimize-charging`.
 
-1. Monitoring active charging sessions via CitrineOS API
-2. Adjusting charging profiles using SetChargingProfile OCPP commands
-3. Distributing surplus power among active charging sessions
+## Geplante Erweiterungen
 
-## Configuration
-
-The service uses environment variables from the main application:
-
-- `CITRINEOS_API_URL`: CitrineOS API endpoint
-- `CITRINEOS_TENANT_ID`: CitrineOS tenant identifier
-
-## Testing
-
-The service can be tested by:
-
-1. Sending a POST request to `/api/pv-surplus` with a surplus value
-2. Sending a GET request to `/api/pv-surplus` to retrieve the current surplus
-3. Sending a POST request to `/api/pv-surplus/optimize-charging` as an admin user
-
-## Future Enhancements
-
-Planned improvements include:
-
-1. Automatic optimization triggered by surplus updates
-2. Integration with actual CitrineOS API for active session monitoring
-3. More sophisticated power distribution algorithms
-4. Historical data tracking and reporting
+1. Automatische Optimierung bei Überschuss-Update
+2. Verteilungsalgorithmus nach Priorität (eigener PV &gt; Netz)
+3. Historische Auswertung Überschuss vs. geladene kWh

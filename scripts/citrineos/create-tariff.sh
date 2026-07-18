@@ -2,7 +2,7 @@
 # ============================================================================
 # BC Charge - CitrineOS Tarif erstellen
 # ============================================================================
-# Tarif: 0,45€/kWh, keine Startgebühr, keine Blockiergebühr
+# Tarif: 0,45€/kWh, keine Startgebühr, pricePerMin=0 (Legacy-Anzeige; Abrechnung → /api/pricing)
 # ============================================================================
 
 set -e
@@ -14,7 +14,7 @@ TENANT_ID="${CITRINEOS_TENANT_ID:-1}"
 
 # Tarif-Daten
 PRICE_PER_KWH="0.45"
-PRICE_PER_MIN="0"          # Keine Blockiergebühr
+PRICE_PER_MIN="0"          # Legacy CitrineOS-Anzeige; Idle-Abrechnung auf App Server
 PRICE_PER_SESSION="0"      # Keine Startgebühr
 CURRENCY="EUR"
 TAX_RATE="0.19"            # 19% MwSt (optional anpassen)
@@ -28,7 +28,7 @@ echo ""
 echo "Tarif-Details:"
 echo "  - Preis/kWh:     ${PRICE_PER_KWH} ${CURRENCY}"
 echo "  - Startgebühr:   ${PRICE_PER_SESSION} ${CURRENCY}"
-echo "  - Blockiergebühr/Min: ${PRICE_PER_MIN} ${CURRENCY}"
+echo "  - pricePerMin (Legacy): ${PRICE_PER_MIN} ${CURRENCY}"
 echo "  - MwSt:          $(echo "$TAX_RATE * 100" | bc)%"
 echo "============================================"
 echo ""
