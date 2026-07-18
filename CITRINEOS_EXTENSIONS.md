@@ -1,132 +1,186 @@
-# CitrineOS Feature Extensions - Technical Roadmap (OCPP 1.6)
-**Project:** BC Charge CPO Backend Extension
-**Objective:** Expand CitrineOS core capabilities to professional CPO standards.
+# CitrineOS Feature Extensions – Technische Roadmap (OCPP 1.6)
+
+**Projekt:** BC Charge CPO Backend Extension  
+**Ziel:** CitrineOS-Fähigkeiten auf professionelle CPO-Standards erweitern.
+
+## Architektur: CitrineOS Server vs. BC Charge App Server
+
+| Komponente | Repository / Host | Verantwortung |
+|------------|-------------------|---------------|
+| **CitrineOS Server** | [`bc-citrineos`](https://github.com/TheRealByteCommander/bc-citrineos) | OCPP-Gateway, Hasura, Ladepunkt-Steuerung (`SetChargingProfile`, `MeterValues`, `StatusNotification`) |
+| **BC Charge App Server** | `bc-charge-app` → `server/` (Port 4242) | BFF: Auth, Sessions, Stripe, Tarif-/Abrechnungslogik, Ladeoptimierung |
+| **BC Charge Frontend** | `bc-charge-app` → `src/` | React-PWA, CitrineOS-Client (Hasura/REST), Live-Status |
+
+Konfiguration und Skripte unter `config/citrineos/` und `scripts/citrineos/` in diesem Repo sind **Referenz für den CitrineOS-Stack** – Deployment erfolgt auf dem CitrineOS-Host bzw. in `bc-citrineos`, nicht nur über `npm run build` der App.
 
 ---
 
 ## 1. Intelligentes Lastmanagement & Grid-Optimierung
+
 *Ziel: Vermeidung von Netzüberlastung und Optimierung der Energiekosten.*
 
 ### 1.1 Dynamisches Lastmanagement (DLM)
-- **Beschreibung:** Implementierung einer zentralen Steuerungslogik, die die verfügbare Gesamtleistung eines Standorts überwacht.
-- **Technische Umsetzung:** 
-    - Erstellung eines `LoadManager`-Services, der die Summe aller aktiven `MeterValues` (Power) aggregiert.
-    - Bei Erreichen eines definierten Schwellenwerts (Hausanschlusswert) werden die Ladeleistungen der einzelnen Ladepunkte proportional reduziert.
-    - **OCPP-Befehl:** Nutzung von `SetChargingProfile` (Smart Charging), um das `chargingProfile` dynamisch anzupassen.
-- **Akzeptanzkriterium:** Keine Auslösung der Sicherung beim gleichzeitigen Laden aller Säulen; automatische Leistungsanpassung innerhalb von < 5 Sekunden.
+
+- **Beschreibung:** Zentrale Steuerungslogik, die die verfügbare Gesamtleistung eines Standorts überwacht.
+- **Technische Umsetzung (CitrineOS Server):**
+  - `LoadManager`-Service aggregiert aktive `MeterValues` (Leistung).
+  - Bei Erreichen eines Schwellenwerts (Hausanschlusswert) werden Ladeleistungen proportional reduziert.
+  - **OCPP-Befehl:** `SetChargingProfile` (Smart Charging).
+- **Akzeptanzkriterium:** Keine Sicherungsauslösung bei gleichzeitigem Laden aller Säulen; Leistungsanpassung innerhalb von &lt; 5 Sekunden.
+- **Status:** Geplant (CitrineOS Server)
 
 ### 1.2 Zeitgesteuerte Ladeoptimierung (Price-Driven)
-- **Beschreibung:** Verschiebung der Ladezyklen in Zeitfenster mit niedrigen Strompreisen.
-- **Technische Umsetzung:** 
-    - API-Anbindung an Day-Ahead-Strompreisdaten (z.B. Entsoe-E).
-    - Implementierung einer Logik, die Ladevorgänge pausiert oder drosselt, wenn der Preis einen Schwellenwert übersteigt, sofern keine "Eil-Ladung" vom Nutzer gewünscht wurde.
-    - **OCPP-Befehl:** `SetChargingProfile` mit Zeitplänen (Schedules).
+
+- **Beschreibung:** Verschiebung von Ladezyklen in Zeitfenster mit niedrigen Strompreisen.
+- **Technische Umsetzung (BC Charge App Server):**
+  - Day-Ahead-Strompreisdaten (z. B. Entsoe-E).
+  - Pausieren oder Drosseln, wenn der Preis einen Schwellenwert übersteigt (sofern keine Eil-Ladung).
+  - **OCPP-Befehl:** `SetChargingProfile` mit Zeitplänen – ausgelöst über CitrineOS API.
+  - **Implementierung:** `server/services/priceOptimization/`, API `/api/price-optimization`
+  - **Dokumentation:** [`docs/price-driven-charging.md`](docs/price-driven-charging.md)
 - **Akzeptanzkriterium:** Reduktion der Energiekosten pro kWh durch Verschiebung in Niedrigpreisphasen.
+- **Status:** ✅ Implementiert (App Server) – *steuert Ladeleistung, keine Endabrechnung*
 
 ### 1.3 PV-Überschussladen
+
 - **Beschreibung:** Priorisierung von lokal erzeugtem Solarstrom.
-- **Technische Umsetzung:** 
-    - Entwicklung eines API-Endpoints für externe Energiemanagementsysteme (EMS), um den aktuellen Solarüberschuss zu melden.
-    - Die Ladeleistung wird linear an den gemeldeten Überschuss angepasst.
-- **Akzeptanzkriterium:** Die Ladeleistung steigt/fällt synchron zum Solarertrag.
+- **Technische Umsetzung (BC Charge App Server):**
+  - API-Endpoint für externe Energiemanagementsysteme (EMS) zur Meldung des Solarüberschusses.
+  - Ladeleistung wird linear an den gemeldeten Überschuss angepasst (`SetChargingProfile` via CitrineOS).
+  - **Implementierung:** `server/services/pvSurplusCharging.mjs`, API `/api/pv-surplus`
+  - **Dokumentation:** [`docs/pv-surplus-charging.md`](docs/pv-surplus-charging.md)
+- **Akzeptanzkriterium:** Ladeleistung steigt/fällt synchron zum Solarertrag.
+- **Status:** ✅ Implementiert (App Server)
 
 ---
 
 ## 2. Billing & Monetarisierung (Deep Integration)
+
 *Ziel: Maximierung der Marge und Automatisierung der Abrechnung.*
 
 ### 2.1 Dynamic Pricing Engine
-- **Beschreibung:** Flexible Preisgestaltung jenseits von fixen kWh-Preisen.
-- **Technische Umsetzung:**
-    - **Zeitbasierte Tarife:** Implementierung einer Tarifmatrix (z.B. 06-22 Uhr: Preis A, 22-06 Uhr: Preis B).
-    - **Idle Fees (Blockiergebühr):** Logik, die nach Ende des Ladevorgangs (`MeterValue` konstant oder `ChargingSession` beendet) einen Timer startet. Wenn das Fahrzeug nicht entfernt wird, wird eine minutengenaue Gebühr berechnet.
-    - **Energie-Pass-through:** Dynamische Kalkulation: `Aktueller Strompreis + Betriebskosten + Marge`.
-- **Akzeptanzkriterium:** Korrekte Berechnung von Idle-Fees in der Endabrechnung; dynamische Preisanpassung im Backend ohne manuellen Eingriff pro Säule.
+
+- **Beschreibung:** Flexible Preisgestaltung jenseits fixer kWh-Preise – **Abrechnung**, nicht Ladeoptimierung (siehe 1.2).
+- **Technische Umsetzung (BC Charge App Server):**
+  - **Zeitbasierte Tarife:** Tarifmatrix mit TOU-Fenstern (z. B. 06–22 Uhr Preis A, 22–06 Uhr Preis B), IANA-Zeitzone, DST-sicher.
+  - **Idle Fees (Blockiergebühr):** Beginn **nur** nach belastbarem OCPP-Ladezustandswechsel:
+    - Zuerst aktives Laden (`Charging` / `EVConnected`),
+    - danach Übergang in `SuspendedEV`, `SuspendedEVSE` oder `Idle`.
+    - **Nicht** auslösen durch allein konstante `MeterValues` ohne State-Wechsel.
+    - Konfigurierbare Karenzzeit (`idleGraceSeconds`) pro Tarifkomponente.
+    - Implementierung: `server/services/pricing/events.mjs` → `deriveIdleIntervals()`
+  - **TariffSnapshot:** Unveränderlicher Tarif-Snapshot bei Session-Start (`attachTariffSnapshotToSession`).
+  - **CostEngine:** Deterministische Kostenberechnung inkl. Energie, Zeit, Session, Idle, Min/Max-Preis.
+  - **Energie-Pass-through:** Dynamische Kalkulation `Strompreis + Betriebskosten + Marge` als Tarifkomponente.
+  - **Eichrecht:** Signierte `MeterValues` werden im Snapshot unverändert referenziert; Abrechnung bevorzugt MID-zertifizierte Werte.
+  - **API:** `/api/pricing` (Tarife, Versionen, Vorschau, OCPI-Export, Audit)
+  - **Dokumentation:** [`docs/dynamic-pricing-engine.md`](docs/dynamic-pricing-engine.md)
+- **Akzeptanzkriterium:** Korrekte Idle-Fees in der Endabrechnung nur bei OCPP-State-Übergang; dynamische Preisanpassung im Backend ohne manuellen Eingriff pro Säule.
+- **Status:** ✅ Implementiert (App Server + UI `TariffsPage`)
 
 ### 2.2 Automatisierte Abrechnungs-Workflows
+
 - **Beschreibung:** Nahtlose Übergabe der Finanzdaten in die Buchhaltung.
 - **Technische Umsetzung:**
-    - Erstellung eines Export-Moduls für DATEV/Lexoffice im CSV- oder XML-Format.
-    - Aggregation von Transaktionen zu täglichen oder monatlichen Summen pro Standort.
-- **Akzeptanzkriterium:** Export-Datei kann ohne manuelle Korrektur in die Buchhaltungssoftware importiert werden.
+  - Export-Modul für DATEV/Lexoffice (CSV/XML).
+  - Aggregation von Transaktionen zu täglichen/monatlichen Summen pro Standort.
+- **Akzeptanzkriterium:** Export-Datei ohne manuelle Korrektur importierbar.
+- **Status:** Geplant
 
 ### 2.3 Multi-Tenant Revenue Sharing
+
 - **Beschreibung:** Automatische Aufteilung von Einnahmen bei Partner-Standorten.
 - **Technische Umsetzung:**
-    - Einführung eines `LocationOwner`-Attributs in der Datenbank.
-    - Implementierung einer Split-Logik: `Brutto-Umsatz - Kosten = Netto -> (X% Partner, Y% BC Charge)`.
-- **Akzeptanzkriterium:** Automatische Erstellung von Abrechnungsberichten für Standortpartner.
+  - `LocationOwner`-Attribut in der Datenbank.
+  - Split-Logik: `Brutto − Kosten = Netto → (X % Partner, Y % BC Charge)`.
+- **Akzeptanzkriterium:** Automatische Abrechnungsberichte für Standortpartner.
+- **Status:** Geplant
 
 ---
 
 ## 3. Operations & Maintenance (Reliability Layer)
+
 *Ziel: Maximierung der Uptime und Minimierung der Support-Kosten.*
 
 ### 3.1 Predictive Maintenance Dashboard
+
 - **Beschreibung:** Früherkennung von Hardwaredefekten durch Musteranalyse.
-- **Technische Umsetzung:**
-    - Analyse von `StatusNotification` und `Error`-Events. 
-    - Identifikation von "Flapping"-Verhalten (Säule geht ständig offline/online).
-    - Alarmierung, wenn die Fehlerquote eines Modells über einen Zeitraum steigt.
-- **Akzeptanzkriterium:** Dashboard zeigt "Warnung" für Säulen an, bevor ein Nutzer einen Totalausfall meldet.
+- **Technische Umsetzung (CitrineOS Server):**
+  - Analyse von `StatusNotification` und `Error`-Events.
+  - Identifikation von Flapping-Verhalten (Säule offline/online).
+- **Akzeptanzkriterium:** Dashboard-Warnung vor Nutzermeldung eines Totalausfalls.
+- **Status:** Geplant
 
 ### 3.2 Automatisierter Health-Check-Bot
-- **Beschreibung:** Tägliche Validierung der Funktionsfähigkeit aller Ladepunkte.
-- **Technische Umsetzung:**
-    - Geplanter Cron-Job, der `GetDiagnostics` oder `GetStatus` an alle Säulen sendet.
-    - Validierung der Antwortzeit und des Status.
-    - Bei Timeout: Automatischer `Reset`-Befehl und bei erneutem Fehler Erstellung eines Tickets.
-- **Akzeptanzkriterium:** Tägliche Liste aller "unhealthy" Säulen liegt vor dem ersten Kundenkontakt vor.
+
+- **Beschreibung:** Tägliche Validierung aller Ladepunkte.
+- **Technische Umsetzung (CitrineOS Server):**
+  - Cron-Job: `GetDiagnostics` / `GetStatus` an alle Säulen.
+  - Bei Timeout: `Reset`, bei erneutem Fehler Ticket.
+- **Akzeptanzkriterium:** Tägliche Liste „unhealthy“ Säulen vor erstem Kundenkontakt.
+- **Status:** Geplant
 
 ### 3.3 Remote Diagnostics Tool
-- **Beschreibung:** Werkzeug für den Support zur schnellen Fehlerursachenanalyse.
+
+- **Beschreibung:** Support-Werkzeug zur schnellen Fehlerursachenanalyse.
 - **Technische Umsetzung:**
-    - Implementierung eines Log-Viewers, der OCPP-Messages in eine Timeline bringt (z.B. `Sende RemoteStart` $\rightarrow$ `Empfange StartTransaction` $\rightarrow$ `Fehler: ConnectorLocked`).
-    - Filterung nach `TransactionID` und `ConnectorID`.
-- **Akzeptanzkriterium:** Support-Mitarbeiter kann Fehlerursache ohne Zugriff auf die Datenbank/Kommandozeile identifizieren.
+  - OCPP-Message-Timeline (`RemoteStart` → `StartTransaction` → Fehler).
+  - Filter nach `TransactionID` und `ConnectorID`.
+- **Akzeptanzkriterium:** Fehlerursache ohne DB-/CLI-Zugriff identifizierbar.
+- **Status:** Geplant
 
 ---
 
 ## 4. User Experience & App-Logik
+
 *Ziel: Reibungslose Interaktion zwischen Kunde und Hardware.*
 
 ### 4.1 Deep-Link Start/Stop Integration
-- **Beschreibung:** Sofortige Steuerung der Hardware aus der BC Charge App.
+
+- **Beschreibung:** Sofortige Steuerung aus der BC Charge App.
 - **Technische Umsetzung:**
-    - API-Endpunkt in CitrineOS, der einen `RemoteStartTransaction` bzw. `RemoteStopTransaction` Befehl an die entsprechende Säule triggert.
-    - Validierung der Nutzerberechtigung und des Status des Connectors vor dem Befehl.
-- **Akzeptanzkriterium:** Ladevorgang startet/stoppt innerhalb von 2 Sekunden nach App-Klick.
+  - App Server → CitrineOS: `RemoteStartTransaction` / `RemoteStopTransaction`.
+  - Berechtigung und Connector-Status vor Befehl validieren.
+- **Akzeptanzkriterium:** Start/Stopp innerhalb von 2 Sekunden nach App-Klick.
+- **Status:** ✅ Implementiert (App Server + Frontend)
 
 ### 4.2 Echtzeit-Ladekurven-Visualisierung
-- **Beschreibung:** Live-Anzeige des Ladefortschritts und der aktuellen Leistung.
+
+- **Beschreibung:** Live-Anzeige von Ladefortschritt und Leistung.
 - **Technische Umsetzung:**
-    - Nutzung von WebSockets, um `MeterValues` (Power, Energy, SoC) in Echtzeit an die App zu pushen.
-    - Aggregation der Daten in Zeitintervallen (z.B. alle 10 Sekunden).
-- **Akzeptanzkriterium:** App zeigt einen Live-Graphen der kW-Leistung während des Ladevorgangs.
+  - Hasura-Subscriptions / WebSockets für `MeterValues` (Power, Energy, SoC).
+  - Live-Connector-Status: `src/api/citrineos/subscription.ts`
+- **Akzeptanzkriterium:** Live-Graph der kW-Leistung während des Ladevorgangs.
+- **Status:** Teilweise (Live-Status ✅; Kurven-Graph geplant)
 
 ### 4.3 Reservierungssystem
+
 - **Beschreibung:** Kurzzeitige Reservierung eines Ladepunkts.
 - **Technische Umsetzung:**
-    - Implementierung eines `Reservation`-States im Backend.
-    - Logik: Wenn Status = `Reserved`, wird jeder RFID-Start außer dem reservierten Nutzers mit einem Fehler abgelehnt.
-    - Automatisches Aufheben der Reservierung nach X Minuten.
-- **Akzeptanzkriterium:** Nutzer kann via App einen Slot für 15 Minuten blockieren.
+  - `Reservation`-State im Backend; RFID-Start außer reserviertem Nutzer abgelehnt.
+  - Automatisches Aufheben nach X Minuten.
+- **Akzeptanzkriterium:** Slot für 15 Minuten per App blockierbar.
+- **Status:** Geplant
 
 ---
 
 ## 5. Roaming & Interoperabilität (Scale)
+
 *Ziel: Integration in globale Lade-Netzwerke.*
 
 ### 5.1 OCPI-Bridge Erweiterung
-- **Beschreibung:** Optimierung des Datenaustauschs für Roaming.
+
+- **Beschreibung:** Optimierter Datenaustausch für Roaming.
 - **Technische Umsetzung:**
-    - Mapping von CitrineOS-Datenmodellen auf den aktuellen OCPI-Standard (v2.2.1).
-    - Implementierung von `Circulars` für Preisaktualisierungen an Roaming-Partner.
-- **Akzeptanzkriterium:** Korrekte Synchronisation von Ladepunkt-Status und Tarifen mit externen EMPs.
+  - Mapping CitrineOS → OCPI v2.2.1.
+  - Tarif-Export aus Dynamic Pricing Engine (`/api/pricing` → OCPI-Tariff).
+- **Akzeptanzkriterium:** Korrekte Synchronisation von Status und Tarifen mit externen EMPs.
+- **Status:** Teilweise (Tarif-Export ✅; Hub-Anbindung geplant)
 
 ### 5.2 Plug & Charge (ISO 15118) Bridge
-- **Beschreibung:** Vorbereitung auf zertifikatsbasierte Identifikation.
+
+- **Beschreibung:** Zertifikatsbasierte Identifikation.
 - **Technische Umsetzung:**
-    - Entwicklung einer Bridge, die die Zertifikatsprüfung (V2G-Root) übernimmt und das Ergebnis als `idTag` an CitrineOS übergibt.
-    - Handling von `Authorization`-Requests spezifisch für PnC-Identifikatoren.
-- **Akzeptanzkriterium:** Simulation eines Ladevorgangs ohne App/RFID, nur über Fahrzeug-ID.
+  - Bridge für V2G-Root-Prüfung → `idTag` an CitrineOS.
+- **Akzeptanzkriterium:** Ladevorgang ohne App/RFID nur über Fahrzeug-ID.
+- **Status:** Geplant

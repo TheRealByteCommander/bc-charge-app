@@ -2,7 +2,11 @@ import { OCPP_CHARGING_STATES, OCPP_IDLE_STATES } from './types.mjs';
 
 /**
  * Leitet Idle-Intervalle aus belastbaren OCPP-Ereignissen ab.
- * Kein alleiniger „MeterValue unverändert“-Trigger.
+ *
+ * Idle beginnt nur nach aktivem Laden (Charging/EVConnected) und Wechsel in
+ * SuspendedEV, SuspendedEVSE oder Idle. Konstante MeterValues ohne charging_state
+ * lösen keine Idle-Gebühr aus (siehe docs/dynamic-pricing-engine.md).
+ *
  * @param {import('./types.mjs').SessionPricingEvent[]} events chronologisch
  */
 export function deriveIdleIntervals(events) {

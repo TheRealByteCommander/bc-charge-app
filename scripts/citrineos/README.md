@@ -1,6 +1,10 @@
 # CitrineOS Tarif-Verwaltung
 
-Scripts zum Erstellen und Verwalten von Tarifen in CitrineOS.
+Scripts zum Erstellen und Verwalten von **einfachen Tarifen in CitrineOS (Hasura)** – für Anzeige an Connectors.
+
+> **Hinweis:** Die verbindliche **Abrechnung** läuft über die BC Charge **Dynamic Pricing Engine** (`/api/pricing`, TariffSnapshot pro Session).  
+> `pricePerMin` in CitrineOS ist ein Legacy-Feld zur Anzeige. Idle-Fees in der Endabrechnung werden auf dem **App Server** aus OCPP-Ladezuständen (`SuspendedEV`, `SuspendedEVSE`, `Idle`) berechnet – **nicht** aus konstanten MeterValues.  
+> Siehe [`docs/dynamic-pricing-engine.md`](../../docs/dynamic-pricing-engine.md).
 
 ## Voraussetzungen
 
@@ -86,7 +90,7 @@ Du kannst Tarife auch direkt über die Hasura Console verwalten:
 | `tenantId` | `1` | Standard-Tenant |
 | `currency` | `EUR` | Währung |
 | `pricePerKwh` | `0.45` | 45 Cent pro kWh |
-| `pricePerMin` | `0` | Keine Blockiergebühr |
+| `pricePerMin` | `0` | Legacy-Anzeige; Idle-Abrechnung → App Server (`kind: idle` + OCPP-States) |
 | `pricePerSession` | `0` | Keine Startgebühr |
 | `taxRate` | `0.19` | 19% MwSt (optional) |
 
@@ -157,7 +161,7 @@ query ListTariffs {
 | `tenantId` | Integer | Mandanten-ID (Standard: 1) |
 | `currency` | String | ISO 4217 Währungscode (z.B. "EUR") |
 | `pricePerKwh` | Decimal | Preis pro Kilowattstunde |
-| `pricePerMin` | Decimal | Blockiergebühr pro Minute |
+| `pricePerMin` | Decimal | Legacy Blockiergebühr/Min (Anzeige); Abrechnung siehe Dynamic Pricing Engine |
 | `pricePerSession` | Decimal | Einmalige Startgebühr |
 | `taxRate` | Decimal | Steuersatz (0.19 = 19%) |
 

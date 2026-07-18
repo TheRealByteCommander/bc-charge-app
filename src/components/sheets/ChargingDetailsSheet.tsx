@@ -41,7 +41,9 @@ export function ChargingDetailsSheet({
           )}
           <p className="mt-3 flex items-center gap-2 border-t border-bc-border pt-3 text-xs text-bc-accent">
             <Shield className="h-3.5 w-3.5 shrink-0" />
-            {locale === 'de' ? 'Keine Blockiergebühr bei BC Charge' : 'No idle fee at BC Charge'}
+            {locale === 'de'
+              ? 'Abrechnung nach TariffSnapshot – Details unter Tarife'
+              : 'Billed per TariffSnapshot – see Tariffs for details'}
           </p>
         </div>
         <ChargingEmergencyHelp session={session} />

@@ -115,6 +115,20 @@ npm run dev:all
 
 Einzeln: `npm run dev` + `npm run dev:stripe`
 
+## Preise & Ladeoptimierung (App Server)
+
+Drei getrennte Systeme – nicht verwechseln:
+
+| System | API | Zweck | Doku |
+|--------|-----|-------|------|
+| **Dynamic Pricing Engine** | `/api/pricing` | Abrechnung, TariffSnapshot, Idle-Fees (OCPP-States) | [`docs/dynamic-pricing-engine.md`](docs/dynamic-pricing-engine.md) |
+| **Price-Driven Charging** | `/api/price-optimization` | Ladeleistung nach Day-Ahead-Preisen | [`docs/price-driven-charging.md`](docs/price-driven-charging.md) |
+| **PV-Überschuss** | `/api/pv-surplus` | Ladeleistung nach EMS-Solarüberschuss | [`docs/pv-surplus-charging.md`](docs/pv-surplus-charging.md) |
+
+CitrineOS-Roadmap (DLM, Billing 2.2, …): [`CITRINEOS_EXTENSIONS.md`](CITRINEOS_EXTENSIONS.md)
+
+**CitrineOS Server** (separates Repo [`bc-citrineos`](https://github.com/TheRealByteCommander/bc-citrineos)): OCPP, Hasura, `SetChargingProfile`, MeterValues.
+
 ## Sicherheit & Datenschutz
 
 - **`SECURITY.md`** – Risiken, umgesetzte Maßnahmen, Produktions-Checkliste
