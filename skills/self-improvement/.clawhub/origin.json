@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "registry": "https://clawhub.ai",
+  "slug": "self-improvement",
+  "installedVersion": "1.0.0",
+  "installedAt": 1784720625506,
+  "artifact": {
+    "kind": "archive",
+    "sha256": "6033a85927000746a3fb00e4da85519edc386dc84519d7fffd53f1578b4853ef",
+    "integrity": "sha256-YDOoWScAB0aj+wDk2oVRntw4bchFGdf//VPxV4tIU+8="
+  },
+  "skillFile": {
+    "path": "SKILL.md",
+    "sha256": "cec6d90543ea51c1ae2dfe09b7c0ac640b0a295101d34ba14c9deedc6607ce0c"
+  }
+}

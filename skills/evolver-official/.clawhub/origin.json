@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "registry": "https://clawhub.ai",
+  "slug": "evolver-official",
+  "installedVersion": "1.20.4",
+  "installedAt": 1784720636797,
+  "artifact": {
+    "kind": "archive",
+    "sha256": "94716797aa51b9f98d5c2fb3b2309bb6669b91b9cb6a3504779a989c31a1b2d8",
+    "integrity": "sha256-lHFnl6pRufmNXC+zsjCbtmabkbnLajUEd5qYnDGhstg="
+  },
+  "skillFile": {
+    "path": "SKILL.md",
+    "sha256": "4305aa15a3c11cbb2c5dcf4cdc76d68d12207e13748d00d794e3937004f125df"
+  }
+}

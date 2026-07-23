@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "registry": "https://clawhub.ai",
+  "slug": "ui-ux-pro-max",
+  "installedVersion": "0.1.0",
+  "installedAt": 1784765530357,
+  "artifact": {
+    "kind": "archive",
+    "sha256": "f4bea0ba9241ef7d72456674f3d281ab01ee3dd6d91df3d8bf6fc97ba4b521f0",
+    "integrity": "sha256-9L6gupJB731yRWZ089KBqwHuPdbZHfPYv2/Je6S1IfA="
+  },
+  "skillFile": {
+    "path": "SKILL.md",
+    "sha256": "e3048deafc62fb65192f99e51a48094571de059634b8bb27f50f37af0c43ba59"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "registry": "https://clawhub.ai",
+  "slug": "github-api",
+  "installedVersion": "1.0.7",
+  "installedAt": 1784686504208,
+  "artifact": {
+    "kind": "archive",
+    "sha256": "9a986a80158a287b6368c79a9a595c826fd34e72aca122083cba97d87db470d1",
+    "integrity": "sha256-mphqgBWKKHtjaMeamllcgm/TTnKsoSIIPLqX2H20cNE="
+  },
+  "skillFile": {
+    "path": "SKILL.md",
+    "sha256": "78e71fc76ec37e7472cd0314dc9ea8cd7ac292988c940f46d711658894c9840d"
+  }
+}

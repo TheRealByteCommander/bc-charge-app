@@ -1,0 +1,986 @@
+{
+  "version": 1,
+  "skills": {
+    "github-api": {
+      "version": "1.0.7",
+      "installedAt": 1784686504208,
+      "registry": "https://clawhub.ai",
+      "artifact": {
+        "kind": "archive",
+        "sha256": "9a986a80158a287b6368c79a9a595c826fd34e72aca122083cba97d87db470d1",
+        "integrity": "sha256-mphqgBWKKHtjaMeamllcgm/TTnKsoSIIPLqX2H20cNE="
+      },
+      "skillFile": {
+        "path": "SKILL.md",
+        "sha256": "78e71fc76ec37e7472cd0314dc9ea8cd7ac292988c940f46d711658894c9840d"
+      },
+      "verification": {
+        "schema": "clawhub.skill.verify.v1",
+        "ok": true,
+        "decision": "pass",
+        "reasons": [],
+        "card": {
+          "available": true,
+          "path": "skill-card.md",
+          "url": "https://wry-manatee-359.convex.site/api/v1/skills/github-api/card?ownerHandle=byungkyu&version=1.0.7",
+          "sha256": "a4b5f404fbf11d17c0bab7b100dde08ba92b364edec70985f5b712bfc2f3d340",
+          "size": 2596,
+          "contentType": "text/markdown; charset=utf-8"
+        },
+        "artifact": {
+          "sourceFingerprint": "e40bda9d2662165e1dff65d0465d6cd0ff753a79ec577142dd5058dabc45704f",
+          "bundleFingerprints": [
+            "12088575af1900a16d3485e7014674452e3ef796f727e5c12547f48ddcc7fd08",
+            "72aaa32f77ad0c9fdf65e85faf87df9dff9ad4a979ad2514cdc64fccde85a6a2"
+          ],
+          "files": [
+            {
+              "path": "SKILL.md",
+              "size": 20047,
+              "sha256": "78e71fc76ec37e7472cd0314dc9ea8cd7ac292988c940f46d711658894c9840d",
+              "contentType": "text/markdown"
+            }
+          ]
+        },
+        "provenance": {
+          "source": "unavailable",
+          "reason": "No server-resolved GitHub import provenance is stored for this version."
+        },
+        "security": {
+          "status": "clean",
+          "passed": true,
+          "rawStatus": "clean",
+          "verdict": "benign",
+          "confidence": "high",
+          "summary": "This is a disclosed GitHub integration that uses Maton-managed OAuth/API access and includes appropriate cautions for write actions.",
+          "model": "gpt-5.5",
+          "checkedAt": 1783658723256,
+          "signals": {
+            "staticScan": {
+              "status": "clean",
+              "rawStatus": "clean",
+              "reasonCodes": [],
+              "summary": "No suspicious patterns detected.",
+              "engineVersion": "v2.4.26",
+              "checkedAt": 1782600029256
+            },
+            "virusTotal": {
+              "status": "clean",
+              "rawStatus": "clean",
+              "verdict": null,
+              "analysis": null,
+              "source": "engines",
+              "scanner": null,
+              "engineStats": {
+                "harmless": 0,
+                "malicious": 0,
+                "suspicious": 0,
+                "undetected": 64
+              },
+              "checkedAt": 1782600107105
+            },
+            "skillSpector": {
+              "status": "clean",
+              "rawStatus": "clean",
+              "score": 0,
+              "severity": "LOW",
+              "recommendation": "SAFE",
+              "issueCount": 0,
+              "scannerVersion": "2.3.5",
+              "summary": null,
+              "error": null,
+              "checkedAt": 1783658688741
+            },
+            "dependencyRegistry": null
+          }
+        },
+        "signature": {
+          "status": "unsigned"
+        }
+      }
+    },
+    "openclaw-backup": {
+      "version": "1.0.0",
+      "installedAt": 1784720387305,
+      "registry": "https://clawhub.ai",
+      "artifact": {
+        "kind": "archive",
+        "sha256": "dfe31b8845c6d3f72ed4fd8df33ccab3792280f9aa6461b9ef886abec61d6366",
+        "integrity": "sha256-3+MbiEXG0/cu1P2N8zzKs3kigPmqZGG574hqvsYdY2Y="
+      },
+      "skillFile": {
+        "path": "SKILL.md",
+        "sha256": "7c2f64ebc1c36f34b7b03f125b0f12425839e7ebd7a622acb12616857fa01baa"
+      },
+      "verification": {
+        "schema": "clawhub.skill.verify.v1",
+        "ok": true,
+        "decision": "pass",
+        "reasons": [],
+        "card": {
+          "available": true,
+          "path": "skill-card.md",
+          "url": "https://wry-manatee-359.convex.site/api/v1/skills/openclaw-backup/card?ownerHandle=alex3alex&version=1.0.0",
+          "sha256": "89490153a86c300cfad26a17f89c089290e462835bf9333df033e6a3f0ddae86",
+          "size": 2194,
+          "contentType": "text/markdown; charset=utf-8"
+        },
+        "artifact": {
+          "sourceFingerprint": "70b35095eea7329652e1c13fd552116b4ed7c89f664cabc04ce98d35cf6faae2",
+          "bundleFingerprints": [
+            "50c908bf344dccd87175780c02e8ff904cf8fe38ebf3ff63814e4b0aae1fd7e9",
+            "9d15426509dbb6a9d45140d402348aa7d9b38dbb0213250b7be9e0ddb6846f6d"
+          ],
+          "files": [
+            {
+              "path": "SKILL.md",
+              "size": 1578,
+              "sha256": "7c2f64ebc1c36f34b7b03f125b0f12425839e7ebd7a622acb12616857fa01baa",
+              "contentType": "text/markdown"
+            },
+            {
+              "path": "references/restore.md",
+              "size": 879,
+              "sha256": "5e710df72ead6d153cf5648a034f263a84d0703eb89bc76708d47c180f7d47bb",
+              "contentType": "text/markdown"
+            },
+            {
+              "path": "scripts/backup.sh",
+              "size": 804,
+              "sha256": "8c38584aed2567e5a1e574eddf2c211ca96ec0ca92774560bff3b5231f4513f5",
+              "contentType": "application/x-sh"
+            }
+          ]
+        },
+        "provenance": {
+          "source": "unavailable",
+          "reason": "No server-resolved GitHub import provenance is stored for this version."
+        },
+        "security": {
+          "status": "clean",
+          "passed": true,
+          "rawStatus": "clean",
+          "verdict": "benign",
+          "confidence": "high",
+          "summary": "This skill performs a local OpenClaw backup and restore as advertised, but users should handle the archives and restore commands carefully because they contain secrets and can replace current state.",
+          "model": "gpt-5.5",
+          "checkedAt": 1783658891598,
+          "signals": {
+            "staticScan": {
+              "status": "clean",
+              "rawStatus": "clean",
+              "reasonCodes": [],
+              "summary": "No suspicious patterns detected.",
+              "engineVersion": "v2.4.5",
+              "checkedAt": 1777525033736
+            },
+            "virusTotal": {
+              "status": "clean",
+              "rawStatus": "clean",
+              "verdict": "benign",
+              "analysis": "Type: OpenClaw Skill\nName: openclaw-backup\nVersion: 1.0.0\n\nThis skill is designed to backup and restore OpenClaw data, including sensitive credentials and configuration. The `scripts/backup.sh` script archives the `~/.openclaw` directory locally, excluding logs and cache, and implements a 7-day rotation policy. The `SKILL.md` and `references/restore.md` files provide clear instructions for backup, restore, and setting up a daily cron job. There is no evidence of data exfiltration, malicious execution, obfuscation, or prompt injection attempts against the agent beyond legitimate instructions to perform the backup task.",
+              "source": "palm",
+              "scanner": "code_insight",
+              "engineStats": {
+                "harmless": 0,
+                "malicious": 0,
+                "suspicious": 0,
+                "undetected": 64
+              },
+              "checkedAt": 1779162063488
+            },
+            "skillSpector": {
+              "status": "suspicious",
+              "rawStatus": "suspicious",
+              "score": 96,
+              "severity": "CRITICAL",
+              "recommendation": "DO_NOT_INSTALL",
+              "issueCount": 7,
+              "scannerVersion": "2.3.5",
+              "summary": null,
+              "error": null,
+              "checkedAt": 1783658872878
+            },
+            "dependencyRegistry": null
+          }
+        },
+        "signature": {
+          "status": "unsigned"
+        }
+      }
+    },
+    "self-improvement": {
+      "version": "1.0.0",
+      "installedAt": 1784720625506,
+      "registry": "https://clawhub.ai",
+      "artifact": {
+        "kind": "archive",
+        "sha256": "6033a85927000746a3fb00e4da85519edc386dc84519d7fffd53f1578b4853ef",
+        "integrity": "sha256-YDOoWScAB0aj+wDk2oVRntw4bchFGdf//VPxV4tIU+8="
+      },
+      "skillFile": {
+        "path": "SKILL.md",
+        "sha256": "cec6d90543ea51c1ae2dfe09b7c0ac640b0a295101d34ba14c9deedc6607ce0c"
+      },
+      "verification": {
+        "schema": "clawhub.skill.verify.v1",
+        "ok": false,
+        "decision": "fail",
+        "reasons": [
+          "security.status_not_clean"
+        ],
+        "card": {
+          "available": true,
+          "path": "skill-card.md",
+          "url": "https://wry-manatee-359.convex.site/api/v1/skills/self-improvement/card?ownerHandle=mike5230odense&version=1.0.0",
+          "sha256": "289314bc07329716737c1a55aa869f427f759bd40ea80b71b568791d44cfac40",
+          "size": 2558,
+          "contentType": "text/markdown; charset=utf-8"
+        },
+        "artifact": {
+          "sourceFingerprint": "d95c0077de4a986426ee48c7a223d183051bda34760ed08f5704d364c8152831",
+          "bundleFingerprints": [
+            "31189a47a456241feb3aafa496032c10578dec2582d68f6d25088294c7148d20"
+          ],
+          "files": [
+            {
+              "path": "_meta.json",
+              "size": 140,
+              "sha256": "eb63ae483ef65c959d442f3520db8c9f9f9f87ad1d38961769726e3f3d387e1b",
+              "contentType": "application/json"
+            },
+            {
+              "path": "hooks/openclaw/handler.js",
+              "size": 1620,
+              "sha256": "19f21bdf74b9be3aa8ba2514dd0c727c841f799f948bb3c945ecc28b90be8b86",
+              "contentType": "application/x-javascript"
+            },
+            {
+              "path": "hooks/openclaw/HOOK.md",
+              "size": 589,
+              "sha256": "13294242f2fac134af2dcfcda7c273be98e57d26192989afb7a9ebcb5a1eb224",
+              "contentType": "text/markdown"
+            },
+            {
+              "path": "hooks/openclaw/handler.ts",
+              "size": 1872,
+              "sha256": "a2d4452b135622a7a3a225722cf9422ea85a8121e49607b386282425eb1d844d",
+              "contentType": "text/vnd.trolltech.linguist"
+            },
+            {
+              "path": "SKILL.md",
+              "size": 19704,
+              "sha256": "cec6d90543ea51c1ae2dfe09b7c0ac640b0a295101d34ba14c9deedc6607ce0c",
+              "contentType": "text/markdown"
+            },
+            {
+              "path": "assets/LEARNINGS.md",
+              "size": 1152,
+              "sha256": "33b0de6f4243ea31d913fab017ded852f13443fd1eb84c0983a670334260ff46",
+              "contentType": "text/markdown"
+            },
+            {
+              "path": "assets/SKILL-TEMPLATE.md",
+              "size": 3407,
+              "sha256": "3ee008f80d53e0e576f7e747ac4c4e040ff659f02d3f5689a95524a3696e4881",
+              "contentType": "text/markdown"
+            },
+            {
+              "path": "scripts/activator.sh",
+              "size": 680,
+              "sha256": "a751d91466c8c966f01ac32795871ceff0d1e177c7c186ca4201f962a5cc9be4",
+              "contentType": "application/x-shellscript"
+            },
+            {
+              "path": "scripts/error-detector.sh",
+              "size": 1317,
+              "sha256": "74f82bfd29bcc3615d4c9df0962f7d5e42af75431c029c0e14c2f6127c4787ba",
+              "contentType": "application/x-shellscript"
+            },
+            {
+              "path": "scripts/extract-skill.sh",
+              "size": 5293,
+              "sha256": "d9af3d6f2cde0eeb3c0a85b898828656c1c6d9d51f61ba38f9801030424f5147",
+              "contentType": "application/x-shellscript"
+            },
+            {
+              "path": "references/openclaw-integration.md",
+              "size": 5638,
+              "sha256": "d7d426beb09e10016def1a45fc901c737fb3abcd101252ce81a9c32e69a78257",
+              "contentType": "text/markdown"
+            },
+            {
+              "path": "references/hooks-setup.md",
+              "size": 4867,
+              "sha256": "838ed1620db4bbe55fc281a61d6dfb1709437d6366ddb3006b70a04109695ab7",
+              "contentType": "text/markdown"
+            },
+            {
+              "path": "references/examples.md",
+              "size": 8291,
+              "sha256": "c11e38794d78cfa1ba633d14232ec7e9808c14696e96a7bd9b8f4fe178f10451",
+              "contentType": "text/markdown"
+            },
+            {
+              "path": ".learnings/ERRORS.md",
+              "size": 75,
+              "sha256": "731f4a26fee7074d11e999920e5c3ca63b0e025b75a4d9966429ee88a2cb5988",
+              "contentType": "text/markdown"
+            },
+            {
+              "path": ".learnings/LEARNINGS.md",
+              "size": 99,
+              "sha256": "f5c1302498cad158c357426ac2aa73f6f05fda8b9103d47acb34d4851b76391c",
+              "contentType": "text/markdown"
+            },
+            {
+              "path": ".learnings/FEATURE_REQUESTS.md",
+              "size": 84,
+              "sha256": "a6291573936034efaad57b43b6f57bdb35ed627f01ce9309b2c781da63563c37",
+              "contentType": "text/markdown"
+            }
+          ]
+        },
+        "provenance": {
+          "source": "unavailable",
+          "reason": "No server-resolved GitHub import provenance is stored for this version."
+        },
+        "security": {
+          "status": "suspicious",
+          "passed": false,
+          "rawStatus": "suspicious",
+          "verdict": "suspicious",
+          "confidence": "high",
+          "summary": "This skill is purpose-aligned but needs Review because it encourages persistent memory logging and broad optional hooks without enough privacy scoping or redaction guidance.",
+          "model": "gpt-5.5",
+          "checkedAt": 1779972933473,
+          "signals": {
+            "staticScan": {
+              "status": "clean",
+              "rawStatus": "clean",
+              "reasonCodes": [],
+              "summary": "No suspicious patterns detected.",
+              "engineVersion": "v2.4.5",
+              "checkedAt": 1777525526233
+            },
+            "virusTotal": {
+              "status": "clean",
+              "rawStatus": "clean",
+              "verdict": null,
+              "analysis": null,
+              "source": "engines",
+              "scanner": null,
+              "engineStats": {
+                "harmless": 0,
+                "malicious": 0,
+                "suspicious": 0,
+                "undetected": 65
+              },
+              "checkedAt": 1780089736704
+            },
+            "skillSpector": {
+              "status": "suspicious",
+              "rawStatus": "suspicious",
+              "score": 100,
+              "severity": "CRITICAL",
+              "recommendation": "DO_NOT_INSTALL",
+              "issueCount": 13,
+              "scannerVersion": "2.0.0",
+              "summary": null,
+              "error": null,
+              "checkedAt": 1779972877032
+            },
+            "dependencyRegistry": null
+          }
+        },
+        "signature": {
+          "status": "unsigned"
+        }
+      }
+    },
+    "evolver-official": {
+      "version": "1.20.4",
+      "installedAt": 1784720636797,
+      "registry": "https://clawhub.ai",
+      "artifact": {
+        "kind": "archive",
+        "sha256": "94716797aa51b9f98d5c2fb3b2309bb6669b91b9cb6a3504779a989c31a1b2d8",
+        "integrity": "sha256-lHFnl6pRufmNXC+zsjCbtmabkbnLajUEd5qYnDGhstg="
+      },
+      "skillFile": {
+        "path": "SKILL.md",
+        "sha256": "4305aa15a3c11cbb2c5dcf4cdc76d68d12207e13748d00d794e3937004f125df"
+      },
+      "verification": {
+        "schema": "clawhub.skill.verify.v1",
+        "ok": false,
+        "decision": "fail",
+        "reasons": [
+          "security.status_not_clean"
+        ],
+        "card": {
+          "available": true,
+          "path": "skill-card.md",
+          "url": "https://wry-manatee-359.convex.site/api/v1/skills/evolver-official/card?ownerHandle=toller892&version=1.20.4",
+          "sha256": "29ead3d9f54bd4326027bba5332deea887258a6fc8b12055a6c246dc86263eac",
+          "size": 2547,
+          "contentType": "text/markdown; charset=utf-8"
+        },
+        "artifact": {
+          "sourceFingerprint": "c3f25c499c9818746aa1a3b84aa93194a20916506458660d5586abc0db18fa9f",
+          "bundleFingerprints": [
+            "b17742c1b35d04a5fd9083ac132dfe78ee843a7b9d3a5a299f2f39a69a90a22a"
+          ],
+          "files": [
+            {
+              "path": "SKILL.md",
+              "size": 4255,
+              "sha256": "4305aa15a3c11cbb2c5dcf4cdc76d68d12207e13748d00d794e3937004f125df",
+              "contentType": "text/markdown"
+            },
+            {
+              "path": "index.js",
+              "size": 11120,
+              "sha256": "cb6246d753e7c8b3f615d2becdd06c59825a73d9db15423fd2a7a206e21ddee6",
+              "contentType": "application/javascript"
+            },
+            {
+              "path": "package.json",
+              "size": 746,
+              "sha256": "21ba5a5ce50e980eabfae49029e3c36720a694671e0794c424796974ec101983",
+              "contentType": "application/json"
+            },
+            {
+              "path": "README.md",
+              "size": 9830,
+              "sha256": "e508d9ee85366bfd97490155d4fd87aa3d87cfb53d3670cd6435b00ef1322300",
+              "contentType": "text/markdown"
+            },
+            {
+              "path": "README.zh-CN.md",
+              "size": 9139,
+              "sha256": "4ca8ce75090dbacffb4fe83a084c2044369ea7b2006da34a216d09b8da915493",
+              "contentType": "text/markdown"
+            },
+            {
+              "path": "_meta.json",
+              "size": 127,
+              "sha256": "0efd581a9ed54181325dd0c530305f82e26d9ff4b70ac2d814fa4deac6a8024f",
+              "contentType": "application/json"
+            },
+            {
+              "path": "CONTRIBUTING.md",
+              "size": 327,
+              "sha256": "e27d504be9801f1c8ffc7f5d8fdfcf051ca73f8232abe89a53da71f27baf6311",
+              "contentType": "text/markdown"
+            }
+          ]
+        },
+        "provenance": {
+          "source": "unavailable",
+          "reason": "No server-resolved GitHub import provenance is stored for this version."
+        },
+        "security": {
+          "status": "suspicious",
+          "passed": false,
+          "rawStatus": "suspicious",
+          "verdict": "suspicious",
+          "confidence": "high",
+          "summary": "This self-evolution skill is not clearly malicious, but it can run persistently and change agent code or memory with weak default review controls and conflicting documentation.",
+          "model": "gpt-5.5",
+          "checkedAt": 1779933134233,
+          "signals": {
+            "staticScan": {
+              "status": "suspicious",
+              "rawStatus": "suspicious",
+              "reasonCodes": [
+                "suspicious.dangerous_exec"
+              ],
+              "summary": "Detected: suspicious.dangerous_exec",
+              "engineVersion": "v2.4.23",
+              "checkedAt": 1778394895290
+            },
+            "virusTotal": {
+              "status": "clean",
+              "rawStatus": "clean",
+              "verdict": null,
+              "analysis": null,
+              "source": "engines",
+              "scanner": null,
+              "engineStats": {
+                "harmless": 0,
+                "malicious": 0,
+                "suspicious": 0,
+                "undetected": 66
+              },
+              "checkedAt": 1780090514578
+            },
+            "skillSpector": {
+              "status": "suspicious",
+              "rawStatus": "suspicious",
+              "score": 84,
+              "severity": "CRITICAL",
+              "recommendation": "DO_NOT_INSTALL",
+              "issueCount": 6,
+              "scannerVersion": "2.0.0",
+              "summary": null,
+              "error": null,
+              "checkedAt": 1779933074819
+            },
+            "dependencyRegistry": null
+          }
+        },
+        "signature": {
+          "status": "unsigned"
+        }
+      }
+    },
+    "ui-ux-pro-max": {
+      "version": "0.1.0",
+      "installedAt": 1784765530357,
+      "registry": "https://clawhub.ai",
+      "artifact": {
+        "kind": "archive",
+        "sha256": "f4bea0ba9241ef7d72456674f3d281ab01ee3dd6d91df3d8bf6fc97ba4b521f0",
+        "integrity": "sha256-9L6gupJB731yRWZ089KBqwHuPdbZHfPYv2/Je6S1IfA="
+      },
+      "skillFile": {
+        "path": "SKILL.md",
+        "sha256": "e3048deafc62fb65192f99e51a48094571de059634b8bb27f50f37af0c43ba59"
+      },
+      "verification": {
+        "schema": "clawhub.skill.verify.v1",
+        "ok": true,
+        "decision": "pass",
+        "reasons": [],
+        "card": {
+          "available": true,
+          "path": "skill-card.md",
+          "url": "https://wry-manatee-359.convex.site/api/v1/skills/ui-ux-pro-max/card?ownerHandle=xobi667&version=0.1.0",
+          "sha256": "6b33b0879e8696a057f081f9f5cea1e95db7849b765cc9017c56e36be967ff6d",
+          "size": 2415,
+          "contentType": "text/markdown; charset=utf-8"
+        },
+        "artifact": {
+          "sourceFingerprint": "7f3bfbefcc71ea813bbbc32506b48dba7785de484f79794aae17eba39d94181c",
+          "bundleFingerprints": [
+            "14bff3a0adfb4d799887815c946af59e8d3309a00c7083f223cf2db88804971b",
+            "6e7ce133b37fbc8c8238fdf6df1db97c7ef98edce6cdeb72bef8f6890bfe5d1b"
+          ],
+          "files": [
+            {
+              "path": "SKILL.md",
+              "size": 2635,
+              "sha256": "e3048deafc62fb65192f99e51a48094571de059634b8bb27f50f37af0c43ba59",
+              "contentType": "text/markdown"
+            },
+            {
+              "path": "assets/data/charts.csv",
+              "size": 7654,
+              "sha256": "b754c0efffcf54cb889114a9314be1d5af6ceebe65c4c436d713b52018e752c9",
+              "contentType": "text/csv"
+            },
+            {
+              "path": "assets/data/colors.csv",
+              "size": 9713,
+              "sha256": "4cc0df2785f340b8bd0ace50bd4068dc13a7c4c6fa4d9d2723271244ce904614",
+              "contentType": "text/csv"
+            },
+            {
+              "path": "assets/data/icons.csv",
+              "size": 13384,
+              "sha256": "351fe61ba45b8146c66de6ea7d67297654639d79a94f537b4d0bad570058c28f",
+              "contentType": "text/csv"
+            },
+            {
+              "path": "assets/data/landing.csv",
+              "size": 14390,
+              "sha256": "010e1e46db271b94e0af6f18973bea86ddba62feeccd62aeeaa6ed40e2ae2db1",
+              "contentType": "text/csv"
+            },
+            {
+              "path": "assets/data/products.csv",
+              "size": 29790,
+              "sha256": "5359e3037dcb84e99c792ea13dd44f5b78ab6a53557afb309cf19140512aaf5b",
+              "contentType": "text/csv"
+            },
+            {
+              "path": "assets/data/react-performance.csv",
+              "size": 14822,
+              "sha256": "904c8afcda229629545912dde0e8ac37503757131f0169f80b016f1f58c4fd3f",
+              "contentType": "text/csv"
+            },
+            {
+              "path": "assets/data/stacks/astro.csv",
+              "size": 11868,
+              "sha256": "ad18dae3ab6d148d37d144592df80dc1825b6c9e86d9d2d68fdda77434206a37",
+              "contentType": "text/csv"
+            },
+            {
+              "path": "assets/data/stacks/flutter.csv",
+              "size": 10469,
+              "sha256": "e470e6bc2bcd8562667cc764d1e1afb0be0a30ca4dc9ec12fa18b19d46f156bd",
+              "contentType": "text/csv"
+            },
+            {
+              "path": "assets/data/stacks/html-tailwind.csv",
+              "size": 11361,
+              "sha256": "1f004891dd189f6bc2a7717401e3100244326e7e2f3963a79bf7b2349d85e091",
+              "contentType": "text/csv"
+            },
+            {
+              "path": "assets/data/stacks/jetpack-compose.csv",
+              "size": 8195,
+              "sha256": "6c8fd4b0391c342c12b0af15610cd5becbeccaef0bbe8dcfc01d928c3195d93e",
+              "contentType": "text/csv"
+            },
+            {
+              "path": "assets/data/stacks/nextjs.csv",
+              "size": 12546,
+              "sha256": "06a8e8c13bd44696c6ebb4cb6c4d8dea440e3de8cce77616512529ed29258f0c",
+              "contentType": "text/csv"
+            },
+            {
+              "path": "assets/data/stacks/nuxt-ui.csv",
+              "size": 14010,
+              "sha256": "05d6e74501b2b6a636faed32450622759f49a5bcafad971f5f4e7eba0eb7be71",
+              "contentType": "text/csv"
+            },
+            {
+              "path": "assets/data/stacks/nuxtjs.csv",
+              "size": 16539,
+              "sha256": "f7a3f2d9542856d00199f85c6c023b7c284cc698e2e6e12d61afce2edacb24d6",
+              "contentType": "text/csv"
+            },
+            {
+              "path": "assets/data/stacks/react-native.csv",
+              "size": 10035,
+              "sha256": "a08ca77fcf6b6d9531982dce465366296013bfcf12d2938ac72ad57cf0c4f085",
+              "contentType": "text/csv"
+            },
+            {
+              "path": "assets/data/stacks/react.csv",
+              "size": 13016,
+              "sha256": "b6e3eb0e4c9c01bd00ffb951d5ca224a19d488b4544c75436f48cf92ff12bf45",
+              "contentType": "text/csv"
+            },
+            {
+              "path": "assets/data/stacks/shadcn.csv",
+              "size": 15921,
+              "sha256": "395c2e415ef6f48a474acccdc8eb2c7258a6ed751a5037ba171a2d8823e02ded",
+              "contentType": "text/csv"
+            },
+            {
+              "path": "assets/data/stacks/svelte.csv",
+              "size": 11063,
+              "sha256": "bc8d158994a8bdf412830a9dd5e5a5534edd2f367a6e50e0ebd4d76f592dfa3f",
+              "contentType": "text/csv"
+            },
+            {
+              "path": "assets/data/stacks/swiftui.csv",
+              "size": 10872,
+              "sha256": "e87cb9eee208bb753bdab96d4a261c7f830c4317ee90ec098316b248fc32be85",
+              "contentType": "text/csv"
+            },
+            {
+              "path": "assets/data/stacks/vue.csv",
+              "size": 11056,
+              "sha256": "9b793c3f4eec85f77a758c09322f2b62f3b3ca549bb713ccf0849ef885934395",
+              "contentType": "text/csv"
+            },
+            {
+              "path": "assets/data/styles.csv",
+              "size": 96553,
+              "sha256": "ad3c3236134d833bda01a2faf31ddeaaa1dbd5005fa430dec571fa91b26e5fea",
+              "contentType": "text/csv"
+            },
+            {
+              "path": "assets/data/typography.csv",
+              "size": 31877,
+              "sha256": "64695e05ac335ba534aff396c4ba9241c642f80ea53b424251d2669b71c4772b",
+              "contentType": "text/csv"
+            },
+            {
+              "path": "assets/data/ui-reasoning.csv",
+              "size": 31071,
+              "sha256": "58fc52fff69f62709f8c7dd460de6f6693699ea820f24287f3301a427c2b554e",
+              "contentType": "text/csv"
+            },
+            {
+              "path": "assets/data/ux-guidelines.csv",
+              "size": 18766,
+              "sha256": "1870ee048f2a2bdd60709f8f7adf7f3b6dcad560bc005c8b2915a8ac8639820d",
+              "contentType": "text/csv"
+            },
+            {
+              "path": "assets/data/web-interface.csv",
+              "size": 7472,
+              "sha256": "10bfc24e09a6a15db8309e6ef9b6881e1d4af97dffb7c99418aefb8e30df7d54",
+              "contentType": "text/csv"
+            },
+            {
+              "path": "data/charts.csv",
+              "size": 7654,
+              "sha256": "b754c0efffcf54cb889114a9314be1d5af6ceebe65c4c436d713b52018e752c9",
+              "contentType": "text/csv"
+            },
+            {
+              "path": "data/colors.csv",
+              "size": 9713,
+              "sha256": "4cc0df2785f340b8bd0ace50bd4068dc13a7c4c6fa4d9d2723271244ce904614",
+              "contentType": "text/csv"
+            },
+            {
+              "path": "data/icons.csv",
+              "size": 13384,
+              "sha256": "351fe61ba45b8146c66de6ea7d67297654639d79a94f537b4d0bad570058c28f",
+              "contentType": "text/csv"
+            },
+            {
+              "path": "data/landing.csv",
+              "size": 14390,
+              "sha256": "010e1e46db271b94e0af6f18973bea86ddba62feeccd62aeeaa6ed40e2ae2db1",
+              "contentType": "text/csv"
+            },
+            {
+              "path": "data/products.csv",
+              "size": 29790,
+              "sha256": "5359e3037dcb84e99c792ea13dd44f5b78ab6a53557afb309cf19140512aaf5b",
+              "contentType": "text/csv"
+            },
+            {
+              "path": "data/react-performance.csv",
+              "size": 14822,
+              "sha256": "904c8afcda229629545912dde0e8ac37503757131f0169f80b016f1f58c4fd3f",
+              "contentType": "text/csv"
+            },
+            {
+              "path": "data/stacks/astro.csv",
+              "size": 11868,
+              "sha256": "ad18dae3ab6d148d37d144592df80dc1825b6c9e86d9d2d68fdda77434206a37",
+              "contentType": "text/csv"
+            },
+            {
+              "path": "data/stacks/flutter.csv",
+              "size": 10469,
+              "sha256": "e470e6bc2bcd8562667cc764d1e1afb0be0a30ca4dc9ec12fa18b19d46f156bd",
+              "contentType": "text/csv"
+            },
+            {
+              "path": "data/stacks/html-tailwind.csv",
+              "size": 11361,
+              "sha256": "1f004891dd189f6bc2a7717401e3100244326e7e2f3963a79bf7b2349d85e091",
+              "contentType": "text/csv"
+            },
+            {
+              "path": "data/stacks/jetpack-compose.csv",
+              "size": 8195,
+              "sha256": "6c8fd4b0391c342c12b0af15610cd5becbeccaef0bbe8dcfc01d928c3195d93e",
+              "contentType": "text/csv"
+            },
+            {
+              "path": "data/stacks/nextjs.csv",
+              "size": 12546,
+              "sha256": "06a8e8c13bd44696c6ebb4cb6c4d8dea440e3de8cce77616512529ed29258f0c",
+              "contentType": "text/csv"
+            },
+            {
+              "path": "data/stacks/nuxt-ui.csv",
+              "size": 14010,
+              "sha256": "05d6e74501b2b6a636faed32450622759f49a5bcafad971f5f4e7eba0eb7be71",
+              "contentType": "text/csv"
+            },
+            {
+              "path": "data/stacks/nuxtjs.csv",
+              "size": 16539,
+              "sha256": "f7a3f2d9542856d00199f85c6c023b7c284cc698e2e6e12d61afce2edacb24d6",
+              "contentType": "text/csv"
+            },
+            {
+              "path": "data/stacks/react-native.csv",
+              "size": 10035,
+              "sha256": "a08ca77fcf6b6d9531982dce465366296013bfcf12d2938ac72ad57cf0c4f085",
+              "contentType": "text/csv"
+            },
+            {
+              "path": "data/stacks/react.csv",
+              "size": 13016,
+              "sha256": "b6e3eb0e4c9c01bd00ffb951d5ca224a19d488b4544c75436f48cf92ff12bf45",
+              "contentType": "text/csv"
+            },
+            {
+              "path": "data/stacks/shadcn.csv",
+              "size": 15921,
+              "sha256": "395c2e415ef6f48a474acccdc8eb2c7258a6ed751a5037ba171a2d8823e02ded",
+              "contentType": "text/csv"
+            },
+            {
+              "path": "data/stacks/svelte.csv",
+              "size": 11063,
+              "sha256": "bc8d158994a8bdf412830a9dd5e5a5534edd2f367a6e50e0ebd4d76f592dfa3f",
+              "contentType": "text/csv"
+            },
+            {
+              "path": "data/stacks/swiftui.csv",
+              "size": 10872,
+              "sha256": "e87cb9eee208bb753bdab96d4a261c7f830c4317ee90ec098316b248fc32be85",
+              "contentType": "text/csv"
+            },
+            {
+              "path": "data/stacks/vue.csv",
+              "size": 11056,
+              "sha256": "9b793c3f4eec85f77a758c09322f2b62f3b3ca549bb713ccf0849ef885934395",
+              "contentType": "text/csv"
+            },
+            {
+              "path": "data/styles.csv",
+              "size": 96553,
+              "sha256": "ad3c3236134d833bda01a2faf31ddeaaa1dbd5005fa430dec571fa91b26e5fea",
+              "contentType": "text/csv"
+            },
+            {
+              "path": "data/typography.csv",
+              "size": 31877,
+              "sha256": "64695e05ac335ba534aff396c4ba9241c642f80ea53b424251d2669b71c4772b",
+              "contentType": "text/csv"
+            },
+            {
+              "path": "data/ui-reasoning.csv",
+              "size": 31071,
+              "sha256": "58fc52fff69f62709f8c7dd460de6f6693699ea820f24287f3301a427c2b554e",
+              "contentType": "text/csv"
+            },
+            {
+              "path": "data/ux-guidelines.csv",
+              "size": 18766,
+              "sha256": "1870ee048f2a2bdd60709f8f7adf7f3b6dcad560bc005c8b2915a8ac8639820d",
+              "contentType": "text/csv"
+            },
+            {
+              "path": "data/web-interface.csv",
+              "size": 7472,
+              "sha256": "10bfc24e09a6a15db8309e6ef9b6881e1d4af97dffb7c99418aefb8e30df7d54",
+              "contentType": "text/csv"
+            },
+            {
+              "path": "references/upstream-README.md",
+              "size": 23615,
+              "sha256": "b8cca8dbb183bcf81c03a66a7ca5ad8b7259cd38bee2232cabb65c1b4acf435b",
+              "contentType": "text/markdown"
+            },
+            {
+              "path": "references/upstream-skill-content.md",
+              "size": 10051,
+              "sha256": "4e495d54b006e2132248f21a7886e8c5400a2d09cddf478c0525582519a5ad3b",
+              "contentType": "text/markdown"
+            },
+            {
+              "path": "scripts/__init__.py",
+              "size": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "contentType": "text/plain"
+            },
+            {
+              "path": "scripts/core.py",
+              "size": 10227,
+              "sha256": "5459d1f04eea03dfb913742d0c03edc5065ac67f6227e4807fa87699662588cb",
+              "contentType": "text/plain"
+            },
+            {
+              "path": "scripts/design_system.py",
+              "size": 43778,
+              "sha256": "1f8d1961c9166fe4772522d6458f6a1ec13a7c00ebfd5effa41c47e1c7cc9e7a",
+              "contentType": "text/plain"
+            },
+            {
+              "path": "scripts/search.py",
+              "size": 5383,
+              "sha256": "8ef258d6aed922f4b813b5ac21e8f484dec71fede9409f949224d75adbd82df5",
+              "contentType": "text/plain"
+            }
+          ]
+        },
+        "provenance": {
+          "source": "unavailable",
+          "reason": "No server-resolved GitHub import provenance is stored for this version."
+        },
+        "security": {
+          "status": "clean",
+          "passed": true,
+          "rawStatus": "clean",
+          "verdict": "benign",
+          "confidence": "high",
+          "summary": "This skill provides UI/UX guidance and an optional local design-system file generator, with no evidence of exfiltration, hidden persistence, or malicious behavior.",
+          "model": "gpt-5.5",
+          "checkedAt": 1783649141004,
+          "signals": {
+            "staticScan": {
+              "status": "clean",
+              "rawStatus": "clean",
+              "reasonCodes": [],
+              "summary": "No suspicious patterns detected.",
+              "engineVersion": "v2.4.5",
+              "checkedAt": 1777524923558
+            },
+            "virusTotal": {
+              "status": "clean",
+              "rawStatus": "clean",
+              "verdict": "benign",
+              "analysis": "Type: OpenClaw Skill\nName: ui-ux-pro-max\nVersion: 0.1.0\n\nThe skill bundle is designed for UI/UX design intelligence and implementation guidance. The Python scripts (`core.py`, `design_system.py`, `search.py`) perform text searches on bundled CSV data and generate structured markdown design system files. While the `design_system.py` script can write files (`MASTER.md`, `pages/*.md`) to the current working directory or a specified output directory, this functionality is aligned with the stated purpose of 'persisting design system' and does not exhibit path traversal vulnerabilities due to `pathlib.Path` usage and basic sanitization. No evidence of data exfiltration, malicious execution, persistence, or obfuscation was found. Markdown instructions in `SKILL.md` and `references/upstream-skill-content.md` guide the AI agent to use the Python scripts for their intended purpose without attempting to subvert the agent's behavior.",
+              "source": "palm",
+              "scanner": "code_insight",
+              "engineStats": {
+                "harmless": 0,
+                "malicious": 0,
+                "suspicious": 0,
+                "undetected": 64
+              },
+              "checkedAt": 1779160217405
+            },
+            "skillSpector": {
+              "status": "suspicious",
+              "rawStatus": "suspicious",
+              "score": 61,
+              "severity": "HIGH",
+              "recommendation": "DO_NOT_INSTALL",
+              "issueCount": 7,
+              "scannerVersion": "2.3.5",
+              "summary": null,
+              "error": null,
+              "checkedAt": 1783649077287
+            },
+            "dependencyRegistry": null
+          }
+        },
+        "signature": {
+          "status": "unsigned"
+        }
+      }
+    },
+    "@seanford/coding-agent": {
+      "version": "1.0.0",
+      "installedAt": 1784766523700,
+      "ownerHandle": "seanford"
+    },
+    "@steipete/github": {
+      "version": "1.0.0",
+      "installedAt": 1784766543935,
+      "ownerHandle": "steipete"
+    },
+    "@wpank/code-review": {
+      "version": "1.0.0",
+      "installedAt": 1784766552506,
+      "ownerHandle": "wpank"
+    },
+    "test-generator": {
+      "version": "2.0.1",
+      "installedAt": 1784766557223,
+      "ownerHandle": "ckchzh"
+    },
+    "mcp-builder": {
+      "version": "1.1.0",
+      "installedAt": 1784766561388,
+      "ownerHandle": "paudyyin"
+    }
+  }
+}
