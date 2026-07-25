@@ -110,6 +110,23 @@ Session-Integration: `POST /api/sessions` ruft `attachTariffSnapshotToSession()`
 
 Beide können parallel existieren; die Abrechnung folgt dem **TariffSnapshot** der Pricing Engine.
 
+## Monetization-Module (integriert aus Prototype)
+
+| Modul (Quelle) | App-Server-Pfad | API |
+|----------------|-----------------|-----|
+| `pricing-engine.ts` | `pricingEngine.mjs` | `POST /api/pricing/calculate-session` |
+| `idle-timer-service.ts` | `idleTimerService.mjs` | `POST /api/pricing/idle/track`, `/idle/evaluate` |
+| `billing-audit-logger.ts` | `billingAuditLogger.mjs` | `GET /api/pricing/audit/session/:id` |
+| `revenue-share-manager.ts` | `revenueShareManager.mjs` | `POST /api/pricing/revenue-share/*` |
+
+Anpassungen gegenüber dem Prototype:
+- Cent-sichere `money.mjs`-Arithmetik statt Floating-Point
+- Idle nur über OCPP-`charging_state` (nicht MeterValue-Heuristik)
+- Audit in DB `billing_audit_log` mit HMAC-SHA256 (kein lokaler OpenClaw-Pfad)
+- Revenue-Share-Agreements in DB
+
+Vollständige Session-Abrechnung mit Snapshot bleibt `costEngine.computeCost()`.
+
 ## Tests
 
 ```bash
@@ -117,4 +134,5 @@ npm test
 ```
 
 Golden-Master-Fälle: `server/services/pricing/goldenCases.mjs`  
-Idle-Logik: `server/services/pricing/costEngine.test.mjs`
+Idle-Logik: `server/services/pricing/costEngine.test.mjs`  
+Monetization: `server/services/pricing/monetization.test.mjs`

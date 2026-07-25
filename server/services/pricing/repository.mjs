@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import { getDbHandles } from '../db.mjs';
+import { getDbHandles } from '../../db.mjs';
 import { buildTariffVersionPayload, citrineosTariffToComponents } from './tariffModel.mjs';
 import { createTariffSnapshot } from './tariffSnapshot.mjs';
 
@@ -90,6 +90,11 @@ export async function initPricingTables() {
   } else {
     db().sqliteDb.exec(sql);
   }
+
+  const { initBillingAuditTable } = await import('./billingAuditLogger.mjs');
+  const { initRevenueShareTables } = await import('./revenueShareManager.mjs');
+  await initBillingAuditTable();
+  await initRevenueShareTables();
 }
 
 function parseJson(val) {

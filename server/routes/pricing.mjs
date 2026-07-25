@@ -3,6 +3,19 @@ import { requireAuth, optionalAuth } from '../middleware/auth.mjs';
 import { computeCost } from '../services/pricing/costEngine.mjs';
 import { buildTariffVersionPayload } from '../services/pricing/tariffModel.mjs';
 import { createTariffSnapshot } from '../services/pricing/tariffSnapshot.mjs';
+import { calculateSession } from '../services/pricing/pricingEngine.mjs';
+import {
+  updateSessionState,
+  evaluateIdleSessions,
+  clearSession,
+} from '../services/pricing/idleTimerService.mjs';
+import { listBillingAudit, verifyIntegrity, logBillingEvent } from '../services/pricing/billingAuditLogger.mjs';
+import {
+  calculateSplit,
+  upsertAgreement,
+  getAgreementForSite,
+  distributeSessionRevenue,
+} from '../services/pricing/revenueShareManager.mjs';
 import {
   activateTariffVersion,
   appendAudit,
@@ -156,6 +169,142 @@ router.get('/snapshots/session/:sessionId', requireAuth, async (req, res) => {
     res.json({ snapshot });
   } catch (e) {
     res.status(500).json({ error: e instanceof Error ? e.message : 'Snapshot nicht ladbar' });
+  }
+});
+
+/** Einfache Session-Kosten (pricing-engine.ts) */
+router.post('/calculate-session', optionalAuth, async (req, res) => {
+  const { tariff, consumedKwh, chargingMinutes, blockingMinutes } = req.body ?? {};
+  if (!tariff || consumedKwh == null) {
+    res.status(400).json({ error: 'tariff und consumedKwh erforderlich' });
+    return;
+  }
+  try {
+    const result = calculateSession(
+      tariff,
+      Number(consumedKwh),
+      Number(chargingMinutes ?? 0),
+      Number(blockingMinutes ?? 0)
+    );
+    res.json({ calculation: result });
+  } catch (e) {
+    res.status(400).json({ error: e instanceof Error ? e.message : 'Berechnung fehlgeschlagen' });
+  }
+});
+
+/** Idle-Timer: Session tracken (OCPP-Events) */
+router.post('/idle/track', requireAuth, async (req, res) => {
+  const { sessionId, chargerId, events, tariff } = req.body ?? {};
+  if (!sessionId || !Array.isArray(events)) {
+    res.status(400).json({ error: 'sessionId und events[] erforderlich' });
+    return;
+  }
+  try {
+    updateSessionState({ sessionId, chargerId, events, tariff });
+    res.json({ ok: true, sessionId });
+  } catch (e) {
+    res.status(400).json({ error: e instanceof Error ? e.message : 'Track fehlgeschlagen' });
+  }
+});
+
+router.post('/idle/evaluate', requireAuth, async (req, res) => {
+  try {
+    const results = await evaluateIdleSessions(req.body?.tariff, req.body?.asOf);
+    res.json({ results });
+  } catch (e) {
+    res.status(500).json({ error: e instanceof Error ? e.message : 'Idle-Evaluate fehlgeschlagen' });
+  }
+});
+
+router.delete('/idle/:sessionId', requireAuth, (req, res) => {
+  clearSession(req.params.sessionId);
+  res.json({ ok: true });
+});
+
+/** Billing-Audit */
+router.get('/audit/session/:sessionId', requireAuth, async (req, res) => {
+  try {
+    const entries = await listBillingAudit(req.params.sessionId);
+    const intact = await verifyIntegrity(req.params.sessionId);
+    res.json({ entries, intact });
+  } catch (e) {
+    res.status(500).json({ error: e instanceof Error ? e.message : 'Audit nicht ladbar' });
+  }
+});
+
+router.post('/audit/log', requireAuth, async (req, res) => {
+  const { sessionId, event, amount, meta } = req.body ?? {};
+  if (!sessionId || !event) {
+    res.status(400).json({ error: 'sessionId und event erforderlich' });
+    return;
+  }
+  try {
+    const entry = await logBillingEvent(sessionId, event, amount ?? 0, meta ?? {});
+    res.status(201).json({ entry });
+  } catch (e) {
+    res.status(400).json({ error: e instanceof Error ? e.message : 'Audit-Log fehlgeschlagen' });
+  }
+});
+
+/** Revenue Share */
+router.post('/revenue-share/agreements', requireAuth, async (req, res) => {
+  const a = req.body ?? {};
+  if (!a.partnerId || !a.siteId || a.partnerMarginPercentage == null || a.bcChargeMarginPercentage == null) {
+    res.status(400).json({ error: 'partnerId, siteId und Margin-Prozente erforderlich' });
+    return;
+  }
+  try {
+    const agreement = await upsertAgreement(a);
+    res.status(201).json({ agreement });
+  } catch (e) {
+    res.status(400).json({ error: e instanceof Error ? e.message : 'Agreement fehlgeschlagen' });
+  }
+});
+
+router.get('/revenue-share/agreements/:siteId', requireAuth, async (req, res) => {
+  try {
+    const agreement = await getAgreementForSite(req.params.siteId);
+    if (!agreement) {
+      res.status(404).json({ error: 'Kein Agreement' });
+      return;
+    }
+    res.json({ agreement });
+  } catch (e) {
+    res.status(500).json({ error: e instanceof Error ? e.message : 'Agreement nicht ladbar' });
+  }
+});
+
+router.post('/revenue-share/calculate', optionalAuth, (req, res) => {
+  const { calculation, agreement, actualEnergyCost } = req.body ?? {};
+  if (!calculation || !agreement || actualEnergyCost == null) {
+    res.status(400).json({ error: 'calculation, agreement und actualEnergyCost erforderlich' });
+    return;
+  }
+  try {
+    const result = calculateSplit(calculation, agreement, actualEnergyCost);
+    res.json({ result });
+  } catch (e) {
+    res.status(400).json({ error: e instanceof Error ? e.message : 'Split fehlgeschlagen' });
+  }
+});
+
+router.post('/revenue-share/distribute', requireAuth, async (req, res) => {
+  const { sessionId, siteId, calculation, actualEnergyCost, agreement } = req.body ?? {};
+  if (!sessionId || !siteId || !calculation || actualEnergyCost == null) {
+    res.status(400).json({ error: 'sessionId, siteId, calculation und actualEnergyCost erforderlich' });
+    return;
+  }
+  try {
+    const out = await distributeSessionRevenue({
+      sessionId,
+      siteId,
+      calculation,
+      actualEnergyCost,
+      agreement,
+    });
+    res.status(201).json(out);
+  } catch (e) {
+    res.status(400).json({ error: e instanceof Error ? e.message : 'Verteilung fehlgeschlagen' });
   }
 });
 
