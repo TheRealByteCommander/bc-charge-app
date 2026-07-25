@@ -90,11 +90,14 @@ Konfiguration und Skripte unter `config/citrineos/` und `scripts/citrineos/` in 
 ### 2.3 Multi-Tenant Revenue Sharing
 
 - **Beschreibung:** Automatische Aufteilung von Einnahmen bei Partner-Standorten.
-- **Technische Umsetzung:**
-  - `LocationOwner`-Attribut in der Datenbank.
-  - Split-Logik: `Brutto − Kosten = Netto → (X % Partner, Y % BC Charge)`.
+- **Technische Umsetzung (BC Charge App Server):**
+  - Cost-Plus: B2B-Energiekosten abziehen, dann Marge splitten.
+  - `server/services/pricing/revenueShareManager.mjs`
+  - DB: `revenue_share_agreements`, `revenue_share_distributions`
+  - API: `/api/pricing/revenue-share/*`
+  - Audit-Eintrag `REVENUE_SHARE` in `billing_audit_log`
 - **Akzeptanzkriterium:** Automatische Abrechnungsberichte für Standortpartner.
-- **Status:** Geplant
+- **Status:** ✅ Basis implementiert (App Server)
 
 ---
 
