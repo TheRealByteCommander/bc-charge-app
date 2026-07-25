@@ -1,0 +1,17 @@
+{
+  "jobName": "ocpp-health-check",
+  "schedule": "0 * * * *", 
+  "description": "Hourly health check: GetStatus -> Reset on failure",
+  "chargers": [
+    {
+      "id": "BC-CHARGE-01",
+      "url": "ws://charger-01.local/ocpp",
+      "connectorId": 1
+    },
+    {
+      "id": "BC-CHARGE-02",
+      "url": "ws://charger-02.local/ocpp",
+      "connectorId": 1
+    }
+  ]
+}
