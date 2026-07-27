@@ -2,6 +2,7 @@ import { citrineosConfig } from '../../config/citrineos';
 import { isBackendMode } from '../../services/backendMode';
 import { apiConfig } from '../../config/api';
 import type { HasuraChargingStationRow } from './types';
+import { logger } from '../../utils/logger';
 
 // Subscription query for real-time station updates
 const STATION_SUBSCRIPTION = `
@@ -94,7 +95,7 @@ function connectWebSocket(): void {
       wsUrl = hasuraUrl;
     }
     
-    console.log('[BC Charge] Connecting to Hasura WebSocket:', wsUrl);
+    logger.info('Connecting to Hasura WebSocket:', wsUrl);
     
     // Create WebSocket connection
     hasuraWs = new WebSocket(wsUrl, 'graphql-ws');
@@ -114,7 +115,7 @@ function connectWebSocket(): void {
  * Handle WebSocket open event
  */
 function handleWsOpen(): void {
-  console.log('[BC Charge] Hasura WebSocket connection established');
+  logger.info('Hasura WebSocket connection established');
   reconnectAttempts = 0;
   
   // Send connection init message
@@ -146,7 +147,7 @@ function handleWsMessage(event: MessageEvent): void {
       case 'data':
         // Subscription data received
         if (message.payload?.data?.ChargingStations && stationUpdateCallback) {
-          console.log('[BC Charge] Received station updates via subscription');
+          logger.info('Received station updates via subscription');
           stationUpdateCallback(message.payload.data.ChargingStations);
         }
         break;
@@ -160,10 +161,10 @@ function handleWsMessage(event: MessageEvent): void {
         break;
         
       default:
-        console.log('[BC Charge] Unknown WebSocket message type:', message.type);
+        logger.debug('Unknown WebSocket message type:', message.type);
     }
   } catch (error) {
-    console.error('[BC Charge] Error parsing WebSocket message:', error);
+    logger.error('Error parsing WebSocket message:', error);
   }
 }
 
@@ -171,7 +172,7 @@ function handleWsMessage(event: MessageEvent): void {
  * Handle WebSocket error event
  */
 function handleWsError(event: Event): void {
-  console.error('[BC Charge] Hasura WebSocket error:', event);
+  logger.error('Hasura WebSocket error:', event);
   scheduleReconnect();
 }
 
@@ -179,7 +180,7 @@ function handleWsError(event: Event): void {
  * Handle WebSocket close event
  */
 function handleWsClose(): void {
-  console.log('[BC Charge] Hasura WebSocket connection closed');
+  logger.info('Hasura WebSocket connection closed');
   
   if (subscriptionActive) {
     scheduleReconnect();
@@ -195,7 +196,7 @@ function startSubscription(): void {
     return;
   }
   
-  console.log('[BC Charge] Starting station subscription');
+  logger.info('Starting station subscription');
   
   hasuraWs.send(JSON.stringify({
     id: 'station-subscription',
@@ -217,7 +218,7 @@ function scheduleReconnect(): void {
   
   if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
     reconnectAttempts++;
-    console.log(`[BC Charge] Scheduling reconnect attempt ${reconnectAttempts} in ${reconnectAttempts * 2} seconds`);
+    logger.info(`Scheduling reconnect attempt ${reconnectAttempts} in ${reconnectAttempts * 2} seconds`);
     
     setTimeout(() => {
       if (subscriptionActive) {
@@ -225,7 +226,7 @@ function scheduleReconnect(): void {
       }
     }, reconnectAttempts * 2000);
   } else {
-    console.error('[BC Charge] Max reconnect attempts reached, giving up');
+    logger.error('Max reconnect attempts reached, giving up');
     subscriptionActive = false;
   }
 }
@@ -234,7 +235,7 @@ function scheduleReconnect(): void {
  * Stop the Hasura subscription
  */
 export function stopHasuraSubscription(): void {
-  console.log('[BC Charge] Stopping Hasura subscription');
+  logger.info('Stopping Hasura subscription');
   
   subscriptionActive = false;
   

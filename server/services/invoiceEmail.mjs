@@ -1,5 +1,6 @@
 import nodemailer from 'nodemailer';
-import { companyInfo } from './company.mjs';
+import logger from '../utils/logger.mjs';
+
 
 let transporter;
 
@@ -70,7 +71,8 @@ export async function sendInvoiceEmails({ invoiceNumber, session, customer, pdfB
       text,
       attachments: [attachment],
     });
-    console.log(`[bc-charge] Rechnung ${invoiceNumber} an ${to} gesendet.`);
+    logger.info(`Rechnung ${invoiceNumber} an ${to} gesendet.`);
+
   }
 
   return { sent: true, recipients: [...recipients] };

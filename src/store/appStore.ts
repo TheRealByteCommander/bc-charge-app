@@ -2,7 +2,9 @@ import { create } from 'zustand';
 import { getStationById, getStationDataSource, getStations, setStationsFromOfflineCache } from '../data/stations';
 import type { StationDataSource } from '../data/stationRegistry';
 import { defaultChargingPlan, normalizeChargingPlan } from '../data/chargingPlan';
+import { logger } from '../utils/logger';
 import { computeTier, tierThresholds } from '../data/rewards';
+
 import {
   claimChallengeReward,
   defaultGamification,
@@ -430,7 +432,8 @@ export const useAppStore = create<AppState>((set, get) => ({
           if (cached && cached.stations.length > 0) {
             setStationsFromOfflineCache(cached.stations);
             stationDataSource = 'offline-cache';
-            console.log(`[BC Charge] ${cached.stations.length} Stationen aus Offline-Cache geladen (${cached.source}, ${cached.savedAt})`);
+            logger.info(`[BC Charge] ${cached.stations.length} Stationen aus Offline-Cache geladen (${cached.source}, ${cached.savedAt})`);
+
           }
         }
         void saveStationsOfflineCache(getStations(), getStationDataSource());
@@ -493,7 +496,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         if (cached && cached.stations.length > 0) {
           setStationsFromOfflineCache(cached.stations);
           stationDataSource = 'offline-cache';
-          console.log(`[BC Charge] ${cached.stations.length} Stationen aus Offline-Cache geladen (${cached.source}, ${cached.savedAt})`);
+          logger.info(`[BC Charge] ${cached.stations.length} Stationen aus Offline-Cache geladen (${cached.source}, ${cached.savedAt})`);
+
         }
       }
       void saveStationsOfflineCache(getStations(), getStationDataSource());
@@ -562,10 +566,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   refreshCitrineosData: async () => {
-    console.log('[BC Charge] Refreshing CitrineOS data...');
+    logger.info('[BC Charge] Refreshing CitrineOS data...');
+
     set({ citrineosSyncing: true });
     const sync = await syncStationsFromCitrineos();
-    console.log('[BC Charge] CitrineOS sync result:', sync);
+    logger.info('[BC Charge] CitrineOS sync result:', sync);
+
     
     const tariffHint =
       sync.ok && sync.tariffCount != null && sync.tariffCount > 0

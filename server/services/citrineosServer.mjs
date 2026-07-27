@@ -340,7 +340,14 @@ function normalizeTransactionRow(tx) {
 
 function estimateEnergyKwh(session, minutes) {
   const powerKw = Number(session.powerKw) || 11;
-  const efficiency = 0.85;
+  
+  // Refined efficiency based on power levels to improve accuracy
+  // High power chargers typically have higher losses (lower efficiency)
+  let efficiency = 0.85;
+  if (powerKw >= 50) efficiency = 0.82; 
+  else if (powerKw >= 22) efficiency = 0.84;
+  else if (powerKw < 11) efficiency = 0.88;
+
   const estimated = (powerKw * efficiency * minutes) / 60;
   return Math.round(Math.min(estimated, 120) * 100) / 100;
 }
@@ -499,8 +506,15 @@ export async function startAdhocTransaction(stationId, evseId, connectorId, idTo
   }
 
   let transactionId;
-  for (let i = 0; i < 20; i++) {
-    await sleep(1500);
+  let attempts = 0;
+  const maxAttempts = 20;
+  
+  while (attempts < maxAttempts) {
+    attempts++;
+    // Exponential backoff to reduce API load: 1.5s, 1.6s, 1.7s... 
+    const delay = 1500 + (attempts * 100);
+    await sleep(delay);
+    
     const tx = await fetchTransactionByRemoteStartId(
       stationId,
       remoteStartId,
@@ -510,6 +524,10 @@ export async function startAdhocTransaction(stationId, evseId, connectorId, idTo
       transactionId = tx.transactionId;
       break;
     }
+  }
+  
+  if (!transactionId) {
+    console.warn(`[bc-charge] Transaction resolution timeout after ${maxAttempts} attempts for remoteStartId ${remoteStartId}`);
   }
 
   return { remoteStartId, transactionId };
@@ -577,10 +595,16 @@ export async function fetchActiveTransactionForStation(stationId, stationDatabas
 function computeCostFromSession(energyKwh, session, minutes = 0) {
   const kwh = Number(energyKwh) || 0;
   const min = Number(minutes) || 0;
-  const energy = kwh * (session.pricePerKwh ?? 0.49);
-  const time = min * (session.pricePerMin ?? 0);
-  const fee = session.sessionFee ?? 0;
-  return Math.round((energy + time + fee) * 100) / 100;
+  
+  // Support for complex pricing (Session fee + Energy + Time)
+  const energyPrice = session.pricePerKwh ?? 0.49;
+  const timePrice = session.pricePerMin ?? 0;
+  const sessionFee = session.sessionFee ?? 0;
+  
+  const energy = kwh * energyPrice;
+  const time = min * timePrice;
+  
+  return Math.round((energy + time + sessionFee) * 100) / 100;
 }
 
 /** Live-Daten aus CitrineOS für Konto-Sessions (Hasura, unabhängig vom Frontend-Station-Cache). */

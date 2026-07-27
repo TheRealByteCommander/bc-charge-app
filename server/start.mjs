@@ -1,7 +1,8 @@
 import { existsSync } from 'fs';
 import { dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
-import { loadProjectEnv } from './loadEnv.mjs';
+import logger from './utils/logger.mjs';
+
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const loadedFrom = loadProjectEnv();
@@ -24,7 +25,8 @@ if (!process.env.STRIPE_SECRET_KEY) {
   console.warn('[bc-charge] cwd:', process.cwd());
 } else {
   const mode = process.env.STRIPE_SECRET_KEY.startsWith('sk_live') ? 'live' : 'test';
-  console.log(`[bc-charge] Stripe konfiguriert (${mode})`);
+    logger.info(`Stripe konfiguriert (${mode})`);
+
 }
 
 await import('./index.mjs');

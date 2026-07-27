@@ -13,6 +13,7 @@ export default {
           text: '#e8ecf2',
           accent: '#10b981',
           'accent-dim': '#059669',
+          'accent-soft': 'rgba(16, 185, 129, 0.1)',
           glow: '#34d399',
           warn: '#f59e0b',
           danger: '#ef4444',

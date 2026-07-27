@@ -20,6 +20,7 @@ import { parseConnectorRef } from '../api/citrineos/mappers';
 import { normalizeIdToken } from '../utils/ocpp16RemoteStart';
 import { initHasuraSubscription, stopHasuraSubscription } from '../api/citrineos/subscription';
 import type { HasuraChargingStationRow } from '../api/citrineos/types';
+import { logger } from '../utils/logger';
 
 // Flag to track if subscription has been initialized
 let subscriptionInitialized = false;
@@ -31,33 +32,33 @@ export async function syncStationsFromCitrineos(): Promise<{
   pricingSyncedAt?: string;
   tariffCount?: number;
 }> {
-  console.log('[BC Charge] Starting CitrineOS station sync...');
+  logger.info('Starting CitrineOS station sync...');
   
   try {
     const healthy = await citrineosHealth();
-    console.log('[BC Charge] CitrineOS health check result:', healthy);
+    logger.info('CitrineOS health check result:', healthy);
     
     if (!healthy) {
-      console.warn('[BC Charge] CitrineOS API is not reachable');
+      logger.warn('CitrineOS API is not reachable');
       return { ok: false, count: 0, error: 'CitrineOS API nicht erreichbar' };
     }
     
-    console.log('[BC Charge] Fetching stations and tariffs from CitrineOS...');
+    logger.info('Fetching stations and tariffs from CitrineOS...');
     const [rows, tariffs] = await Promise.all([
       fetchChargingStationsFromHasura(),
       getTariffs().catch((error) => {
-        console.error('[BC Charge] Error fetching tariffs:', error);
+        logger.error('Error fetching tariffs', error);
         return [];
       }),
     ]);
     
-    console.log('[BC Charge] Fetched', rows.length, 'stations and', tariffs.length, 'tariffs');
+    logger.info(`Fetched ${rows.length} stations and ${tariffs.length} tariffs`);
     
     const catalog = buildTariffCatalog(tariffs);
     let mapped = mapHasuraStations(rows, catalog);
     mapped = applyTariffCatalogToStations(mapped, catalog);
     
-    console.log('[BC Charge] Mapped', mapped.length, 'stations');
+    logger.info(`Mapped ${mapped.length} stations`);
     
     if (mapped.length > 0) {
       setStationsFromCitrineos(mapped);
@@ -65,7 +66,7 @@ export async function syncStationsFromCitrineos(): Promise<{
       
       // Initialize subscription for real-time updates after first sync
       if (!subscriptionInitialized) {
-        console.log('[BC Charge] Initializing Hasura subscription for real-time updates');
+        logger.info('Initializing Hasura subscription for real-time updates');
         initHasuraSubscription(handleStationUpdates);
         subscriptionInitialized = true;
       }
@@ -78,10 +79,10 @@ export async function syncStationsFromCitrineos(): Promise<{
       };
     }
     
-    console.warn('[BC Charge] No stations found in CitrineOS');
+    logger.warn('No stations found in CitrineOS');
     return { ok: false, count: 0, error: 'Keine Ladestationen in CitrineOS gefunden' };
   } catch (e) {
-    console.error('[BC Charge] Error during CitrineOS sync:', e);
+    logger.error('Error during CitrineOS sync', e);
     return { ok: false, count: 0, error: e instanceof Error ? e.message : 'Hasura-Sync fehlgeschlagen' };
   }
 }
@@ -90,7 +91,7 @@ export async function syncStationsFromCitrineos(): Promise<{
  * Handle real-time station updates from Hasura subscription
  */
 function handleStationUpdates(rows: HasuraChargingStationRow[]): void {
-  console.log('[BC Charge] Handling real-time station updates');
+  logger.info('Handling real-time station updates');
   
   try {
     // For real-time updates, we need to fetch the latest tariffs
@@ -106,10 +107,10 @@ function handleStationUpdates(rows: HasuraChargingStationRow[]): void {
       if (mapped.length > 0) {
         setStationsFromCitrineos(mapped);
         void saveStationsOfflineCache(getStations(), 'citrineos');
-        console.log('[BC Charge] Updated', mapped.length, 'stations from real-time subscription');
+        logger.info(`Updated ${mapped.length} stations from real-time subscription`);
       }
     }).catch((error) => {
-      console.error('[BC Charge] Error fetching tariffs for real-time update:', error);
+      logger.error('Error fetching tariffs for real-time update', error);
       
       // Fallback: use empty tariff catalog
       const catalog = buildTariffCatalog([]);
@@ -120,11 +121,11 @@ function handleStationUpdates(rows: HasuraChargingStationRow[]): void {
       if (mapped.length > 0) {
         setStationsFromCitrineos(mapped);
         void saveStationsOfflineCache(getStations(), 'citrineos');
-        console.log('[BC Charge] Updated', mapped.length, 'stations from real-time subscription (without tariffs)');
+        logger.info(`Updated ${mapped.length} stations from real-time subscription (without tariffs)`);
       }
     });
   } catch (error) {
-    console.error('[BC Charge] Error handling station updates:', error);
+    logger.error('Error handling station updates', error);
   }
 }
 
@@ -132,7 +133,7 @@ function handleStationUpdates(rows: HasuraChargingStationRow[]): void {
  * Stop the Hasura subscription
  */
 export function stopCitrineosSubscription(): void {
-  console.log('[BC Charge] Stopping CitrineOS subscription');
+  logger.info('Stopping CitrineOS subscription');
   stopHasuraSubscription();
   subscriptionInitialized = false;
 }
@@ -188,8 +189,8 @@ export async function startCitrineosCharge(
   }
 
   let transactionId: string | undefined;
-  for (let i = 0; i < 20; i++) {
-    await sleep(1500);
+  for (let i = 0; i < 10; i++) {
+    await sleep(2000);
     const tx = await fetchTransactionByRemoteStartId(station.id, remoteStartId);
     if (tx?.transactionId) {
       transactionId = tx.transactionId;
