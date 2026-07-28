@@ -1,51 +1,10 @@
 import { Router } from 'express';
 import { requireAuth, optionalAuth } from '../middleware/auth.mjs';
 import { findUserById, updateUserProfile, getLeaderboardData } from '../db.mjs';
+import { getLoyaltyConfig } from '../services/configService.mjs';
+import { computeTier } from '../services/loyalty.mjs';
 
 const router = Router();
-
-const weeklyChallenges = [
-  {
-    id: 'ch_sessions_3',
-    titleDe: 'Dreifach-Lader',
-    titleEn: 'Triple charger',
-    descDe: '3 Ladesitzungen diese Woche',
-    descEn: '3 charging sessions this week',
-    target: 3,
-    rewardPoints: 200,
-    metric: 'sessions_week',
-  },
-  {
-    id: 'ch_points_500',
-    titleDe: 'Points-Sprinter',
-    titleEn: 'Points sprinter',
-    descDe: '500 BC Points diese Woche sammeln',
-    descEn: 'Earn 500 BC Points this week',
-    target: 500,
-    rewardPoints: 150,
-    metric: 'points_week',
-  },
-  {
-    id: 'ch_stations_2',
-    titleDe: 'Netz-Entdecker',
-    titleEn: 'Network explorer',
-    descDe: '2 verschiedene Stationen diese Woche',
-    descEn: '2 different stations this week',
-    target: 2,
-    rewardPoints: 175,
-    metric: 'stations_week',
-  },
-  {
-    id: 'ch_streak_5',
-    titleDe: 'Streak-Meister',
-    titleEn: 'Streak master',
-    descDe: '5 Tage Ladestreak',
-    descEn: '5-day charging streak',
-    target: 5,
-    rewardPoints: 300,
-    metric: 'streak_days',
-  },
-];
 
 function getWeekKey(d = new Date()) {
   const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
@@ -76,13 +35,6 @@ function isChallengeComplete(challenge, gamification) {
   return getChallengeProgress(challenge, gamification) >= challenge.target;
 }
 
-function computeTier(points) {
-  if (points >= 8000) return 'platinum';
-  if (points >= 4000) return 'gold';
-  if (points >= 1500) return 'silver';
-  return 'bronze';
-}
-
 router.get('/challenges', requireAuth, async (req, res) => {
   const row = await findUserById(req.userId);
   if (!row) {
@@ -102,7 +54,8 @@ router.get('/challenges', requireAuth, async (req, res) => {
     gamification.completedChallengeIds = [];
   }
 
-  const challenges = weeklyChallenges.map((ch) => ({
+  const config = await getLoyaltyConfig();
+  const challenges = config.challenges.map((ch) => ({
     ...ch,
     progress: getChallengeProgress(ch, gamification),
     isComplete: isChallengeComplete(ch, gamification),
@@ -123,7 +76,8 @@ router.get('/challenges', requireAuth, async (req, res) => {
 
 router.post('/challenges/:id/claim', requireAuth, async (req, res) => {
   const { id } = req.params;
-  const challenge = weeklyChallenges.find((ch) => ch.id === id);
+  const config = await getLoyaltyConfig();
+  const challenge = config.challenges.find((ch) => ch.id === id);
   
   if (!challenge) {
     res.status(404).json({ error: 'Challenge nicht gefunden' });
@@ -154,7 +108,7 @@ router.post('/challenges/:id/claim', requireAuth, async (req, res) => {
 
   const newPoints = (profile.loyaltyPoints ?? 0) + challenge.rewardPoints;
   profile.loyaltyPoints = newPoints;
-  profile.loyaltyTier = computeTier(newPoints);
+  profile.loyaltyTier = await computeTier(newPoints);
   profile.gamification = gamification;
 
   await updateUserProfile(req.userId, profile);

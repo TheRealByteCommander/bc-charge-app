@@ -1,5 +1,8 @@
 import { errorHandlerMiddleware } from './middleware/errorHandler.mjs';
 import { logger } from './utils/logger.mjs';
+import adminConfigRouter from './routes/adminConfig.mjs';
+import { initConfigTable } from './services/configService.mjs';
+import citrineosWebhooksRouter from './routes/citrineosWebhooks.mjs';
 
 const PORT = Number(process.env.BC_SERVER_PORT ?? process.env.STRIPE_SERVER_PORT ?? 4242);
 
@@ -27,6 +30,7 @@ app.use(attachUserForRateLimit);
 app.use(createRateLimiter({ windowMs: 60_000, max: 900 }));
 
 await initDb();
+await initConfigTable();
 await seedDemoUser();
 
 app.use('/api/auth', authRouter);
@@ -38,11 +42,13 @@ app.use('/api/invoices', invoicesRouter);
 app.use('/api/gamification', gamificationRouter);
 app.use('/api/rewards', rewardsRouter);
 app.use('/api/adhoc', adhocRouter);
+app.use('/api/admin/config', adminConfigRouter);
 app.use(
   '/api/webhooks/stripe',
   express.raw({ type: 'application/json' }),
   webhooksRouter
 );
+app.use('/api/webhooks/citrineos', citrineosWebhooksRouter);
 
 app.use((err, _req, res, next) => {
   if (err?.message === 'CORS blockiert') {

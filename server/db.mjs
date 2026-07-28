@@ -119,7 +119,8 @@ export async function initDb() {
   sqliteDb = new Database(dbPath);
   sqliteDb.pragma('journal_mode = WAL');
   sqliteDb.pragma('foreign_keys = ON');
-
+  
+  // Note: app_config will be initialized in configService.mjs or separately.
   sqliteDb.exec(`
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,

@@ -505,32 +505,9 @@ export async function startAdhocTransaction(stationId, evseId, connectorId, idTo
     throw Object.assign(new Error(msg), { status: 502 });
   }
 
-  let transactionId;
-  let attempts = 0;
-  const maxAttempts = 20;
-  
-  while (attempts < maxAttempts) {
-    attempts++;
-    // Exponential backoff to reduce API load: 1.5s, 1.6s, 1.7s... 
-    const delay = 1500 + (attempts * 100);
-    await sleep(delay);
-    
-    const tx = await fetchTransactionByRemoteStartId(
-      stationId,
-      remoteStartId,
-      stationRow?.stationDatabaseId ?? stationRow?.id
-    );
-    if (tx?.transactionId) {
-      transactionId = tx.transactionId;
-      break;
-    }
-  }
-  
-  if (!transactionId) {
-    console.warn(`[bc-charge] Transaction resolution timeout after ${maxAttempts} attempts for remoteStartId ${remoteStartId}`);
-  }
-
-  return { remoteStartId, transactionId };
+  // The transactionId will now be resolved asynchronously via CitrineOS webhooks.
+  // We return the remoteStartId so the frontend can track the pending session.
+  return { remoteStartId, transactionId: null };
 }
 
 export async function stopAdhocTransaction(stationId, transactionId) {
