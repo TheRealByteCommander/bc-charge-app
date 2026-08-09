@@ -30,3 +30,9 @@ mt5/
 *.njsproj
 *.sln
 *.sw?
+
+# Load-management service runtime/build
+services/load-management/node_modules/
+services/load-management/dist/
+services/load-management/exports/
+services/load-management/data/

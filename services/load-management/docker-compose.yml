@@ -1,0 +1,69 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15
+    restart: always
+    environment:
+      POSTGRES_USER: citrine_admin
+      POSTGRES_PASSWORD: bc_secure_password
+      POSTGRES_DB: citrineos
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  citrineos:
+    image: citrineos/citrineos-core:latest
+    restart: always
+    ports:
+      - "3000:3000"
+      - "8080:8080"
+    environment:
+      - DB_HOST=db
+      - DB_USER=citrine_admin
+      - DB_PASS=bc_secure_password
+      - DB_NAME=citrineos
+      - OCPP_PORT=8080
+    depends_on:
+      - db
+
+  load-manager:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - "3001:3001"  # Health check port
+      - "3002:3002"  # PV Surplus API port
+      - "3003:3003"  # Pricing API port
+    environment:
+      - CITRINE_WS_URL=ws://citrineos:8080
+      - MAX_SITE_POWER=50
+      - ADJUSTMENT_THRESHOLD=5
+      - API_PORT=3002
+      - PRICING_API_PORT=3003
+    depends_on:
+      - citrineos
+    volumes:
+      - ./src:/app/src  # For development, can be removed in production
+
+  directus:
+    image: directus/directus:latest
+    restart: always
+    ports:
+      - "8055:8055"
+    environment:
+      KEY: "bc-charge-secret-key-2026"
+      SECRET: "bc-charge-ultra-secret-2026"
+      DB_CLIENT: "pg"
+      DB_HOST: "db"
+      DB_PORT: "5432"
+      DB_DATABASE: "citrineos"
+      DB_USER: "citrine_admin"
+      DB_PASSWORD: "bc_secure_password"
+      ADMIN_EMAIL: "admin@bc-charge.com"
+      ADMIN_PASSWORD: "change-this-password"
+    depends_on:
+      - db
+
+volumes:
+  postgres_data:
