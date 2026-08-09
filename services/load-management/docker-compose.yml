@@ -27,24 +27,34 @@ services:
       - db
 
   load-manager:
-    build: 
+    build:
       context: .
       dockerfile: Dockerfile
     restart: always
     ports:
-      - "3001:3001"  # Health check port
-      - "3002:3002"  # PV Surplus API port
-      - "3003:3003"  # Pricing API port
+      - "3001:3001"  # Health (/health, /health/detailed)
+      - "3003:3003"  # REST API (pricing, deep-link, PV surplus, billing, stations)
     environment:
       - CITRINE_WS_URL=ws://citrineos:8080
       - MAX_SITE_POWER=50
       - ADJUSTMENT_THRESHOLD=5
-      - API_PORT=3002
+      - ADJUSTMENT_DELAY=1000
+      - MONITORING_INTERVAL=5000
+      - DEFAULT_STATION_MAX_POWER_KW=22
+      - HEALTH_PORT=3001
       - PRICING_API_PORT=3003
+      - PRICING_DEFAULT_PRICE_PER_KWH=0.30
+      - PRICING_DEFAULT_IDLE_FEE_PER_MIN=0.05
+      - PRICING_CURRENCY=EUR
+      - PRICING_TIMEZONE=Europe/Berlin
+      - DEEP_LINK_STORE_PATH=/app/data/deep-link-tokens.json
+      - BILLING_EXPORT_DIR=/app/exports
+      # - KNOWN_STATIONS=CS001,CS002
     depends_on:
       - citrineos
     volumes:
-      - ./src:/app/src  # For development, can be removed in production
+      - load_manager_data:/app/data
+      - load_manager_exports:/app/exports
 
   directus:
     image: directus/directus:latest
@@ -67,3 +77,5 @@ services:
 
 volumes:
   postgres_data:
+  load_manager_data:
+  load_manager_exports:

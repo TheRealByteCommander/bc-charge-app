@@ -1,85 +1,80 @@
-# PV Surplus Charging Feature
+# PV Surplus Charging
 
-## Overview
+Bindet ein externes Energy Management System (EMS) an das Load-Management an: gemeldeter PV-Überschuss wird auf aktive Ladestationen verteilt.
 
-The PV Surplus Charging feature enables integration with external Energy Management Systems (EMS) to optimize charging based on locally generated solar power. This feature allows the charging infrastructure to prioritize renewable energy by adjusting charging power in real-time based on reported solar surplus.
+## Endpoints
 
-## API Endpoints
+Base-URL: API-Port des Services (Default **3003**, ENV `PRICING_API_PORT` / `API_PORT`).
 
-### Update PV Surplus
+### Surplus setzen
 
 ```
 POST /api/pv-surplus
+Content-Type: application/json
+
+{ "surplus": 15.5 }
 ```
 
-Updates the current PV surplus value reported by an external energy management system.
+`surplus` = kW, muss endlich und ≥ 0 sein.
 
-**Request Body:**
-```json
-{
-  "surplus": 15.5  // Current PV surplus in kW
-}
-```
+**Antwort (Beispiel):**
 
-**Response:**
 ```json
 {
   "success": true,
   "message": "PV surplus updated successfully",
-  "data": {
-    "surplus": 15.5
-  }
+  "data": { "surplus": 15.5 }
 }
 ```
 
-### Get Current PV Surplus
+### Surplus lesen
 
 ```
 GET /api/pv-surplus
 ```
 
-Retrieves the current PV surplus value.
-
-**Response:**
 ```json
 {
   "success": true,
-  "data": {
-    "surplus": 15.5
-  }
+  "data": { "surplus": 15.5 }
 }
 ```
 
-## Implementation Details
+## Implementierung
 
-The PV Surplus Service (`pvSurplusService.ts`) is responsible for:
-1. Managing the current PV surplus value
-2. Logging updates to the surplus value
+| Datei | Rolle |
+|-------|--------|
+| `pvSurplusService.ts` | Hält `_currentSurplus`, wendet Budget auf `LoadManager` an |
+| `pvSurplusController.ts` | Express-Handler, Validierung |
 
-The PV Surplus Controller (`pvSurplusController.ts`) handles:
-1. REST API endpoints for external systems
-2. Input validation and error handling
-3. Communication with the PV Surplus Service
+Ablauf bei `updateSurplus`:
 
-## Integration with CitrineOS
+1. Wert speichern
+2. `allocatable = surplus * allocationFactor` (Default-Faktor `1`)
+3. Wenn aktive Stationen existieren: `loadManager.applySurplusBudget(allocatable, minStationPowerKw)`
+4. Ohne gebundenen LoadManager: nur speichern + Warning-Log
 
-In a full implementation, this feature would integrate with CitrineOS through:
-1. Monitoring active charging sessions via TransactionEvent repository
-2. Adjusting charging profiles using SetChargingProfile OCPP commands
-3. Distributing surplus power among active charging sessions
+Constructor-Optionen:
 
-## Configuration
+- `loadManager` — wird in `index.ts` gesetzt (`new PvSurplusService(console, { loadManager })`)
+- `allocationFactor` — Anteil des Surplus für EVs (0–1, Default 1)
+- `minStationPowerKw` — Untergrenze je aktiver Station (Default 1.4 kW)
 
-The service can be configured through environment variables:
-- `API_PORT`: API server port (default: 3002)
+`setLoadManager()` erlaubt nachträgliches Binden.
 
-## Testing
+## Integration CitrineOS
 
-Unit tests are available in the `__tests__` directory:
-- `pvSurplusService.test.ts`: Tests for the core service logic
-- `pvSurplusController.test.ts`: Tests for the API endpoints
+Die eigentliche Leistungsbegrenzung läuft über den `LoadManager` (OCPP `SetChargingProfile` an CitrineOS). Der PV-Service selbst spricht CitrineOS nicht direkt an.
 
-Run tests with:
+## Konfiguration
+
+Kein eigener Port mehr. PV teilt sich den REST-API-Port:
+
+- `PRICING_API_PORT` oder `API_PORT` (Default `3003`)
+
+## Tests
+
 ```bash
 npm test
+# u. a. src/services/pv-surplus/__tests__/
 ```

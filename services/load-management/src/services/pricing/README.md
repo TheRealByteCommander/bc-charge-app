@@ -1,48 +1,67 @@
 # Dynamic Pricing Engine
 
-The Dynamic Pricing Engine is a service that provides flexible pricing logic for EV charging sessions, including time-based tariffs, idle fees, and energy pass-through calculations.
+Flexible Preislogik für EV-Ladesessions: Zeit-Tarife, Idle-Fees, Energy Pass-Through und Session-Lifecycle.
 
-## Features
+## Komponenten
 
-1. **Time-Based Tariffs**: Define different pricing periods throughout the day
-2. **Idle Fees**: Charge fees for vehicles that remain plugged in after charging completes
-3. **Energy Pass-Through Pricing**: Dynamically update energy prices based on current market rates
-4. **Session Management**: Track charging sessions from start to completion
-5. **Comprehensive API**: RESTful endpoints for all pricing operations
+- `PricingService` — Business-Logik (in-memory Sessions)
+- `PricingController` — REST-API
+- Integration in `src/index.ts` — OCPP-Events vom `LoadManager` erzeugen/aktualisieren Sessions
 
-## Architecture
+## Session-Modell
 
-The service consists of two main components:
+| Status | Bedeutung |
+|--------|-----------|
+| `active` | Ladevorgang läuft |
+| `completed` | Beendet, Energie/Preis berechnet |
+| `idle` | Nachladen beendet, Idle-Fee läuft |
+| `cancelled` | Abgebrochen (z. B. Remote-Start nicht zugestellt) — **nicht billable** |
 
-- `PricingService`: Core business logic for pricing calculations
-- `PricingController`: HTTP API endpoints for external integration
+Zusatzfelder u. a.: `customerId`, `locationId`, `source` (`api`|`deeplink`|`ocpp`|`unknown`), `deepLinkToken`, `transactionId`, `cancelReason`.
+
+### Wichtige Service-Methoden
+
+- `startSession(stationId, connectorId, startMeterValue, options?)`
+- `endSession(sessionId, endMeterValue)` — idempotent für completed/idle
+- `startIdleTracking` / `endIdleTracking`
+- `findActiveSession` / `findOpenSession` / `getBillableSessions`
+- `updateSessionMeterValue`
+- `setSessionTransactionId` / `getSessionTransactionId`
+- `cancelSession`
+
+Regeln:
+
+- Keine zweite active Session pro Station/Connector
+- Energie `max(0, end - start)`
+- Billable = `completed`|`idle` mit endlichem `totalPrice`
 
 ## API Endpoints
 
-### Tariff Management
+Base: API-Port (Default **3003**).
 
-- `POST /api/pricing/tariff` - Add a new tariff period
-- `GET /api/pricing/tariff` - Get all tariff periods
+### Tarife
 
-### Session Management
+- `POST /api/pricing/tariff`
+- `GET /api/pricing/tariff`
 
-- `POST /api/pricing/session/start` - Start a new charging session
-- `POST /api/pricing/session/end` - End a charging session and calculate pricing
-- `POST /api/pricing/session/idle/start` - Start idle fee tracking
-- `POST /api/pricing/session/idle/end` - End idle fee tracking and calculate fee
-- `GET /api/pricing/session/:sessionId` - Get session details
+### Sessions
+
+- `POST /api/pricing/session/start`
+- `POST /api/pricing/session/end`
+- `POST /api/pricing/session/idle/start`
+- `POST /api/pricing/session/idle/end`
+- `GET /api/pricing/session/:sessionId`
 
 ### Dynamic Pricing
 
-- `POST /api/pricing/energy-price` - Update energy price dynamically
-- `GET /api/pricing/config` - Get current pricing configuration
+- `POST /api/pricing/energy-price`
+- `GET /api/pricing/config`
 
-## Usage Examples
+## Beispiele
 
-### 1. Adding Time-Based Tariffs
+### Tarife
 
 ```bash
-# Add peak hour tariff (more expensive)
 curl -X POST http://localhost:3003/api/pricing/tariff \
   -H "Content-Type: application/json" \
   -d '{
@@ -51,22 +70,11 @@ curl -X POST http://localhost:3003/api/pricing/tariff \
     "pricePerKwh": 0.35,
     "idleFeePerMin": 0.10
   }'
-
-# Add off-peak tariff (less expensive)
-curl -X POST http://localhost:3003/api/pricing/tariff \
-  -H "Content-Type: application/json" \
-  -d '{
-    "startTime": "22:00",
-    "endTime": "06:00",
-    "pricePerKwh": 0.25,
-    "idleFeePerMin": 0.05
-  }'
 ```
 
-### 2. Managing Charging Sessions
+### Session
 
 ```bash
-# Start a charging session
 curl -X POST http://localhost:3003/api/pricing/session/start \
   -H "Content-Type: application/json" \
   -d '{
@@ -75,7 +83,6 @@ curl -X POST http://localhost:3003/api/pricing/session/start \
     "startMeterValue": 1234.5
   }'
 
-# End a charging session
 curl -X POST http://localhost:3003/api/pricing/session/end \
   -H "Content-Type: application/json" \
   -d '{
@@ -84,64 +91,47 @@ curl -X POST http://localhost:3003/api/pricing/session/end \
   }'
 ```
 
-### 3. Idle Fee Tracking
+### Idle
 
 ```bash
-# Start idle tracking after session completion
 curl -X POST http://localhost:3003/api/pricing/session/idle/start \
   -H "Content-Type: application/json" \
-  -d '{
-    "sessionId": "session-uuid-here"
-  }'
+  -d '{ "sessionId": "session-uuid-here" }'
 
-# End idle tracking and calculate fee
 curl -X POST http://localhost:3003/api/pricing/session/idle/end \
   -H "Content-Type: application/json" \
-  -d '{
-    "sessionId": "session-uuid-here"
-  }'
+  -d '{ "sessionId": "session-uuid-here" }'
 ```
 
-### 4. Dynamic Energy Pricing
+## ENV
 
-```bash
-# Update energy price based on current market rates
-curl -X POST http://localhost:3003/api/pricing/energy-price \
-  -H "Content-Type: application/json" \
-  -d '{
-    "pricePerKwh": 0.32
-  }'
-```
+| Variable | Default |
+|----------|---------|
+| `PRICING_DEFAULT_PRICE_PER_KWH` | `0.30` |
+| `PRICING_DEFAULT_IDLE_FEE_PER_MIN` | `0.05` |
+| `PRICING_CURRENCY` | `EUR` |
+| `PRICING_TIMEZONE` | `Europe/Berlin` |
+| `PRICING_API_PORT` | `3003` |
 
-## Configuration
+## OCPP-Integration
 
-The service can be configured through environment variables:
+Über Events vom `LoadManager` (siehe `src/index.ts`):
 
-- `PRICING_DEFAULT_PRICE_PER_KWH` - Default energy price (EUR/kWh)
-- `PRICING_DEFAULT_IDLE_FEE_PER_MIN` - Default idle fee (EUR/min)
-- `PRICING_CURRENCY` - Currency code (default: EUR)
-- `PRICING_TIMEZONE` - Timezone for tariff calculations (default: Europe/Berlin)
-- `PRICING_API_PORT` - API server port (default: 3003)
+| Event | Pricing |
+|-------|---------|
+| `transactionStarted` | Session anlegen/aktualisieren + `transactionId` |
+| `meterEnergy` | Meterstand active Session |
+| `transactionStopped` | Idle-Tracking (completed bei Bedarf zuerst) |
 
-## Integration with CitrineOS
+Deep-Link-Start/Stop nutzt denselben `PricingService`.
 
-The Dynamic Pricing Engine integrates with CitrineOS through:
+## Billing
 
-1. **Session Events**: Receives start/end events from CitrineOS
-2. **Meter Values**: Processes meter values to calculate energy consumption
-3. **OCPP Commands**: Can trigger OCPP commands based on pricing decisions
+Abgeschlossene/idle Sessions: `POST /api/billing/export` (siehe Service-README). Cancelled Sessions werden ausgeschlossen.
 
-## Testing
-
-Run the test suite with:
+## Tests
 
 ```bash
 npm test
+# src/services/pricing/__tests__/pricingService.test.ts
 ```
-
-The tests cover:
-- Tariff period management
-- Session lifecycle management
-- Idle fee calculations
-- Dynamic pricing updates
-- Edge cases and error conditions

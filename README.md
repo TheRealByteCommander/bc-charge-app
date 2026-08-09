@@ -48,6 +48,26 @@ Browser: http://localhost:5173/
 
 React 18, Vite, TypeScript, Tailwind CSS, Zustand, React Router, Framer Motion, Leaflet.
 
+## Load-Management Service
+
+Unter **`services/load-management/`** liegt der CitrineOS-Lastmanagement-Dienst (Branch `feat/load-management`):
+
+- Dynamisches Site-Limit / proportionales Shedding (`SetChargingProfile`)
+- PV-Surplus-API, Dynamic Pricing, Deep-Link Start/Stop, DATEV-Billing-Export
+- Health auf Port **3001**, REST-API auf Port **3003** (Default)
+
+Doku & Start:
+
+- [services/load-management/README.md](services/load-management/README.md)
+- [services/load-management/INSTALL.md](services/load-management/INSTALL.md)
+- [services/load-management/docs/LOAD_MANAGEMENT_DOCS.md](services/load-management/docs/LOAD_MANAGEMENT_DOCS.md)
+
+```bash
+cd services/load-management
+npm ci && npm run dev
+# oder: docker compose up -d --build
+```
+
 ## CitrineOS Backend (v1.8.4)
 
 Die App nutzt die **CitrineOS REST-API** (OCPP 2.0.1):

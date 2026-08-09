@@ -1,117 +1,212 @@
-# BC Charge Dynamic Load Management Service
+# BC Charge Load-Management Service
 
-This service implements Dynamic Load Management (DLM) for the BC Charge CitrineOS deployment. It monitors charging stations and dynamically adjusts charging profiles to prevent grid overload and optimize energy costs.
+Dynamisches Lastmanagement (DLM) für das BC-Charge-CitrineOS-Deployment.
+
+**Pfad im Monorepo:** `services/load-management/`  
+**Branch:** `feat/load-management`  
+**Repo:** [bc-charge-app](https://github.com/TheRealByteCommander/bc-charge-app)
+
+Der Service überwacht Ladestationen, begrenzt die Site-Last proportional, steuert Remote-Start/Stop über Deep-Links, rechnet Sessions (Tarife + Idle-Fees) und exportiert DATEV-taugliche Billing-CSVs.
 
 ## Features
 
-- Real-time monitoring of charging station power consumption
-- Automatic adjustment of charging profiles via SetChargingProfile commands
-- Configurable site power limits and adjustment thresholds
-- WebSocket communication with CitrineOS
-- Support for multiple charging stations
-- PV Surplus Charging API for integration with Energy Management Systems (EMS)
-- Dynamic Pricing Engine for flexible tariff management and idle fee calculation
+- Echtzeit-Monitoring der Stationsleistung über CitrineOS-WebSocket
+- Proportionales Load-Shedding via OCPP `SetChargingProfile` (debounced)
+- WebSocket-Reconnect bei Verbindungsabbruch
+- PV-Surplus-API → Surplus wird auf aktive Stationen verteilt
+- Dynamic Pricing (Zeit-Tarife, Idle-Fees, Energy Pass-Through)
+- Deep-Link Tokens (durable JSON-Store, peek/consume/release)
+- OCPP-Session-Bridge (`transactionStarted` / `meterEnergy` / `transactionStopped`)
+- Health-Endpoints + HealthCheckBot (Timeout, Failure-Threshold, optional Reset)
+- DATEV-Billing-Export (Semikolon-CSV, MwSt-Split)
 
-## Architecture
+## Architektur
 
-The LoadManager service connects to CitrineOS via WebSocket and:
+```
+CitrineOS (WS) ──► LoadManager ──► SetChargingProfile / RemoteStart / RemoteStop
+                      │
+                      ├─► PricingService (Sessions, Tarife, Idle)
+                      ├─► DeepLinkController + DeepLinkTokenStore
+                      ├─► PvSurplusService (Surplus → applySurplusBudget)
+                      ├─► HealthCheckBot (GetStatus / TriggerMessage)
+                      └─► BillingService (DATEV CSV)
 
-1. Receives MeterValues from charging stations
-2. Aggregates power consumption across all active stations
-3. When total consumption approaches the site limit, it calculates required adjustments
-4. Sends SetChargingProfile commands to reduce charging power proportionally
-
-The PvSurplusService provides an API endpoint for external EMS systems to report current solar surplus, enabling prioritization of renewable energy for charging.
-
-The PricingService provides dynamic pricing capabilities including time-based tariffs, idle fees, and energy pass-through pricing.
-
-## Configuration
-
-The service can be configured with the following parameters:
-
-- `maxSitePower`: Maximum power allowed for the site (kW)
-- `adjustmentThreshold`: Threshold to trigger adjustment (kW)
-- `adjustmentDelay`: Delay before adjustment (ms)
-- `monitoringInterval`: How often to check loads (ms)
-- `API_PORT`: Port for the PV Surplus API (default: 3002)
-- `PRICING_DEFAULT_PRICE_PER_KWH`: Default energy price (EUR/kWh)
-- `PRICING_DEFAULT_IDLE_FEE_PER_MIN`: Default idle fee (EUR/min)
-- `PRICING_CURRENCY`: Currency code (default: EUR)
-- `PRICING_TIMEZONE`: Timezone for tariff calculations (default: Europe/Berlin)
-
-## Installation
-
-1. Install dependencies:
-   ```bash
-   npm install
-   ```
-
-2. Build the service:
-   ```bash
-   npm run build
-   ```
-
-3. Start the service:
-   ```bash
-   npm start
-   ```
-
-## Docker Deployment
-
-The service can be deployed using Docker Compose:
-
-```bash
-docker-compose up -d
+HTTP API (:3003)     Health (:3001)
 ```
 
-## Testing
+1. MeterValues / TransactionEvents kommen über den CitrineOS-WebSocket.
+2. `LoadManager` aggregiert Leistung und drosselt bei Annäherung an `MAX_SITE_POWER`.
+3. Pricing-Sessions werden aus OCPP-Events und/oder Deep-Link/API erzeugt.
+4. PV-Surplus und manuelle Limits steuern Charging Profiles.
+5. Abgeschlossene Sessions sind über Billing-Export abrechenbar.
 
-Run unit tests with:
+## Voraussetzungen
+
+- Node.js 18+
+- Erreichbarer CitrineOS-WebSocket (Default `ws://localhost:8080`)
+
+## Installation & Start
+
+```bash
+cd services/load-management
+npm ci
+npm run build
+npm start
+# Dev:
+npm run dev
+```
+
+## Tests
 
 ```bash
 npm test
+# Typecheck
+npx tsc --noEmit
+# Billing-Selftest
+npx ts-node src/test-billing.ts
 ```
 
-## API Integration
+## Ports
 
-The service integrates with CitrineOS through:
+| Port | Zweck | ENV |
+|------|--------|-----|
+| `3001` | Health (`/health`, `/health/detailed`) | `HEALTH_PORT` |
+| `3003` | REST-API (Pricing, Deep-Link, PV, Billing, Stations) | `PRICING_API_PORT` oder `API_PORT` |
 
-- WebSocket connection for real-time communication
-- MeterValues messages for power consumption data
-- SetChargingProfile commands for load adjustment
+> Hinweis: Früher war Port `3002` für PV dokumentiert. PV liegt jetzt auf dem gemeinsamen API-Port (`3003` Default).
 
-The PV Surplus API provides two endpoints:
+## Environment Variables
 
-- `POST /api/pv-surplus`: Update current solar surplus value
-- `GET /api/pv-surplus`: Retrieve current solar surplus value
+### Load / CitrineOS
 
-The Dynamic Pricing API provides endpoints for tariff management and session pricing:
+| Variable | Default | Beschreibung |
+|----------|---------|--------------|
+| `CITRINE_WS_URL` | `ws://localhost:8080` | CitrineOS WebSocket |
+| `MAX_SITE_POWER` | `50` | Site-Limit (kW) |
+| `ADJUSTMENT_THRESHOLD` | `5` | Trigger-Abstand zum Limit (kW) |
+| `ADJUSTMENT_DELAY` | `1000` | Debounce vor Shedding (ms) |
+| `MONITORING_INTERVAL` | `5000` | Monitoring-Tick (ms) |
+| `DEFAULT_STATION_MAX_POWER_KW` | `22` | Default-Hardware-Ceiling |
+| `KNOWN_STATIONS` | _(leer)_ | Kommagetrennte Bootstrap-IDs |
 
-- `POST /api/pricing/tariff`: Add a new tariff period
-- `GET /api/pricing/tariff`: Get all tariff periods
-- `POST /api/pricing/session/start`: Start a new charging session
-- `POST /api/pricing/session/end`: End a charging session and calculate pricing
-- `POST /api/pricing/session/idle/start`: Start idle fee tracking
-- `POST /api/pricing/session/idle/end`: End idle fee tracking and calculate fee
-- `GET /api/pricing/session/:sessionId`: Get session details
-- `POST /api/pricing/energy-price`: Update energy price dynamically
-- `GET /api/pricing/config`: Get current pricing configuration
+### API / Health
 
-## Monitoring
+| Variable | Default | Beschreibung |
+|----------|---------|--------------|
+| `PRICING_API_PORT` / `API_PORT` | `3003` | REST-API-Port |
+| `HEALTH_PORT` | `3001` | Health-Port |
+| `HEALTH_CHECK_INTERVAL_MS` | `300000` | Bot-Intervall |
+| `HEALTH_RESPONSE_TIMEOUT_MS` | `30000` | Antwort-Timeout |
+| `HEALTH_FAILURE_THRESHOLD` | `3` | Failures vor Reset-Versuch |
+| `HEALTH_RESET_COOLDOWN_MS` | `1800000` | Cooldown zwischen Resets |
 
-The service logs all activities including:
+### Pricing
 
-- Station registration/removal
-- Power consumption updates
-- Load adjustment decisions
-- SetChargingProfile command responses
-- PV surplus updates
-- Pricing calculations and session management
+| Variable | Default |
+|----------|---------|
+| `PRICING_DEFAULT_PRICE_PER_KWH` | `0.30` |
+| `PRICING_DEFAULT_IDLE_FEE_PER_MIN` | `0.05` |
+| `PRICING_CURRENCY` | `EUR` |
+| `PRICING_TIMEZONE` | `Europe/Berlin` |
 
-## PV Surplus Charging
+### Deep-Link / Billing / Runtime paths
 
-The PV Surplus Charging feature allows integration with external Energy Management Systems (EMS) to optimize charging based on locally generated solar power. See [PV Surplus Documentation](src/services/pv-surplus/README.md) for detailed information.
+| Variable | Default | Beschreibung |
+|----------|---------|--------------|
+| `DEEP_LINK_STORE_PATH` | `./data/deep-link-tokens.json` | Token-Persistenz |
+| `BILLING_EXPORT_DIR` | `./exports` | CSV-Ziel |
+| `BILLING_REVENUE_ACCOUNT` | `8400` | DATEV Erlöskonto |
+| `BILLING_BANK_ACCOUNT` | `1200` | DATEV Gegenkonto |
+| `BILLING_VAT_RATE` | `0.19` | MwSt |
+| `BILLING_VAT_CODE` | `3` | DATEV BU-Schlüssel |
+| `BILLING_CURRENCY` | `EUR` | |
 
-## Dynamic Pricing Engine
+Runtime-Ordner `data/`, `exports/`, `dist/`, `node_modules/` sind gitignored.
 
-The Dynamic Pricing Engine provides flexible pricing logic for EV charging sessions, including time-based tariffs, idle fees, and energy pass-through calculations. See [Pricing Documentation](src/services/pricing/README.md) for detailed information.
+## HTTP API
+
+### Health
+
+- `GET http://localhost:3001/health`
+- `GET http://localhost:3001/health/detailed` — inkl. Station-Health + PV-Surplus
+
+`status` ist `degraded` nur wenn Stationen bekannt sind **und** der CitrineOS-WS down ist.
+
+### PV Surplus
+
+- `POST /api/pv-surplus` — Body: `{ "surplus": 15.5 }` (kW)
+- `GET /api/pv-surplus`
+
+Surplus wird über `LoadManager.applySurplusBudget` auf aktive Stationen verteilt.
+
+### Pricing
+
+- `POST /api/pricing/tariff`
+- `GET /api/pricing/tariff`
+- `POST /api/pricing/session/start`
+- `POST /api/pricing/session/end`
+- `POST /api/pricing/session/idle/start`
+- `POST /api/pricing/session/idle/end`
+- `GET /api/pricing/session/:sessionId`
+- `POST /api/pricing/energy-price`
+- `GET /api/pricing/config`
+
+Details: [src/services/pricing/README.md](src/services/pricing/README.md)
+
+### Deep-Link
+
+- `POST /api/deep-link/tokens` — Token erzeugen  
+  Body u. a.: `stationId`, `connectorId`, optional `purpose` (`start`|`stop`|`both`), `ttlSeconds`, `maxUses`, `customerId`, `idTag`, …
+- `GET /api/deep-link/tokens?includeRevoked=false`
+- `DELETE /api/deep-link/tokens/:token`
+- `GET /api/deep-link/start/:token` — optional `?meterValue=`
+- `GET /api/deep-link/stop/:token` — optional `?meterValue=`
+
+Verhalten (Stand Fix `64a095d`):
+
+- `purpose: both` → default **2 Uses** (Start + Stop)
+- Vor dem Consume: Peek + Preflight (aktive Session, WS-Status)
+- Schlägt Remote-Befehl fehl → `releaseUse` (Token wird nicht verbrannt)
+- Stop beendet die lokale Pricing-Session erst nach erfolgreichem Remote-Stop
+
+### Stations / Station-Health
+
+- `GET /api/stations`
+- `GET /api/health/stations`
+
+### Billing
+
+- `POST /api/billing/export`  
+  Body optional: `{ "sessionIds": ["…"], "filename": "export.csv", "paymentMethod": "stripe"|"rfid"|"guest"|"deeplink"|"unknown" }`  
+  Exportiert completed/idle Sessions (cancelled ausgeschlossen) als DATEV-Semikolon-CSV.
+
+## OCPP / CitrineOS Integration
+
+Der Service verarbeitet u. a.:
+
+| Action | Verhalten |
+|--------|-----------|
+| `MeterValues` | Leistung (kW) + optional Energy-Register → Pricing-Meter |
+| `StartTransaction` / `TransactionEvent` (Started) | Pricing-Session + `transactionId` |
+| `StopTransaction` / `TransactionEvent` (Ended) | Idle-Tracking starten |
+| `BootNotification` / `StatusNotification` | Station registrieren |
+| `SetChargingProfileResponse` | Log/Handling |
+
+Ausgehend: `SetChargingProfile`, `RemoteStartTransaction`, `RemoteStopTransaction`.
+
+## Docker
+
+```bash
+cd services/load-management
+docker compose up -d --build
+```
+
+Siehe `docker-compose.yml` (CitrineOS + Postgres + load-manager + optional Directus).
+
+## Weitere Doku
+
+- [docs/LOAD_MANAGEMENT_DOCS.md](docs/LOAD_MANAGEMENT_DOCS.md) — Architektur & Flows
+- [docs/IMPLEMENTATION_SUMMARY.md](docs/IMPLEMENTATION_SUMMARY.md) — Stand / Dateibaum
+- [INSTALL.md](INSTALL.md) — kurze Installationsanleitung
+- [src/services/pv-surplus/README.md](src/services/pv-surplus/README.md)
+- [src/services/pricing/README.md](src/services/pricing/README.md)

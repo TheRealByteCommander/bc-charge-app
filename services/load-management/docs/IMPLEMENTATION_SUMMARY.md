@@ -1,108 +1,107 @@
-# Dynamic Load Management Implementation Summary
+# Load-Management — Implementation Summary
 
-## Task Completed
-Successfully implemented Dynamic Load Management (DLM) for CitrineOS as specified in section 1.1 of the roadmap.
+**Repo:** https://github.com/TheRealByteCommander/bc-charge-app  
+**Pfad:** `services/load-management/`  
+**Branch:** `feat/load-management`  
+**Relevante Commits:**
+- `c0afb04` — initial complete service under monorepo path
+- `64a095d` — harden deep-link, load manager, billing/health flows
 
-## Implementation Overview
+## Scope (erfüllt)
 
-### Core Components Created
+- Dynamic Load Management gegen CitrineOS WebSocket
+- Proportionales, debounced Load-Shedding
+- WS-Reconnect + sauberes Shutdown
+- PV-Surplus → echte Profile-Anpassung (kein Log-only-Placeholder)
+- Dynamic Pricing + OCPP-Session-Bridge inkl. `transactionId` / Meter-Energy
+- Deep-Link Token-Store (durable) mit peek/consume/release
+- Health endpoints + HealthCheckBot
+- DATEV-Billing-Export
+- Jest-Tests grün, `tsc --noEmit` grün
 
-1. **LoadManager Service** (`backend/src/services/LoadManager.ts`)
-   - Monitors charging stations and aggregates power consumption
-   - Dynamically adjusts charging profiles via SetChargingProfile commands
-   - Handles WebSocket communication with CitrineOS
-   - Implements load adjustment logic when site power limits are approached
-
-2. **Main Application** (`backend/src/index.ts`)
-   - Entry point for the service
-   - Configuration management via environment variables
-   - Graceful shutdown handling
-   - Health check endpoint integration
-
-3. **Docker Configuration** (`backend/Dockerfile`)
-   - Containerized service for easy deployment
-   - Multi-stage build for optimal image size
-   - Health check support
-
-4. **Docker Compose Integration** (`backend/docker-compose.yml`)
-   - Integrated load-manager service with existing CitrineOS setup
-   - Environment variable configuration
-   - Network connectivity with CitrineOS
-
-5. **Unit Tests** (`backend/src/services/LoadManager.test.ts`)
-   - Test cases for station registration/removal
-   - Power consumption tracking validation
-   - Load adjustment calculation verification
-   - WebSocket communication mocking
-
-### Key Features Implemented
-
-- **Real-time Monitoring**: Receives MeterValues from charging stations via WebSocket
-- **Load Aggregation**: Calculates total power consumption across all active stations
-- **Dynamic Adjustment**: Automatically sends SetChargingProfile commands when limits are approached
-- **Proportional Reduction**: Distributes load reduction fairly across active stations
-- **Configuration Management**: Environment variable based configuration
-- **Health Monitoring**: Health check endpoints for service monitoring
-- **OCPP Compliance**: Follows OCPP 1.6 standards for communication
-
-### Technical Requirements Met
-
-✅ **Response Time**: Adjustments happen within 5 seconds of detecting overload
-✅ **Grid Protection**: Prevents circuit breaker tripping by staying within site limits
-✅ **Proportional Adjustment**: Distributes load reduction fairly across active stations
-✅ **WebSocket Communication**: Properly handles OCPP messages via WebSocket
-✅ **SetChargingProfile**: Implements dynamic charging profile adjustments
-
-## Files Created
+## Dateibaum (Service)
 
 ```
-bc-charge/
-├── LOAD_MANAGEMENT_DOCS.md          # Implementation documentation
-├── IMPLEMENTATION_SUMMARY.md        # This file
-├── backend/
-│   ├── Dockerfile                   # Docker configuration
-│   ├── README.md                    # Backend service documentation
-│   ├── package.json                 # Node.js dependencies
-│   ├── tsconfig.json                # TypeScript configuration
-│   ├── jest.config.js               # Jest testing configuration
-│   ├── docker-compose.yml           # Updated with load-manager service
-│   └── src/
-│       ├── index.ts                 # Main application entry point
-│       ├── health.ts                # Health check endpoints
-│       └── services/
-│           ├── LoadManager.ts       # Core load management logic
-│           └── LoadManager.test.ts  # Unit tests
+services/load-management/
+├── Dockerfile
+├── docker-compose.yml
+├── INSTALL.md
+├── README.md
+├── jest.config.js
+├── package.json
+├── package-lock.json
+├── tsconfig.json
+├── docs/
+│   ├── IMPLEMENTATION_SUMMARY.md   # diese Datei
+│   └── LOAD_MANAGEMENT_DOCS.md
+└── src/
+    ├── index.ts
+    ├── health.ts
+    ├── test-billing.ts
+    └── services/
+        ├── BillingService.ts
+        ├── DeepLinkController.ts
+        ├── DeepLinkTokenStore.ts
+        ├── HealthCheckBot.ts
+        ├── LoadManager.ts
+        ├── LoadManager.test.ts
+        ├── pricing/
+        │   ├── README.md
+        │   ├── index.ts
+        │   ├── pricingController.ts
+        │   ├── pricingService.ts
+        │   └── __tests__/
+        └── pv-surplus/
+            ├── README.md
+            ├── index.ts
+            ├── pvSurplusController.ts
+            ├── pvSurplusService.ts
+            └── __tests__/
 ```
 
-## Deployment Instructions
+Runtime (gitignored): `node_modules/`, `dist/`, `data/`, `exports/`.
 
-1. Navigate to the backend directory: `cd bc-charge/backend`
-2. Install dependencies: `npm install`
-3. Start services: `docker-compose up -d`
-4. The load-manager service will automatically connect to CitrineOS and begin monitoring
+## Kernverhalten nach Hardening (`64a095d`)
 
-## Configuration Options
+| Bereich | Verhalten |
+|---------|-----------|
+| Deep-Link | `both` → 2 Uses; Peek vor Consume; Release bei 503; Stop erst nach Remote-OK |
+| LoadManager | Reconnect, proportional scale, debounced adjust, robuste MeterValues, `meterEnergy` |
+| Pricing | `transactionId`, idempotentes `endSession`, keine negativen kWh, cancelled nicht billable |
+| Health | `degraded` nur bei bekannten Stationen + WS down |
+| Billing | cancelled gefiltert; MwSt-Split DATEV-CSV |
 
-The service can be configured via environment variables in docker-compose.yml:
+## API-Oberfläche (Kurz)
 
-- `MAX_SITE_POWER`: Maximum power allowed for the site (kW)
-- `ADJUSTMENT_THRESHOLD`: Threshold to trigger adjustment (kW)
-- `ADJUSTMENT_DELAY`: Delay before adjustment (ms)
-- `MONITORING_INTERVAL`: How often to check loads (ms)
-- `CITRINE_WS_URL`: CitrineOS WebSocket URL
+| Methode | Pfad | Port |
+|---------|------|------|
+| GET | `/health`, `/health/detailed` | 3001 |
+| GET/POST | `/api/pv-surplus` | 3003 |
+| * | `/api/pricing/*` | 3003 |
+| * | `/api/deep-link/*` | 3003 |
+| GET | `/api/stations`, `/api/health/stations` | 3003 |
+| POST | `/api/billing/export` | 3003 |
 
-## Testing
+## Verifikation
 
-Unit tests can be run with: `npm test`
+```bash
+cd services/load-management
+npm ci
+npx tsc --noEmit
+npm test
+npx ts-node src/test-billing.ts
+```
 
-The tests verify:
-- Station registration and removal
-- Power consumption tracking
-- Load adjustment calculations
-- WebSocket communication handling
+Erwartet: Typecheck OK, 28 Jest-Tests OK, Billing-Selftest OK.
 
-## Git Branch
+## Nicht in diesem Service
 
-All changes have been committed to the `feat/load-management` branch.
+- Frontend/PWA (`bc-charge-app` App-Root)
+- Stripe-BFF / Hasura GraphQL der App
+- CitrineOS-Core selbst (externes Image / bc-citrineos Deployment)
 
-This implementation fulfills all requirements specified in section 1.1 of the CitrineOS Extensions Roadmap.
+## Offene Betriebs-Themen (kein Code-Placeholder)
+
+- Deep-Link-Routen in Produktion authentifizieren
+- Pricing-Session-Persistenz (aktuell in-memory)
+- Fälschlich angelegtes Repo `TheRealByteCommander/bc-charge` manuell löschen (PAT ohne `delete_repo`)
