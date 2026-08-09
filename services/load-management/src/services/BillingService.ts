@@ -84,6 +84,14 @@ export class BillingService {
     if (session.status === 'cancelled') {
       throw new Error(`Session ${session.id} is cancelled and not billable`);
     }
+    if (session.status === 'idle') {
+      throw new Error(
+        `Session ${session.id} is still in idle tracking; end idle before billing`
+      );
+    }
+    if (session.status !== 'completed') {
+      throw new Error(`Session ${session.id} is not billable (status=${session.status})`);
+    }
 
     const gross = Number(session.totalPrice ?? 0);
     if (!Number.isFinite(gross) || gross < 0) {

@@ -238,19 +238,93 @@ export class DeepLinkTokenStore {
         return;
       }
       const raw = readFileSync(this.filePath, 'utf8');
-      const parsed = JSON.parse(raw) as StoreFileShape;
-      if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.tokens)) {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        throw new Error('Deep-link store is not valid JSON');
+      }
+      if (!this.isStoreFileShape(parsed)) {
         throw new Error('Invalid deep-link store format');
       }
       this.tokens.clear();
-      for (const record of parsed.tokens) {
-        if (record?.token && record.stationId && Number.isInteger(record.connectorId)) {
+      for (const candidate of parsed.tokens) {
+        const record = this.normalizeRecord(candidate);
+        if (record) {
           this.tokens.set(record.token, record);
         }
       }
     } catch (error) {
       console.error(`Failed to load deep-link token store from ${this.filePath}:`, error);
     }
+  }
+
+  private isStoreFileShape(value: unknown): value is StoreFileShape {
+    if (!value || typeof value !== 'object') {
+      return false;
+    }
+    const obj = value as { version?: unknown; tokens?: unknown };
+    return obj.version === 1 && Array.isArray(obj.tokens);
+  }
+
+  /**
+   * Parse/validate a persisted token record. Drops corrupt entries instead of casting.
+   */
+  private normalizeRecord(value: unknown): DeepLinkTokenRecord | null {
+    if (!value || typeof value !== 'object') {
+      return null;
+    }
+    const r = value as Record<string, unknown>;
+    if (typeof r.token !== 'string' || !r.token.trim()) {
+      return null;
+    }
+    if (typeof r.stationId !== 'string' || !r.stationId.trim()) {
+      return null;
+    }
+    const connectorId = Number(r.connectorId);
+    if (!Number.isInteger(connectorId) || connectorId < 0) {
+      return null;
+    }
+    const purpose = r.purpose;
+    if (purpose !== 'start' && purpose !== 'stop' && purpose !== 'both') {
+      return null;
+    }
+    const maxUses = Number(r.maxUses);
+    const useCount = Number(r.useCount);
+    if (!Number.isInteger(maxUses) || maxUses < 1) {
+      return null;
+    }
+    if (!Number.isInteger(useCount) || useCount < 0) {
+      return null;
+    }
+    if (typeof r.createdAt !== 'string' || Number.isNaN(Date.parse(r.createdAt))) {
+      return null;
+    }
+    if (typeof r.expiresAt !== 'string' || Number.isNaN(Date.parse(r.expiresAt))) {
+      return null;
+    }
+
+    const metadata =
+      r.metadata && typeof r.metadata === 'object' && !Array.isArray(r.metadata)
+        ? (r.metadata as Record<string, string | number | boolean>)
+        : undefined;
+
+    return {
+      token: r.token,
+      stationId: r.stationId.trim(),
+      connectorId,
+      purpose,
+      customerId: typeof r.customerId === 'string' ? r.customerId : undefined,
+      locationId: typeof r.locationId === 'string' ? r.locationId : undefined,
+      idTag: typeof r.idTag === 'string' ? r.idTag : undefined,
+      maxUses,
+      useCount,
+      createdAt: r.createdAt,
+      expiresAt: r.expiresAt,
+      lastUsedAt: typeof r.lastUsedAt === 'string' ? r.lastUsedAt : undefined,
+      revokedAt: typeof r.revokedAt === 'string' ? r.revokedAt : undefined,
+      metadata,
+    };
   }
 
   private persist(): void {

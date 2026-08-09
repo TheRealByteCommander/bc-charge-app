@@ -207,9 +207,62 @@ describe('PricingService', () => {
       jest.useRealTimers();
       
       expect(updatedSession.status).toBe('completed');
-      expect(updatedSession.idleDuration).toBeGreaterThanOrEqual(15);
-      expect(updatedSession.idleFee).toBeGreaterThanOrEqual(0.75); // 15 * 0.05 (default idle fee)
+      expect(updatedSession.idleDuration).toBe(15);
+      expect(updatedSession.idleFee).toBeCloseTo(0.75, 2); // 15 * 0.05 (default idle fee)
       expect(updatedSession.totalPrice).toBeGreaterThan(1.35); // Base price + idle fee
+    });
+
+    it('should not bill a partial idle minute (floor, not ceil)', () => {
+      const startTime = new Date('2023-01-01T11:00:00.000Z');
+      jest.useFakeTimers();
+      jest.setSystemTime(startTime);
+
+      pricingService.startIdleTracking(sessionId);
+
+      // 59 seconds idle → 0 billable minutes
+      jest.setSystemTime(new Date(startTime.getTime() + 59 * 1000));
+      const updated = pricingService.endIdleTracking(sessionId);
+      jest.useRealTimers();
+
+      expect(updated.idleDuration).toBe(0);
+      expect(updated.idleFee).toBe(0);
+      expect(updated.status).toBe('completed');
+    });
+
+    it('should finalize idle via endSession and stay idempotent on second endIdle', () => {
+      const startTime = new Date('2023-01-01T11:00:00.000Z');
+      jest.useFakeTimers();
+      jest.setSystemTime(startTime);
+
+      pricingService.startIdleTracking(sessionId);
+      jest.setSystemTime(new Date(startTime.getTime() + 10 * 60 * 1000));
+
+      const viaEnd = pricingService.endSession(sessionId, 105.0);
+      expect(viaEnd.status).toBe('completed');
+      expect(viaEnd.idleDuration).toBe(10);
+      expect(viaEnd.idleFee).toBeCloseTo(0.5, 2);
+
+      const again = pricingService.endIdleTracking(sessionId);
+      expect(again.idleFee).toBeCloseTo(0.5, 2);
+      expect(again.totalPrice).toBeCloseTo(viaEnd.totalPrice!, 2);
+      jest.useRealTimers();
+    });
+
+    it('should exclude idle sessions from billable list until idle ends', () => {
+      pricingService.startIdleTracking(sessionId);
+      expect(pricingService.getBillableSessions().some((s) => s.id === sessionId)).toBe(false);
+
+      const startTime = new Date('2023-01-01T11:00:00.000Z');
+      jest.useFakeTimers();
+      jest.setSystemTime(startTime);
+      // re-sync idle start under fake clock
+      const session = pricingService.getSession(sessionId)!;
+      session.idleStartTime = startTime;
+      jest.setSystemTime(new Date(startTime.getTime() + 5 * 60 * 1000));
+      pricingService.endIdleTracking(sessionId);
+      jest.useRealTimers();
+
+      expect(pricingService.getBillableSessions().some((s) => s.id === sessionId)).toBe(true);
     });
 
     it('should use tariff-specific idle fee when available', () => {
@@ -273,6 +326,14 @@ describe('PricingService', () => {
       
       expect(session.totalEnergy).toBe(0);
       expect(session.totalPrice).toBe(0);
+    });
+
+    it('should clamp negative energy when end meter is below start', () => {
+      const sessionId = pricingService.startSession('CS001', 1, 100.0);
+      const session = pricingService.endSession(sessionId, 90.0);
+      expect(session.totalEnergy).toBe(0);
+      expect(session.totalPrice).toBe(0);
+      expect(session.endMeterValue).toBe(90.0);
     });
 
     it('should handle multiple active sessions', () => {

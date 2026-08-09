@@ -359,7 +359,8 @@ export class DeepLinkController {
         return;
       }
 
-      // Only end local pricing session after remote stop was accepted for delivery
+      // Only end local pricing session after remote stop was accepted for delivery.
+      // Idle sessions (OCPP already stopped) must finalize idle fee — do not leave them open.
       let completedSession: ChargingSession | null = null;
       if (openSession && openSession.status === 'active') {
         const meter =
@@ -368,7 +369,7 @@ export class DeepLinkController {
             : openSession.endMeterValue ?? openSession.startMeterValue;
         completedSession = this.pricingService.endSession(openSession.id, meter);
       } else if (openSession && openSession.status === 'idle') {
-        completedSession = openSession;
+        completedSession = this.pricingService.endIdleTracking(openSession.id);
       }
 
       res.status(200).json({

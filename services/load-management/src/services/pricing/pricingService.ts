@@ -254,12 +254,13 @@ export class PricingService {
   }
 
   /**
-   * Sessions eligible for billing export (completed or idle with price).
+   * Sessions eligible for billing export.
+   * Only fully completed sessions (idle fee finalized when applicable).
    */
   public getBillableSessions(): ChargingSession[] {
     return Array.from(this._sessions.values()).filter(
       (session) =>
-        (session.status === 'completed' || session.status === 'idle') &&
+        session.status === 'completed' &&
         session.totalPrice !== undefined &&
         Number.isFinite(session.totalPrice)
     );
@@ -317,12 +318,23 @@ export class PricingService {
     if (session.status === 'cancelled') {
       throw new Error(`Session ${sessionId} is cancelled and cannot be ended for billing`);
     }
-    if (session.status === 'completed' || session.status === 'idle') {
-      // Idempotent: refresh meter/price if still open-ish, else return as-is
+    // Idle sessions must finalize idle fee before they become billable.
+    if (session.status === 'idle') {
+      return this.endIdleTracking(sessionId);
+    }
+    if (session.status === 'completed') {
+      // Idempotent return of already completed session
       return session;
     }
     if (!Number.isFinite(endMeterValue) || endMeterValue < 0) {
       throw new Error('endMeterValue must be a non-negative number');
+    }
+
+    // Guard against meter rollback / unit mistakes: never bill negative energy
+    if (endMeterValue + 1e-9 < session.startMeterValue) {
+      this._logService.warn?.(
+        `Session ${sessionId}: endMeterValue ${endMeterValue} < startMeterValue ${session.startMeterValue}; clamping energy to 0`
+      );
     }
 
     const now = new Date();
@@ -389,34 +401,56 @@ export class PricingService {
     if (!session) {
       throw new Error(`Session ${sessionId} not found`);
     }
-    
+
+    // Idempotent: already finalized
+    if (session.status === 'completed' && session.idleDuration !== undefined) {
+      return session;
+    }
+
     if (session.status !== 'idle') {
       throw new Error(`Session ${sessionId} is not in idle state`);
     }
-    
+
     const now = new Date();
-    const idleDurationMs = now.getTime() - (session.idleStartTime?.getTime() || now.getTime());
-    const idleDurationMinutes = Math.ceil(idleDurationMs / (1000 * 60)); // Round up to nearest minute
-    
+    const idleStartMs = session.idleStartTime?.getTime();
+    const idleDurationMs =
+      idleStartMs !== undefined && Number.isFinite(idleStartMs)
+        ? Math.max(0, now.getTime() - idleStartMs)
+        : 0;
+    // Bill whole minutes only; sub-minute idle is free (avoids 1s → 1min overcharge)
+    const idleDurationMinutes = Math.floor(idleDurationMs / (1000 * 60));
+
     session.idleDuration = idleDurationMinutes;
-    
+    session.endTimestamp = session.endTimestamp ?? now;
+
     // Calculate idle fee using the tariff that was active when session ended
     const tariff = session.tariffApplied || this.getApplicableTariff(now);
-    const idleFeePerMin = tariff.idleFeePerMin !== undefined ? tariff.idleFeePerMin : this._config.defaultIdleFeePerMin;
-    session.idleFee = idleFeePerMin * idleDurationMinutes;
-    
-    // Add idle fee to total price
-    if (session.totalPrice !== undefined) {
-      session.totalPrice += session.idleFee;
-    } else {
-      session.totalPrice = session.idleFee;
-    }
-    
+    const idleFeePerMin =
+      tariff.idleFeePerMin !== undefined
+        ? tariff.idleFeePerMin
+        : this._config.defaultIdleFeePerMin;
+    // Guard non-finite tariff values
+    const safeRate = Number.isFinite(idleFeePerMin) && idleFeePerMin >= 0 ? idleFeePerMin : 0;
+    session.idleFee = this._round2(safeRate * idleDurationMinutes);
+
+    // Add idle fee to total price (energy portion already set at charge end)
+    const energyPortion =
+      session.totalPrice !== undefined && Number.isFinite(session.totalPrice)
+        ? session.totalPrice
+        : 0;
+    session.totalPrice = this._round2(energyPortion + (session.idleFee ?? 0));
+
     session.status = 'completed';
-    
-    this._logService.info(`Ended idle tracking for session ${sessionId}, idle duration: ${idleDurationMinutes}min, idle fee: ${session.idleFee}EUR`);
-    
+
+    this._logService.info(
+      `Ended idle tracking for session ${sessionId}, idle duration: ${idleDurationMinutes}min, idle fee: ${session.idleFee}EUR`
+    );
+
     return session;
+  }
+
+  private _round2(n: number): number {
+    return Math.round((n + Number.EPSILON) * 100) / 100;
   }
 
   /**
