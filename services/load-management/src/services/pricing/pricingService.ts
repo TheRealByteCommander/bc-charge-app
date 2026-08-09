@@ -33,6 +33,8 @@ export interface ChargingSession {
   source?: 'api' | 'deeplink' | 'ocpp' | 'unknown';
   deepLinkToken?: string;
   cancelReason?: string;
+  /** OCPP / CitrineOS transaction id when known */
+  transactionId?: string | number;
 }
 
 /**
@@ -149,8 +151,13 @@ export class PricingService {
       locationId?: string;
       source?: ChargingSession['source'];
       deepLinkToken?: string;
+      transactionId?: string | number;
     } = {}
   ): string {
+    if (!Number.isFinite(startMeterValue) || startMeterValue < 0) {
+      throw new Error('startMeterValue must be a non-negative number');
+    }
+
     const existing = this.findActiveSession(stationId, connectorId);
     if (existing) {
       throw new Error(
@@ -174,6 +181,7 @@ export class PricingService {
       locationId: options.locationId,
       source: options.source || 'api',
       deepLinkToken: options.deepLinkToken,
+      transactionId: options.transactionId,
     };
 
     this._sessions.set(sessionId, session);
@@ -250,8 +258,26 @@ export class PricingService {
    */
   public getBillableSessions(): ChargingSession[] {
     return Array.from(this._sessions.values()).filter(
-      (session) => session.status === 'completed' || session.status === 'idle'
+      (session) =>
+        (session.status === 'completed' || session.status === 'idle') &&
+        session.totalPrice !== undefined &&
+        Number.isFinite(session.totalPrice)
     );
+  }
+
+  public setSessionTransactionId(
+    sessionId: string,
+    transactionId: string | number
+  ): void {
+    const session = this._sessions.get(sessionId);
+    if (!session) {
+      throw new Error(`Session ${sessionId} not found`);
+    }
+    session.transactionId = transactionId;
+  }
+
+  public getSessionTransactionId(sessionId: string): string | number | undefined {
+    return this._sessions.get(sessionId)?.transactionId;
   }
 
   /**
@@ -264,13 +290,16 @@ export class PricingService {
     if (!session) {
       throw new Error(`Session ${sessionId} not found`);
     }
-    
+    if (!Number.isFinite(meterValue) || meterValue < 0) {
+      throw new Error('meterValue must be a non-negative number');
+    }
+
     // Update total energy if session is active
     if (session.status === 'active') {
       session.endMeterValue = meterValue;
-      session.totalEnergy = meterValue - session.startMeterValue;
+      session.totalEnergy = Math.max(0, meterValue - session.startMeterValue);
     }
-    
+
     this._logService.debug(`Updated session ${sessionId} meter value to ${meterValue}kWh`);
   }
 
@@ -285,18 +314,30 @@ export class PricingService {
     if (!session) {
       throw new Error(`Session ${sessionId} not found`);
     }
-    
+    if (session.status === 'cancelled') {
+      throw new Error(`Session ${sessionId} is cancelled and cannot be ended for billing`);
+    }
+    if (session.status === 'completed' || session.status === 'idle') {
+      // Idempotent: refresh meter/price if still open-ish, else return as-is
+      return session;
+    }
+    if (!Number.isFinite(endMeterValue) || endMeterValue < 0) {
+      throw new Error('endMeterValue must be a non-negative number');
+    }
+
     const now = new Date();
     session.endTimestamp = now;
     session.endMeterValue = endMeterValue;
-    session.totalEnergy = endMeterValue - session.startMeterValue;
+    session.totalEnergy = Math.max(0, endMeterValue - session.startMeterValue);
     session.status = 'completed';
-    
+
     // Calculate pricing
     this._calculateSessionPricing(session);
-    
-    this._logService.info(`Ended charging session ${sessionId}, total energy: ${session.totalEnergy}kWh, total price: ${session.totalPrice}EUR`);
-    
+
+    this._logService.info(
+      `Ended charging session ${sessionId}, total energy: ${session.totalEnergy}kWh, total price: ${session.totalPrice}EUR`
+    );
+
     return session;
   }
 

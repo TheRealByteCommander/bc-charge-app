@@ -182,18 +182,20 @@ apiApp.post('/api/billing/export', async (req, res, next) => {
       return;
     }
 
-    const transactions = sessions.map((session) => {
-      const method: PaymentMethod =
-        session.source === 'deeplink'
-          ? 'deeplink'
-          : paymentMethodDefault;
-      return billingService.fromChargingSession(session, {
-        customerId: session.customerId,
-        locationId: session.locationId,
-        paymentMethod: method,
-        currency: PRICING_CONFIG.currency,
+    const transactions = sessions
+      .filter((session) => session.status !== 'cancelled')
+      .map((session) => {
+        const method: PaymentMethod =
+          session.source === 'deeplink'
+            ? 'deeplink'
+            : paymentMethodDefault;
+        return billingService.fromChargingSession(session, {
+          customerId: session.customerId,
+          locationId: session.locationId,
+          paymentMethod: method,
+          currency: PRICING_CONFIG.currency,
+        });
       });
-    });
 
     const path = await billingService.exportToCsv(transactions, filename);
     res.status(200).json({
@@ -286,15 +288,20 @@ async function main(): Promise<void> {
         connectorId,
         meterStart,
         idTag,
+        transactionId,
       }: {
         stationId: string;
         connectorId: number;
         meterStart?: number;
         idTag?: string;
+        transactionId?: string | number;
       }) => {
         try {
           const existing = pricingService.findActiveSession(stationId, connectorId);
           if (existing) {
+            if (transactionId !== undefined) {
+              pricingService.setSessionTransactionId(existing.id, transactionId);
+            }
             console.log(
               `OCPP start for ${stationId}/${connectorId}: session ${existing.id} already active`
             );
@@ -307,11 +314,37 @@ async function main(): Promise<void> {
             {
               customerId: idTag,
               source: 'ocpp',
+              transactionId,
             }
           );
-          console.log(`OCPP start: created pricing session ${sessionId} for ${stationId}/${connectorId}`);
+          console.log(
+            `OCPP start: created pricing session ${sessionId} for ${stationId}/${connectorId}`
+          );
         } catch (error) {
           console.error('Failed to create session on transactionStarted:', error);
+        }
+      }
+    );
+
+    loadManager.on(
+      'meterEnergy',
+      ({
+        stationId,
+        connectorId,
+        energyKwh,
+      }: {
+        stationId: string;
+        connectorId: number;
+        energyKwh: number;
+      }) => {
+        try {
+          const session = pricingService.findActiveSession(stationId, connectorId);
+          if (!session) {
+            return;
+          }
+          pricingService.updateSessionMeterValue(session.id, energyKwh);
+        } catch (error) {
+          console.error('Failed to update session meter from OCPP energy:', error);
         }
       }
     );
@@ -322,10 +355,12 @@ async function main(): Promise<void> {
         stationId,
         connectorId,
         meterStop,
+        transactionId,
       }: {
         stationId: string;
         connectorId: number;
         meterStop?: number;
+        transactionId?: string | number;
       }) => {
         console.log(`Handling transaction stop for ${stationId}, connector ${connectorId}`);
 
@@ -341,6 +376,9 @@ async function main(): Promise<void> {
         }
 
         try {
+          if (transactionId !== undefined) {
+            pricingService.setSessionTransactionId(session.id, transactionId);
+          }
           pricingService.startIdleTracking(
             session.id,
             meterStop !== undefined && Number.isFinite(meterStop) ? meterStop : undefined

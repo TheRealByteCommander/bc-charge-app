@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { LoadManager } from './LoadManager';
-import { PricingService } from './pricing';
+import { PricingService, ChargingSession } from './pricing';
 import {
   CreateDeepLinkTokenInput,
   DeepLinkTokenStore,
@@ -110,7 +110,7 @@ export class DeepLinkController {
           },
         },
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       if (error instanceof Error && /required|must be|future/i.test(error.message)) {
         res.status(400).json({ success: false, message: error.message });
         return;
@@ -177,24 +177,22 @@ export class DeepLinkController {
         return;
       }
 
-      const resolved = this.tokenStore.resolveAndConsume(token, 'start');
-      if (!resolved.ok) {
-        res.status(this.statusForResolveError(resolved.code)).json({
+      // Peek first so failed preconditions do not burn a use
+      const peeked = this.tokenStore.peek(token, 'start');
+      if (!peeked.ok) {
+        res.status(this.statusForResolveError(peeked.code)).json({
           success: false,
-          code: resolved.code,
-          message: resolved.message,
+          code: peeked.code,
+          message: peeked.message,
         });
         return;
       }
 
-      const { record } = resolved;
-      const stationId = record.stationId;
-      const connectorId = record.connectorId;
+      const stationId = peeked.record.stationId;
+      const connectorId = peeked.record.connectorId;
 
-      // Ensure station is registered for load management
       this.loadManager.registerStation(stationId, this.loadManager.getDefaultMaxPower());
 
-      // Reject if connector already has an active pricing session
       const existing = this.pricingService.findActiveSession(stationId, connectorId);
       if (existing) {
         res.status(409).json({
@@ -215,24 +213,50 @@ export class DeepLinkController {
         return;
       }
 
-      const sessionId = this.pricingService.startSession(stationId, connectorId, startMeterValue, {
-        customerId: record.customerId,
-        locationId: record.locationId,
-        source: 'deeplink',
-        deepLinkToken: record.token,
-      });
+      if (!this.loadManager.isWebSocketOpen()) {
+        res.status(503).json({
+          success: false,
+          message: 'CitrineOS WebSocket is not connected; charging start was not sent',
+        });
+        return;
+      }
+
+      const resolved = this.tokenStore.resolveAndConsume(token, 'start');
+      if (!resolved.ok) {
+        res.status(this.statusForResolveError(resolved.code)).json({
+          success: false,
+          code: resolved.code,
+          message: resolved.message,
+        });
+        return;
+      }
+
+      const { record } = resolved;
+
+      let sessionId: string;
+      try {
+        sessionId = this.pricingService.startSession(stationId, connectorId, startMeterValue, {
+          customerId: record.customerId,
+          locationId: record.locationId,
+          source: 'deeplink',
+          deepLinkToken: record.token,
+        });
+      } catch (error) {
+        this.tokenStore.releaseUse(token);
+        throw error;
+      }
 
       const sent = this.loadManager.sendRemoteStart(stationId, connectorId, {
         idTag: record.idTag || record.customerId || `dl-${record.token.slice(0, 20)}`,
       });
 
       if (!sent) {
-        // Roll back session if command could not be delivered
         try {
           this.pricingService.cancelSession(sessionId, 'remote_start_not_delivered');
         } catch {
           // ignore
         }
+        this.tokenStore.releaseUse(token);
         res.status(503).json({
           success: false,
           message: 'CitrineOS WebSocket is not connected; charging start was not sent',
@@ -266,6 +290,43 @@ export class DeepLinkController {
         return;
       }
 
+      const peeked = this.tokenStore.peek(token, 'stop');
+      if (!peeked.ok) {
+        res.status(this.statusForResolveError(peeked.code)).json({
+          success: false,
+          code: peeked.code,
+          message: peeked.message,
+        });
+        return;
+      }
+
+      const stationId = peeked.record.stationId;
+      const connectorId = peeked.record.connectorId;
+
+      const openSession = this.pricingService.findOpenSession(stationId, connectorId);
+      const endMeterValue =
+        req.query.meterValue !== undefined ? Number(req.query.meterValue) : undefined;
+
+      if (endMeterValue !== undefined && (!Number.isFinite(endMeterValue) || endMeterValue < 0)) {
+        res.status(400).json({
+          success: false,
+          message: 'meterValue query param must be a non-negative number when provided',
+        });
+        return;
+      }
+
+      if (!this.loadManager.isWebSocketOpen()) {
+        res.status(503).json({
+          success: false,
+          message: 'CitrineOS WebSocket is not connected; stop command was not sent',
+          data: {
+            sessionId: openSession?.id,
+            sessionEndedLocally: false,
+          },
+        });
+        return;
+      }
+
       const resolved = this.tokenStore.resolveAndConsume(token, 'stop');
       if (!resolved.ok) {
         res.status(this.statusForResolveError(resolved.code)).json({
@@ -277,36 +338,37 @@ export class DeepLinkController {
       }
 
       const { record } = resolved;
-      const stationId = record.stationId;
-      const connectorId = record.connectorId;
-
-      const active = this.pricingService.findActiveSession(stationId, connectorId);
-      const endMeterValue =
-        req.query.meterValue !== undefined ? Number(req.query.meterValue) : undefined;
-
-      let sessionId: string | undefined = active?.id;
-      let completedSession = null as ReturnType<PricingService['endSession']> | null;
-
-      if (active) {
-        const meter =
-          endMeterValue !== undefined && Number.isFinite(endMeterValue)
-            ? endMeterValue
-            : active.endMeterValue ?? active.startMeterValue;
-        completedSession = this.pricingService.endSession(active.id, meter);
-        sessionId = completedSession.id;
-      }
+      const transactionId = openSession
+        ? this.pricingService.getSessionTransactionId(openSession.id)
+        : undefined;
 
       const sent = this.loadManager.sendRemoteStop(stationId, connectorId, {
-        transactionId: active ? undefined : undefined,
+        transactionId: transactionId ?? undefined,
       });
 
       if (!sent) {
+        this.tokenStore.releaseUse(token);
         res.status(503).json({
           success: false,
           message: 'CitrineOS WebSocket is not connected; stop command was not sent',
-          data: { sessionId, sessionEndedLocally: Boolean(completedSession) },
+          data: {
+            sessionId: openSession?.id,
+            sessionEndedLocally: false,
+          },
         });
         return;
+      }
+
+      // Only end local pricing session after remote stop was accepted for delivery
+      let completedSession: ChargingSession | null = null;
+      if (openSession && openSession.status === 'active') {
+        const meter =
+          endMeterValue !== undefined && Number.isFinite(endMeterValue)
+            ? endMeterValue
+            : openSession.endMeterValue ?? openSession.startMeterValue;
+        completedSession = this.pricingService.endSession(openSession.id, meter);
+      } else if (openSession && openSession.status === 'idle') {
+        completedSession = openSession;
       }
 
       res.status(200).json({
@@ -315,7 +377,7 @@ export class DeepLinkController {
         data: {
           stationId,
           connectorId,
-          sessionId,
+          sessionId: completedSession?.id ?? openSession?.id,
           session: completedSession,
           tokenUsesRemaining: Math.max(0, record.maxUses - record.useCount),
         },

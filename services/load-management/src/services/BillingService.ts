@@ -81,6 +81,9 @@ export class BillingService {
     if (session.status === 'active') {
       throw new Error(`Session ${session.id} is still active; end it before billing`);
     }
+    if (session.status === 'cancelled') {
+      throw new Error(`Session ${session.id} is cancelled and not billable`);
+    }
 
     const gross = Number(session.totalPrice ?? 0);
     if (!Number.isFinite(gross) || gross < 0) {

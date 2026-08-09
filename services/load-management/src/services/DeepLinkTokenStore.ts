@@ -32,7 +32,10 @@ export interface CreateDeepLinkTokenInput {
   expiresAt?: Date;
   /** TTL in seconds when expiresAt is omitted. Default 24h. */
   ttlSeconds?: number;
-  /** Max successful uses. Default 1 for start/stop, unlimited (-1) not used. */
+  /**
+   * Max successful uses.
+   * Default: 2 for purpose "both" (start+stop), otherwise 1.
+   */
   maxUses?: number;
   metadata?: Record<string, string | number | boolean>;
 }
@@ -86,7 +89,8 @@ export class DeepLinkTokenStore {
     }
 
     const purpose: DeepLinkPurpose = input.purpose ?? 'both';
-    const maxUses = input.maxUses ?? 1;
+    // purpose "both" needs at least start+stop by default
+    const maxUses = input.maxUses ?? (purpose === 'both' ? 2 : 1);
     if (!Number.isInteger(maxUses) || maxUses < 1) {
       throw new Error('maxUses must be an integer >= 1');
     }
@@ -117,7 +121,6 @@ export class DeepLinkTokenStore {
   }
 
   public list(includeRevoked = false): DeepLinkTokenRecord[] {
-    const now = Date.now();
     return Array.from(this.tokens.values())
       .filter((r) => includeRevoked || !r.revokedAt)
       .map((r) => ({ ...r }))
@@ -125,28 +128,24 @@ export class DeepLinkTokenStore {
   }
 
   /**
+   * Validate token for a purpose without consuming a use.
+   */
+  public peek(token: string, purpose: 'start' | 'stop'): DeepLinkResolveResult {
+    return this.validate(token, purpose);
+  }
+
+  /**
    * Validate token for a purpose and consume one use on success.
    */
   public resolveAndConsume(token: string, purpose: 'start' | 'stop'): DeepLinkResolveResult {
+    const validated = this.validate(token, purpose);
+    if (!validated.ok) {
+      return validated;
+    }
+
     const record = this.tokens.get(token);
     if (!record) {
       return { ok: false, code: 'NOT_FOUND', message: 'Deep-link token not found' };
-    }
-    if (record.revokedAt) {
-      return { ok: false, code: 'REVOKED', message: 'Deep-link token has been revoked' };
-    }
-    if (Date.parse(record.expiresAt) <= Date.now()) {
-      return { ok: false, code: 'EXPIRED', message: 'Deep-link token has expired' };
-    }
-    if (record.useCount >= record.maxUses) {
-      return { ok: false, code: 'EXHAUSTED', message: 'Deep-link token has no remaining uses' };
-    }
-    if (record.purpose !== 'both' && record.purpose !== purpose) {
-      return {
-        ok: false,
-        code: 'PURPOSE_MISMATCH',
-        message: `Deep-link token is not valid for ${purpose}`,
-      };
     }
 
     record.useCount += 1;
@@ -154,6 +153,20 @@ export class DeepLinkTokenStore {
     this.tokens.set(record.token, record);
     this.persist();
     return { ok: true, record: { ...record } };
+  }
+
+  /**
+   * Undo one consumption (e.g. remote command could not be delivered).
+   */
+  public releaseUse(token: string): boolean {
+    const record = this.tokens.get(token);
+    if (!record || record.useCount <= 0) {
+      return false;
+    }
+    record.useCount -= 1;
+    this.tokens.set(token, record);
+    this.persist();
+    return true;
   }
 
   public revoke(token: string): boolean {
@@ -185,6 +198,30 @@ export class DeepLinkTokenStore {
       this.persist();
     }
     return removed;
+  }
+
+  private validate(token: string, purpose: 'start' | 'stop'): DeepLinkResolveResult {
+    const record = this.tokens.get(token);
+    if (!record) {
+      return { ok: false, code: 'NOT_FOUND', message: 'Deep-link token not found' };
+    }
+    if (record.revokedAt) {
+      return { ok: false, code: 'REVOKED', message: 'Deep-link token has been revoked' };
+    }
+    if (Date.parse(record.expiresAt) <= Date.now()) {
+      return { ok: false, code: 'EXPIRED', message: 'Deep-link token has expired' };
+    }
+    if (record.useCount >= record.maxUses) {
+      return { ok: false, code: 'EXHAUSTED', message: 'Deep-link token has no remaining uses' };
+    }
+    if (record.purpose !== 'both' && record.purpose !== purpose) {
+      return {
+        ok: false,
+        code: 'PURPOSE_MISMATCH',
+        message: `Deep-link token is not valid for ${purpose}`,
+      };
+    }
+    return { ok: true, record: { ...record } };
   }
 
   private generateToken(): string {

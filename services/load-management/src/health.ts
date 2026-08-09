@@ -47,8 +47,12 @@ export function buildHealthSnapshot(): HealthSnapshot {
   const activeSessions = pricingService?.getActiveSessions().length ?? 0;
   const billableSessions = pricingService?.getBillableSessions().length ?? 0;
 
+  // Degraded only when we expect a live Citrine link (known stations) but WS is down.
+  const status: HealthSnapshot['status'] =
+    !wsOpen && stations.length > 0 ? 'degraded' : 'healthy';
+
   return {
-    status: wsOpen || stations.length === 0 ? 'healthy' : 'degraded',
+    status,
     timestamp: new Date().toISOString(),
     service: 'load-manager',
     version: '1.0.0',
