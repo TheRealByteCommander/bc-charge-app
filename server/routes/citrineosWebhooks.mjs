@@ -44,10 +44,29 @@ function normalizeCitrineosWebhookPayload(raw) {
         ? raw.payload
         : raw;
 
+  const transactionInfo =
+    body.transactionInfo && typeof body.transactionInfo === 'object' && !Array.isArray(body.transactionInfo)
+      ? body.transactionInfo
+      : body.transaction && typeof body.transaction === 'object' && !Array.isArray(body.transaction)
+        ? body.transaction
+        : null;
+
+  // OCPP 2.0.1 TransactionEvent: transactionId is usually under transactionInfo
   const transactionId =
-    body.transactionId ?? body.transaction_id ?? body.id ?? body.transaction?.id ?? null;
+    body.transactionId ??
+    body.transaction_id ??
+    transactionInfo?.transactionId ??
+    transactionInfo?.transaction_id ??
+    transactionInfo?.id ??
+    body.id ??
+    null;
   const remoteStartIdRaw =
-    body.remoteStartId ?? body.remote_start_id ?? body.remoteStart?.id ?? null;
+    body.remoteStartId ??
+    body.remote_start_id ??
+    body.remoteStart?.id ??
+    transactionInfo?.remoteStartId ??
+    transactionInfo?.remote_start_id ??
+    null;
   const remoteStartId =
     remoteStartIdRaw == null || remoteStartIdRaw === ''
       ? null

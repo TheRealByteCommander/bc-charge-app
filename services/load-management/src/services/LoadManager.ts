@@ -429,21 +429,113 @@ export class LoadManager extends EventEmitter {
   }
 
   /**
+   * Resolve station id from top-level or payload aliases (OCPP 1.6 + 2.x / CitrineOS).
+   */
+  private extractStationId(message: any, payload: Record<string, any>): string | null {
+    const raw =
+      message?.stationId ??
+      payload.stationId ??
+      payload.chargingStationId ??
+      payload.station_id ??
+      null;
+    if (raw == null || raw === '') return null;
+    return String(raw);
+  }
+
+  /**
+   * OCPP 2.0.1 puts connector under payload.evse; 1.6 uses payload.connectorId.
+   */
+  private extractConnectorId(payload: Record<string, any>): number {
+    const raw =
+      payload.connectorId ??
+      payload.connector_id ??
+      payload.evse?.connectorId ??
+      payload.evse?.connector_id ??
+      payload.evse?.id ??
+      0;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  /**
+   * OCPP 2.0.1 transactionId lives in transactionInfo; 1.6 is flat on payload.
+   */
+  private extractTransactionId(
+    payload: Record<string, any>
+  ): string | number | undefined {
+    const raw =
+      payload.transactionId ??
+      payload.transaction_id ??
+      payload.transactionInfo?.transactionId ??
+      payload.transactionInfo?.transaction_id ??
+      payload.transaction?.id ??
+      payload.transaction?.transactionId;
+    if (raw == null || raw === '') return undefined;
+    return raw as string | number;
+  }
+
+  private extractIdTag(payload: Record<string, any>): string | undefined {
+    const raw =
+      payload.idTag ??
+      payload.id_tag ??
+      payload.idToken?.idToken ??
+      payload.idToken?.id_token ??
+      payload.idToken;
+    if (raw == null || raw === '') return undefined;
+    return String(raw);
+  }
+
+  /**
+   * Pull Energy.Active.Import.Register from meterValue arrays (Wh or kWh).
+   */
+  private extractEnergyKwhFromMeterValue(meterValue: unknown): number | undefined {
+    if (!meterValue || !Array.isArray(meterValue)) return undefined;
+    let energyKwh: number | undefined;
+    for (const value of meterValue) {
+      const samples = value?.sampledValue || value?.sampled_value;
+      if (!samples || !Array.isArray(samples)) continue;
+      for (const sample of samples) {
+        const measurand = sample?.measurand || sample?.Measurand;
+        if (measurand !== 'Energy.Active.Import.Register') continue;
+        const raw = parseFloat(sample?.value);
+        if (!Number.isFinite(raw)) continue;
+        const eUnit = String(sample?.unit || sample?.unitOfMeasure?.unit || '').toLowerCase();
+        energyKwh = eUnit === 'wh' ? raw / 1000 : raw;
+      }
+    }
+    return energyKwh;
+  }
+
+  private extractMeterValueArray(payload: Record<string, any>): unknown {
+    return (
+      payload.meterValue ||
+      payload.meterValues ||
+      payload.meterValueArray ||
+      payload.transactionInfo?.meterValue ||
+      payload.transactionInfo?.meterValues
+    );
+  }
+
+  /**
    * Handle StopTransaction and trigger idle tracking if connector is still occupied
    */
   private handleStopTransaction(message: any): void {
-    const payload = message?.payload || {};
-    const stationId =
-      message?.stationId ||
-      payload.stationId ||
-      payload.chargingStationId;
-    const connectorId = Number(payload.connectorId ?? payload.connector_id ?? 0);
-    const transactionId = payload.transactionId ?? payload.transaction_id;
-    const meterStop = payload.meterStop !== undefined
-      ? Number(payload.meterStop)
-      : payload.meter_stop !== undefined
-        ? Number(payload.meter_stop)
-        : undefined;
+    const payload = (message?.payload || {}) as Record<string, any>;
+    const stationId = this.extractStationId(message, payload);
+    const connectorId = this.extractConnectorId(payload);
+    const transactionId = this.extractTransactionId(payload);
+
+    let meterStop: number | undefined;
+    if (payload.meterStop !== undefined) {
+      const n = Number(payload.meterStop);
+      if (Number.isFinite(n)) meterStop = n;
+    } else if (payload.meter_stop !== undefined) {
+      const n = Number(payload.meter_stop);
+      if (Number.isFinite(n)) meterStop = n;
+    } else {
+      // OCPP 2.x Ended often only carries energy in meterValue[], not meterStop
+      meterStop = this.extractEnergyKwhFromMeterValue(this.extractMeterValueArray(payload));
+    }
 
     if (!stationId) {
       console.warn("StopTransaction missing stationId", message);
@@ -464,19 +556,30 @@ export class LoadManager extends EventEmitter {
       stationId,
       connectorId,
       transactionId,
-      meterStop: Number.isFinite(meterStop as number) ? meterStop : undefined,
+      meterStop: meterStop !== undefined && Number.isFinite(meterStop) ? meterStop : undefined,
       timestamp: new Date(),
     });
   }
 
   private handleStartTransaction(message: any): void {
-    const payload = message?.payload || {};
-    const stationId =
-      message?.stationId ||
-      payload.stationId ||
-      payload.chargingStationId;
-    const connectorId = Number(payload.connectorId ?? 0);
-    const meterStart = payload.meterStart !== undefined ? Number(payload.meterStart) : 0;
+    const payload = (message?.payload || {}) as Record<string, any>;
+    const stationId = this.extractStationId(message, payload);
+    const connectorId = this.extractConnectorId(payload);
+    const transactionId = this.extractTransactionId(payload);
+    const idTag = this.extractIdTag(payload);
+
+    let meterStart = 0;
+    if (payload.meterStart !== undefined) {
+      const n = Number(payload.meterStart);
+      meterStart = Number.isFinite(n) ? n : 0;
+    } else if (payload.meter_start !== undefined) {
+      const n = Number(payload.meter_start);
+      meterStart = Number.isFinite(n) ? n : 0;
+    } else {
+      const fromMeter = this.extractEnergyKwhFromMeterValue(this.extractMeterValueArray(payload));
+      if (fromMeter !== undefined) meterStart = fromMeter;
+    }
+
     if (!stationId) {
       return;
     }
@@ -486,9 +589,9 @@ export class LoadManager extends EventEmitter {
     this.emit("transactionStarted", {
       stationId,
       connectorId,
-      transactionId: payload.transactionId,
+      transactionId,
       meterStart: Number.isFinite(meterStart) ? meterStart : 0,
-      idTag: payload.idTag,
+      idTag,
       timestamp: new Date(),
     });
   }
@@ -498,15 +601,10 @@ export class LoadManager extends EventEmitter {
    * Handle MeterValues messages to update station power
    */
   private handleMeterValues(message: any): void {
-    const payload = message?.payload || {};
-    const stationId =
-      message?.stationId ||
-      payload.stationId ||
-      payload.chargingStationId;
-    const meterValue =
-      payload.meterValue ||
-      payload.meterValues ||
-      payload.meterValueArray;
+    const payload = (message?.payload || {}) as Record<string, any>;
+    const stationId = this.extractStationId(message, payload);
+    const connectorId = this.extractConnectorId(payload);
+    const meterValue = this.extractMeterValueArray(payload);
 
     // Extract power value from meterValue (OCPP 1.6 / 2.x shapes)
     let powerValue = 0;
@@ -543,26 +641,11 @@ export class LoadManager extends EventEmitter {
     this.updateStationPower(String(stationId), powerValue);
 
     // Forward energy meter (kWh) for open pricing sessions when present
-    let energyKwh: number | undefined;
-    if (meterValue && Array.isArray(meterValue)) {
-      for (const value of meterValue) {
-        const samples = value.sampledValue || value.sampled_value;
-        if (!samples || !Array.isArray(samples)) continue;
-        for (const sample of samples) {
-          const measurand = sample.measurand || sample.Measurand;
-          if (measurand === 'Energy.Active.Import.Register') {
-            const raw = parseFloat(sample.value);
-            if (!Number.isFinite(raw)) continue;
-            const eUnit = String(sample.unit || sample.unitOfMeasure?.unit || '').toLowerCase();
-            energyKwh = eUnit === 'wh' ? raw / 1000 : raw;
-          }
-        }
-      }
-    }
+    const energyKwh = this.extractEnergyKwhFromMeterValue(meterValue);
     if (energyKwh !== undefined) {
       this.emit('meterEnergy', {
         stationId: String(stationId),
-        connectorId: Number(payload.connectorId ?? 0),
+        connectorId,
         energyKwh,
         timestamp: new Date(),
       });

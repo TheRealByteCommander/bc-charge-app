@@ -106,4 +106,118 @@ describe('LoadManager', () => {
       'ChargePointMaxProfile'
     );
   });
+
+  test('OCPP 2.x TransactionEvent Started extracts nested transactionInfo/evse/idToken', () => {
+    const started: Array<Record<string, unknown>> = [];
+    loadManager.on('transactionStarted', (evt) => started.push(evt));
+
+    (loadManager as any).handleCitrineMessage({
+      action: 'TransactionEvent',
+      stationId: 'CS-201',
+      payload: {
+        eventType: 'Started',
+        evse: { id: 1, connectorId: 2 },
+        transactionInfo: { transactionId: 'tx-nested-1' },
+        idToken: { idToken: 'RFID-42' },
+        meterValue: [
+          {
+            sampledValue: [
+              {
+                measurand: 'Energy.Active.Import.Register',
+                value: '12000',
+                unit: 'Wh',
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    expect(started).toHaveLength(1);
+    expect(started[0]).toMatchObject({
+      stationId: 'CS-201',
+      connectorId: 2,
+      transactionId: 'tx-nested-1',
+      meterStart: 12,
+      idTag: 'RFID-42',
+    });
+    expect((loadManager as any).stations.has('CS-201')).toBe(true);
+  });
+
+  test('OCPP 2.x TransactionEvent Ended uses meterValue energy as meterStop', () => {
+    loadManager.registerStation('CS-201', 22);
+    loadManager.updateStationPower('CS-201', 18);
+
+    const stopped: Array<Record<string, unknown>> = [];
+    loadManager.on('transactionStopped', (evt) => stopped.push(evt));
+
+    (loadManager as any).handleCitrineMessage({
+      action: 'TransactionEvent',
+      stationId: 'CS-201',
+      payload: {
+        eventType: 'Ended',
+        evse: { connectorId: 1 },
+        transactionInfo: { transactionId: 'tx-end-9' },
+        meterValue: [
+          {
+            sampledValue: [
+              {
+                measurand: 'Energy.Active.Import.Register',
+                value: '15500',
+                unitOfMeasure: { unit: 'Wh' },
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    expect(stopped).toHaveLength(1);
+    expect(stopped[0]).toMatchObject({
+      stationId: 'CS-201',
+      connectorId: 1,
+      transactionId: 'tx-end-9',
+      meterStop: 15.5,
+    });
+    expect((loadManager as any).stations.get('CS-201').isActive).toBe(false);
+    expect((loadManager as any).stations.get('CS-201').currentPower).toBe(0);
+  });
+
+  test('TransactionEvent Updated emits meterEnergy with nested connector', () => {
+    const energyEvents: Array<Record<string, unknown>> = [];
+    loadManager.on('meterEnergy', (evt) => energyEvents.push(evt));
+
+    (loadManager as any).handleCitrineMessage({
+      action: 'TransactionEvent',
+      stationId: 'CS-301',
+      payload: {
+        eventType: 'Updated',
+        evse: { connectorId: 3 },
+        meterValue: [
+          {
+            sampledValue: [
+              {
+                measurand: 'Power.Active.Import',
+                value: '11000',
+                unit: 'W',
+              },
+              {
+                measurand: 'Energy.Active.Import.Register',
+                value: '4.25',
+                unit: 'kWh',
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    expect((loadManager as any).stations.get('CS-301').currentPower).toBe(11);
+    expect(energyEvents).toHaveLength(1);
+    expect(energyEvents[0]).toMatchObject({
+      stationId: 'CS-301',
+      connectorId: 3,
+      energyKwh: 4.25,
+    });
+  });
 });

@@ -22,7 +22,13 @@ function isPostgres() {
 
 function parseJson(value) {
   if (value == null) return null;
-  return typeof value === 'string' ? JSON.parse(value) : value;
+  if (typeof value !== 'string') return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    // Corrupt session rows must not crash webhook/apply paths
+    return null;
+  }
 }
 
 export async function initDb() {
