@@ -885,3 +885,182 @@ export async function allocateInvoiceNumber(userId, sessionId) {
   });
   return allocate();
 }
+
+/**
+ * CitrineOS webhook helpers — sessions live in data_json (not flat columns).
+ * Updates both charging_sessions and adhoc_sessions.
+ */
+
+function mergeSessionData(data, patch) {
+  const next = { ...data, ...patch };
+  if (patch.energyKwh !== undefined) next.energyKwh = Number(patch.energyKwh);
+  if (patch.costEur !== undefined) next.costEur = Number(patch.costEur);
+  return next;
+}
+
+async function listActiveSessionRowsByJsonField(field, value) {
+  const strVal = String(value);
+  const numVal = Number(value);
+  const rows = [];
+
+  if (isPostgres()) {
+    const { rows: chargeRows } = await pgPool.query(
+      `SELECT 'charging' AS kind, id, user_id, data_json, status
+       FROM charging_sessions
+       WHERE status IN ('active', 'pending')
+         AND (
+           data_json->>$1 = $2
+           OR (
+             jsonb_typeof(data_json->$1) = 'number'
+             AND (data_json->>$1)::numeric = $3::numeric
+           )
+         )`,
+      [field, strVal, Number.isFinite(numVal) ? numVal : null]
+    );
+    rows.push(...chargeRows);
+
+    const { rows: adhocRows } = await pgPool.query(
+      `SELECT 'adhoc' AS kind, id, access_token, data_json, status
+       FROM adhoc_sessions
+       WHERE status IN ('active', 'pending', 'charging')
+         AND (
+           data_json->>$1 = $2
+           OR (
+             jsonb_typeof(data_json->$1) = 'number'
+             AND (data_json->>$1)::numeric = $3::numeric
+           )
+         )`,
+      [field, strVal, Number.isFinite(numVal) ? numVal : null]
+    );
+    rows.push(...adhocRows);
+    return rows;
+  }
+
+  const chargeRows = sqliteDb
+    .prepare(
+      `SELECT 'charging' AS kind, id, user_id, data_json, status
+       FROM charging_sessions
+       WHERE status IN ('active', 'pending')
+         AND (
+           CAST(json_extract(data_json, '$.' || ?) AS TEXT) = ?
+           OR CAST(json_extract(data_json, '$.' || ?) AS REAL) = ?
+         )`
+    )
+    .all(field, strVal, field, Number.isFinite(numVal) ? numVal : NaN);
+  rows.push(...chargeRows);
+
+  const adhocRows = sqliteDb
+    .prepare(
+      `SELECT 'adhoc' AS kind, id, access_token, data_json, status
+       FROM adhoc_sessions
+       WHERE status IN ('active', 'pending', 'charging')
+         AND (
+           CAST(json_extract(data_json, '$.' || ?) AS TEXT) = ?
+           OR CAST(json_extract(data_json, '$.' || ?) AS REAL) = ?
+         )`
+    )
+    .all(field, strVal, field, Number.isFinite(numVal) ? numVal : NaN);
+  rows.push(...adhocRows);
+  return rows;
+}
+
+async function persistPatchedSessionRow(row, patch) {
+  const data = mergeSessionData(parseJson(row.data_json) ?? {}, patch);
+  const status = patch.status ?? data.status ?? row.status;
+  data.status = status;
+  const now = new Date().toISOString();
+  const dataJson = JSON.stringify(data);
+
+  if (row.kind === 'charging') {
+    if (isPostgres()) {
+      await pgPool.query(
+        `UPDATE charging_sessions
+         SET data_json = $1::jsonb, status = $2, updated_at = $3
+         WHERE id = $4`,
+        [dataJson, status, now, row.id]
+      );
+    } else {
+      sqliteDb
+        .prepare(
+          `UPDATE charging_sessions
+           SET data_json = ?, status = ?, updated_at = ?
+           WHERE id = ?`
+        )
+        .run(dataJson, status, now, row.id);
+    }
+    return data;
+  }
+
+  if (isPostgres()) {
+    await pgPool.query(
+      `UPDATE adhoc_sessions
+       SET data_json = $1::jsonb, status = $2, updated_at = $3
+       WHERE id = $4`,
+      [dataJson, status, now, row.id]
+    );
+  } else {
+    sqliteDb
+      .prepare(
+        `UPDATE adhoc_sessions
+         SET data_json = ?, status = ?, updated_at = ?
+         WHERE id = ?`
+      )
+      .run(dataJson, status, now, row.id);
+  }
+  return data;
+}
+
+/**
+ * Apply a normalized CitrineOS transaction webhook event to local session rows.
+ * @returns {{ matched: number, actions: string[] }}
+ */
+export async function applyCitrineosWebhookToSessions(event) {
+  const actions = [];
+  let matched = 0;
+
+  const remoteStartId = event.remoteStartId;
+  const transactionId = event.transactionId != null ? String(event.transactionId) : null;
+
+  if (remoteStartId != null && transactionId) {
+    const rows = await listActiveSessionRowsByJsonField('remoteStartId', remoteStartId);
+    for (const row of rows) {
+      const data = parseJson(row.data_json) ?? {};
+      if (data.citrineosTransactionId && String(data.citrineosTransactionId) === transactionId) {
+        continue;
+      }
+      await persistPatchedSessionRow(row, {
+        citrineosTransactionId: transactionId,
+        status: data.status === 'pending' ? 'active' : data.status ?? row.status,
+      });
+      matched += 1;
+      actions.push(`resolve:remoteStartId=${remoteStartId}->tx=${transactionId}`);
+    }
+  }
+
+  if (transactionId && (event.totalKwh != null || event.totalCost != null)) {
+    const rows = await listActiveSessionRowsByJsonField('citrineosTransactionId', transactionId);
+    for (const row of rows) {
+      const patch = {};
+      if (event.totalKwh != null) patch.energyKwh = event.totalKwh;
+      if (event.totalCost != null) patch.costEur = event.totalCost;
+      await persistPatchedSessionRow(row, patch);
+      matched += 1;
+      actions.push(`metrics:tx=${transactionId}`);
+    }
+  }
+
+  if (transactionId && event.isActive === false) {
+    const rows = await listActiveSessionRowsByJsonField('citrineosTransactionId', transactionId);
+    for (const row of rows) {
+      await persistPatchedSessionRow(row, {
+        status: 'completed',
+        endedAt: new Date().toISOString(),
+        citrineosTxActive: false,
+      });
+      matched += 1;
+      actions.push(`stop:tx=${transactionId}`);
+    }
+  }
+
+  return { matched, actions };
+}

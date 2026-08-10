@@ -256,11 +256,12 @@ export class LoadManager extends EventEmitter {
    * Send SetChargingProfile command to a charging station
    */
   private sendSetChargingProfile(stationId: string, maxPower: number): void {
+    // OCPP 2.0.1 K01: station-wide cap is ChargingStationMaxProfile (not 1.6 ChargePointMaxProfile).
+    // Absolute profiles require startSchedule — stations reject missing startSchedule (see CitrineOS #785).
     const chargingProfile = {
       chargingProfileId: uuidv4(),
-      transactionId: null, // For station-wide profile
       stackLevel: 1,
-      chargingProfilePurpose: "ChargePointMaxProfile",
+      chargingProfilePurpose: "ChargingStationMaxProfile",
       chargingProfileKind: "Absolute",
       chargingSchedule: {
         startSchedule: new Date().toISOString(),
@@ -278,8 +279,8 @@ export class LoadManager extends EventEmitter {
     const message = {
       action: "SetChargingProfile",
       payload: {
-        connectorId: 0, // Apply to all connectors
-        csChargingProfiles: chargingProfile
+        evseId: 0, // 2.0.1: station-wide when evseId=0 (1.6 used connectorId=0)
+        chargingProfile,
       },
       uniqueId: uuidv4(),
       stationId,

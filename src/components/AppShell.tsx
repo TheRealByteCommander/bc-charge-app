@@ -23,17 +23,18 @@ export function AppShell() {
   const toast = useAppStore((s) => s.setToast);
   const message = useAppStore((s) => s.toast);
   const tickSession = useAppStore((s) => s.tickSession);
-  const activeSession = useAppStore((s) => s.activeSession);
+  // Subscribe to id only — live kWh/cost ticks must not recreate the 5s interval.
+  const activeSessionId = useAppStore((s) => s.activeSession?.id ?? null);
   const user = useAppStore((s) => s.user);
   const stationDataSource = useAppStore((s) => s.stationDataSource);
   const showNav = !hideNav.some((p) => location.pathname.startsWith(p));
 
   useEffect(() => {
-    if (!activeSession) return;
+    if (!activeSessionId) return;
     void tickSession();
     const id = setInterval(() => void tickSession(), 5000);
     return () => clearInterval(id);
-  }, [activeSession, tickSession]);
+  }, [activeSessionId, tickSession]);
 
   useEffect(() => {
     const onVisible = () => {

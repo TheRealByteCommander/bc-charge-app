@@ -3,6 +3,7 @@ import { findUserById, rowToProfile } from '../db.mjs';
 import { optionalAuth, requireAuth } from '../middleware/auth.mjs';
 import { citrineosIntegrationContract } from '../contracts/citrineosContract.mjs';
 import { ensureCitrineosAuthorization } from '../services/citrineosAuth.mjs';
+import { canaryValidate, getCanaryStats } from '../services/canaryValidator.mjs';
 
 const router = Router();
 
@@ -44,6 +45,14 @@ router.get('/status', (_req, res) => {
     apiUrl: Boolean(process.env.CITRINEOS_API_URL),
     hasuraUrl: Boolean(process.env.CITRINEOS_HASURA_URL),
     tenantId: process.env.CITRINEOS_TENANT_ID ?? '1',
+  });
+});
+
+/** Sampled Zod canary stats — upstream CitrineOS/Hasura schema drift signals. */
+router.get('/canary', optionalAuth, (_req, res) => {
+  res.json({
+    ok: true,
+    canary: getCanaryStats(),
   });
 });
 
@@ -132,6 +141,7 @@ router.get('/tariffs', optionalAuth, async (_req, res) => {
       res.status(r.status).json(data);
       return;
     }
+    canaryValidate('rest.tariffList', data, { source: 'citrineos.routes.tariffs' });
     res.json(data);
   } catch (e) {
     res.status(502).json({ error: e instanceof Error ? e.message : 'Tarife nicht abrufbar' });

@@ -67,4 +67,43 @@ describe('LoadManager', () => {
     loadManager.removeStation('CS-001');
     expect((loadManager as any).stations.has('CS-001')).toBe(false);
   });
+
+  test('SetChargingProfile uses OCPP 2.0.1 ChargingStationMaxProfile + startSchedule', () => {
+    const sendSpy = jest.spyOn(loadManager as any, 'sendWsMessage').mockReturnValue(true);
+    (loadManager as any).sendSetChargingProfile('CS-001', 11);
+
+    expect(sendSpy).toHaveBeenCalledTimes(1);
+    const msg = sendSpy.mock.calls[0][0] as {
+      action: string;
+      payload: {
+        evseId: number;
+        chargingProfile: {
+          chargingProfilePurpose: string;
+          chargingProfileKind: string;
+          chargingSchedule: {
+            startSchedule: string;
+            chargingSchedulePeriod: Array<{ limit: number }>;
+          };
+        };
+        csChargingProfiles?: unknown;
+      };
+    };
+    expect(msg.action).toBe('SetChargingProfile');
+    expect(msg.payload.evseId).toBe(0);
+    expect(msg.payload.chargingProfile.chargingProfilePurpose).toBe(
+      'ChargingStationMaxProfile'
+    );
+    expect(msg.payload.chargingProfile.chargingProfileKind).toBe('Absolute');
+    expect(typeof msg.payload.chargingProfile.chargingSchedule.startSchedule).toBe(
+      'string'
+    );
+    expect(msg.payload.chargingProfile.chargingSchedule.chargingSchedulePeriod[0].limit).toBe(
+      11000
+    );
+    // Must not use OCPP 1.6 field names / purpose
+    expect(msg.payload.csChargingProfiles).toBeUndefined();
+    expect(msg.payload.chargingProfile.chargingProfilePurpose).not.toBe(
+      'ChargePointMaxProfile'
+    );
+  });
 });

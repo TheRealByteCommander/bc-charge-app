@@ -3,6 +3,7 @@
 import { mapConnectorStatus } from '../utils/ocppStatus.mjs';
 import { buildOcpp16RemoteStartBody } from '../utils/ocpp16RemoteStart.mjs';
 import { ensureCitrineosAuthorization } from './citrineosAuth.mjs';
+import { canaryValidate } from './canaryValidator.mjs';
 
 function citrineosApiUrl() {
   return (process.env.CITRINEOS_API_URL ?? 'http://localhost:8080').replace(/\/$/, '');
@@ -191,7 +192,33 @@ async function hasuraRequest(query, variables) {
       status: 502,
     });
   }
-  return json.data;
+  const data = json.data;
+  // Sampled canary: detect Hasura/CitrineOS GraphQL shape drift without blocking.
+  if (data && typeof data === 'object') {
+    if (Array.isArray(data.Transactions) || 'Transactions' in data) {
+      canaryValidate('hasura.transactionsData', data, {
+        source: 'citrineosServer.hasuraRequest',
+        meta: { hasTransactions: true },
+      });
+      for (const row of data.Transactions ?? []) {
+        canaryValidate('hasura.transaction', row, {
+          source: 'citrineosServer.hasuraRequest.transaction',
+        });
+      }
+    }
+    if (Array.isArray(data.ChargingStations) || 'ChargingStations' in data) {
+      canaryValidate('hasura.chargingStationsData', data, {
+        source: 'citrineosServer.hasuraRequest',
+        meta: { hasStations: true },
+      });
+      for (const row of data.ChargingStations ?? []) {
+        canaryValidate('hasura.chargingStation', row, {
+          source: 'citrineosServer.hasuraRequest.station',
+        });
+      }
+    }
+  }
+  return data;
 }
 
 function parseConnectorRef(connectorAppId) {
@@ -329,6 +356,13 @@ async function fetchTransactionFromRestApi(stationId, transactionId) {
 
 function normalizeTransactionRow(tx) {
   if (!tx || typeof tx !== 'object') return null;
+  canaryValidate('rest.transaction', tx, {
+    source: 'citrineosServer.normalizeTransactionRow',
+  });
+  // Also accept Hasura-shaped rows through the same alias map.
+  canaryValidate('hasura.transaction', tx, {
+    source: 'citrineosServer.normalizeTransactionRow.hasuraShape',
+  });
   return {
     transactionId: tx.transactionId ?? tx.id ?? null,
     isActive: tx.isActive ?? tx.active ?? null,

@@ -1,9 +1,17 @@
-/** Integrationsvertrag CitrineOS ↔ bc-charge-app (v1.8.4) */
+/** Integrationsvertrag CitrineOS ↔ bc-charge-app (v1.8.4)
+ * Upstream watch (2026-08-10): citrineos-core v2.0.0-beta1/beta2 — monorepo+types package,
+ * OCPP message DB refactor, smart-charging Absolute TxProfile startSchedule fix (#785).
+ * Do not silently assume 1.8.x wire shapes once production tracks v2 betas.
+ */
 
 export const CITRINEOS_INTEGRATION_VERSION = '1.8.4';
 
+/** Latest upstream tag observed by intelligence cron (informational, not a hard pin). */
+export const CITRINEOS_UPSTREAM_WATCH = 'v2.0.0-beta2';
+
 export const citrineosIntegrationContract = {
   version: CITRINEOS_INTEGRATION_VERSION,
+  upstreamWatch: CITRINEOS_UPSTREAM_WATCH,
   operator: {
     brand: 'BC Charge',
     company: 'Byte Commander GmbH',
@@ -75,15 +83,40 @@ export const citrineosIntegrationContract = {
       purpose: 'Transaktion nach remoteStartId / aktiv',
       appUsage: 'fetchTransactionByRemoteStartId, fetchActiveTransaction',
     },
+    {
+      id: 'transactionWebhook',
+      method: 'POST',
+      path: '/api/webhooks/citrineos',
+      purpose:
+        'Push TransactionEvent / session updates (aliases + OCPP meterValue energy)',
+      appUsage: 'citrineosWebhooks.normalizeCitrineosWebhookPayload → db.applyCitrineosWebhookToSessions',
+    },
   ],
+  canary: {
+    description:
+      'Sampled Zod validation of live CitrineOS/Hasura responses (graceful; logs drift, does not block).',
+    sampleRateEnv: 'CANARY_SAMPLE_RATE',
+    statsPath: '/api/citrineos/canary',
+    schemas: [
+      'hasura.transaction',
+      'hasura.transactionsData',
+      'hasura.chargingStation',
+      'hasura.chargingStationsData',
+      'rest.transaction',
+      'rest.tariffList',
+      'webhook.citrineos.raw',
+    ],
+  },
   bcApiProxyRoutes: [
     { method: 'GET', path: '/api/citrineos/health' },
     { method: 'GET', path: '/api/citrineos/status' },
+    { method: 'GET', path: '/api/citrineos/canary' },
     { method: 'GET', path: '/api/citrineos/contract' },
     { method: 'GET', path: '/api/citrineos/tariffs' },
     { method: 'POST', path: '/api/citrineos/hasura' },
     { method: 'POST', path: '/api/citrineos/proxy' },
     { method: 'POST', path: '/api/citrineos/ensure-authorization' },
+    { method: 'POST', path: '/api/webhooks/citrineos' },
   ],
   connectorIdFormat: 'evse-{evseId}-conn-{connectorId}',
   deploymentRepo: 'https://github.com/TheRealByteCommander/bc-citrineos',

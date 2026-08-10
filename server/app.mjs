@@ -1,7 +1,24 @@
+import cors from 'cors';
+import cookieParser from 'cookie-parser';
+import express from 'express';
+import { initDb } from './db.mjs';
+import { getBindHost, getCorsOptions, createRateLimiter } from './security.mjs';
+import { attachUserForRateLimit } from './middleware/auth.mjs';
 import { errorHandlerMiddleware } from './middleware/errorHandler.mjs';
-import { logger } from './utils/logger.mjs';
-import adminConfigRouter from './routes/adminConfig.mjs';
+import { seedDemoUser } from './services/seed.mjs';
 import { initConfigTable } from './services/configService.mjs';
+import { logger } from './utils/logger.mjs';
+import authRouter from './routes/auth.mjs';
+import profileRouter from './routes/profile.mjs';
+import sessionsRouter from './routes/sessions.mjs';
+import stripeRouter from './routes/stripe.mjs';
+import citrineosRouter from './routes/citrineos.mjs';
+import invoicesRouter from './routes/invoices.mjs';
+import webhooksRouter from './routes/webhooks.mjs';
+import gamificationRouter from './routes/gamification.mjs';
+import adhocRouter from './routes/adhoc.mjs';
+import rewardsRouter from './routes/rewards.mjs';
+import adminConfigRouter from './routes/adminConfig.mjs';
 import citrineosWebhooksRouter from './routes/citrineosWebhooks.mjs';
 
 const PORT = Number(process.env.BC_SERVER_PORT ?? process.env.STRIPE_SERVER_PORT ?? 4242);
