@@ -544,15 +544,49 @@ export async function startAdhocTransaction(stationId, evseId, connectorId, idTo
   return { remoteStartId, transactionId: null };
 }
 
-export async function stopAdhocTransaction(stationId, transactionId) {
-  const confirmations = await citrineosMessage(
-    '/ocpp/2.0.1/evdriver/requestStopTransaction',
-    stationId,
-    { transactionId }
-  );
-  const first = Array.isArray(confirmations) ? confirmations[0] : null;
-  if (!first?.success) {
-    const msg = typeof first?.payload === 'string' ? first.payload : 'Stoppen fehlgeschlagen';
+export async function stopAdhocTransaction(stationId, transactionId, stationRow) {
+  if (!transactionId) {
+    throw Object.assign(new Error('Keine Transaktions-ID für Stoppen verfügbar'), { status: 400 });
+  }
+
+  // Resolve station row when caller only has stationId (adhoc routes).
+  const row = stationRow ?? (await fetchStationRow(stationId).catch(() => null));
+  const useOcpp16 = row ? isOcpp16Station(row) : false;
+  let confirmations;
+
+  if (useOcpp16) {
+    try {
+      confirmations = await citrineosMessage(
+        '/ocpp/1.6/evdriver/remoteStopTransaction',
+        stationId,
+        { transactionId: Number(transactionId) || transactionId },
+        15_000
+      );
+    } catch {
+      confirmations = null;
+    }
+  }
+
+  if (!confirmations) {
+    confirmations = await citrineosMessage(
+      '/ocpp/2.0.1/evdriver/requestStopTransaction',
+      stationId,
+      { transactionId: String(transactionId) },
+      15_000
+    );
+  }
+
+  const first = Array.isArray(confirmations) ? confirmations[0] : confirmations;
+  const accepted =
+    first?.success === true ||
+    String(first?.status ?? first?.payload ?? '').toLowerCase() === 'accepted';
+  if (!accepted) {
+    const msg =
+      typeof first?.payload === 'string'
+        ? first.payload
+        : typeof first?.status === 'string'
+          ? first.status
+          : 'Stoppen fehlgeschlagen';
     throw Object.assign(new Error(msg), { status: 502 });
   }
   return true;

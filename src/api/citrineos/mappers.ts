@@ -40,7 +40,7 @@ const HARDWARE_CONFIGS: Record<string, { model: KnownHardwareModel; features: Ha
     },
   },
   'go-e': {
-    model: 'generic',
+    model: 'go-e',
     features: {
       midCertifiedMeters: false,
       dynamicLoadManagement: false,
@@ -49,7 +49,7 @@ const HARDWARE_CONFIGS: Record<string, { model: KnownHardwareModel; features: Ha
     },
   },
   GO_E_HOMEPLUS: {
-    model: 'generic',
+    model: 'go-e',
     features: {
       midCertifiedMeters: false,
       dynamicLoadManagement: false,
@@ -76,7 +76,7 @@ function detectHardwareFeatures(
 
   if (vendorLower.includes('go-e') || vendorLower.includes('goe')) {
     return {
-      hardwareModel: 'generic',
+      hardwareModel: 'go-e',
       hardwareFeatures: {
         midCertifiedMeters: false,
         dynamicLoadManagement: false,
