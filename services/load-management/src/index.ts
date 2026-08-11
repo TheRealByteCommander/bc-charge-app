@@ -158,8 +158,107 @@ apiApp.get('/api/stations', requireAdminAuth, (_req, res) => {
     data: {
       stations: loadManager.getStations(),
       wsOpen: loadManager.isWebSocketOpen(),
+      externalLimits: loadManager.getExternalLimits(),
+      compositeSchedules: loadManager.getCompositeSchedules(),
     },
   });
+});
+
+// External limits (NotifyChargingLimit store)
+apiApp.get('/api/load/external-limits', requireAdminAuth, (_req, res) => {
+  res.status(200).json({
+    success: true,
+    data: { limits: loadManager.getExternalLimits() },
+  });
+});
+
+apiApp.delete('/api/load/external-limits/:stationId', requireAdminAuth, (req, res) => {
+  const stationId = String(req.params.stationId || '');
+  const source = typeof req.query.source === 'string' ? req.query.source : undefined;
+  const cleared = loadManager.clearExternalLimit(
+    stationId,
+    source as 'EMS' | 'Other' | 'SO' | 'CSO' | undefined
+  );
+  res.status(cleared ? 200 : 404).json({
+    success: cleared,
+    message: cleared ? 'External limit cleared' : 'No external limit found',
+  });
+});
+
+// Composite schedules (GetCompositeSchedule)
+apiApp.get('/api/load/composite-schedules', requireAdminAuth, (_req, res) => {
+  res.status(200).json({
+    success: true,
+    data: { schedules: loadManager.getCompositeSchedules() },
+  });
+});
+
+apiApp.post('/api/load/composite-schedules/:stationId', requireAdminAuth, async (req, res, next) => {
+  try {
+    const stationId = String(req.params.stationId || '');
+    const body = req.body ?? {};
+    const schedule = await loadManager.requestCompositeSchedule(stationId, {
+      durationSeconds:
+        typeof body.durationSeconds === 'number' ? body.durationSeconds : undefined,
+      chargingRateUnit: body.chargingRateUnit === 'A' ? 'A' : 'W',
+      evseId: typeof body.evseId === 'number' ? body.evseId : 0,
+      timeoutMs: typeof body.timeoutMs === 'number' ? body.timeoutMs : undefined,
+    });
+    if (!schedule) {
+      res.status(504).json({
+        success: false,
+        message: 'GetCompositeSchedule timed out or was rejected',
+      });
+      return;
+    }
+    res.status(200).json({ success: true, data: schedule });
+  } catch (error) {
+    next(error);
+  }
+});
+
+apiApp.post('/api/load/composite-schedules', requireAdminAuth, async (req, res, next) => {
+  try {
+    const body = req.body ?? {};
+    const results = await loadManager.refreshAllCompositeSchedules({
+      durationSeconds:
+        typeof body.durationSeconds === 'number' ? body.durationSeconds : undefined,
+      chargingRateUnit: body.chargingRateUnit === 'A' ? 'A' : 'W',
+    });
+    res.status(200).json({
+      success: true,
+      data: {
+        schedules: results.filter(Boolean),
+        requested: results.length,
+        resolved: results.filter(Boolean).length,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+apiApp.post('/api/load/limit/:stationId', requireAdminAuth, (req, res, next) => {
+  try {
+    const stationId = String(req.params.stationId || '');
+    const maxPowerKw = Number(req.body?.maxPowerKw);
+    if (!Number.isFinite(maxPowerKw)) {
+      res.status(400).json({ success: false, message: 'maxPowerKw required' });
+      return;
+    }
+    const ok = loadManager.setStationChargingLimit(stationId, maxPowerKw);
+    res.status(ok ? 200 : 503).json({
+      success: ok,
+      data: {
+        stationId,
+        maxPowerKw,
+        effectiveMaxPowerKw: loadManager.getEffectiveMaxPowerKw(stationId),
+        wsOpen: loadManager.isWebSocketOpen(),
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
 });
 
 apiApp.get('/api/health/stations', requireAdminAuth, (_req, res) => {

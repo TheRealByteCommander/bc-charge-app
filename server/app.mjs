@@ -20,6 +20,7 @@ import adhocRouter from './routes/adhoc.mjs';
 import rewardsRouter from './routes/rewards.mjs';
 import adminConfigRouter from './routes/adminConfig.mjs';
 import citrineosWebhooksRouter from './routes/citrineosWebhooks.mjs';
+import loadManagementRouter from './routes/loadManagement.mjs';
 
 const PORT = Number(process.env.BC_SERVER_PORT ?? process.env.STRIPE_SERVER_PORT ?? 4242);
 
@@ -66,6 +67,7 @@ app.use(
   webhooksRouter
 );
 app.use('/api/webhooks/citrineos', citrineosWebhooksRouter);
+app.use('/api/load-management', loadManagementRouter);
 
 app.use((err, _req, res, next) => {
   if (err?.message === 'CORS blockiert') {

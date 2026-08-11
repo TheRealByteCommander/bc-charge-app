@@ -6,6 +6,7 @@ describe('normalizeCitrineosWebhookPayload OCPP2 nested', () => {
   it('reads transactionId/remoteStartId from transactionInfo and energy from meterValue Wh', () => {
     const event = normalizeCitrineosWebhookPayload({
       eventType: 'Ended',
+      seqNo: 4,
       transactionInfo: {
         transactionId: 'tx-ocpp2-1',
         remoteStartId: 77,
@@ -26,6 +27,8 @@ describe('normalizeCitrineosWebhookPayload OCPP2 nested', () => {
     assert.equal(event?.remoteStartId, 77);
     assert.equal(event?.totalKwh, 2.5);
     assert.equal(event?.isActive, false);
+    assert.equal(event?.eventType, 'Ended');
+    assert.equal(event?.seqNo, 4);
   });
 
   it('still accepts flat 1.6-ish payloads', () => {
@@ -41,7 +44,21 @@ describe('normalizeCitrineosWebhookPayload OCPP2 nested', () => {
       totalKwh: 3.1,
       totalCost: 1.2,
       isActive: true,
+      eventType: null,
+      seqNo: null,
     });
+  });
+
+  it('passes through Updated seqNo for offline-replay ordering', () => {
+    const event = normalizeCitrineosWebhookPayload({
+      eventType: 'Updated',
+      seqNo: '12',
+      transactionId: 'tx-seq',
+      totalEnergyKwh: 1.25,
+    });
+    assert.equal(event?.eventType, 'Updated');
+    assert.equal(event?.seqNo, 12);
+    assert.equal(event?.totalKwh, 1.25);
   });
 
   it('rejects empty / no-signal payloads', () => {

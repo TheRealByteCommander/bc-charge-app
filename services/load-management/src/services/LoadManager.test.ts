@@ -220,4 +220,112 @@ describe('LoadManager', () => {
       energyKwh: 4.25,
     });
   });
+
+  test('NotifyChargingLimit stores external EMS limit and clamps SetChargingProfile', () => {
+    const sendSpy = jest.spyOn(loadManager as any, 'sendWsMessage').mockReturnValue(true);
+    loadManager.registerStation('CS-EMS', 22);
+
+    const events: Array<Record<string, unknown>> = [];
+    loadManager.on('externalLimit', (e) => events.push(e as any));
+
+    (loadManager as any).handleCitrineMessage({
+      action: 'NotifyChargingLimit',
+      stationId: 'CS-EMS',
+      payload: {
+        evseId: 0,
+        chargingLimit: {
+          chargingLimitSource: 'EMS',
+          isGridCritical: true,
+        },
+        chargingSchedule: {
+          chargingRateUnit: 'W',
+          chargingSchedulePeriod: [{ startPeriod: 0, limit: 8000, numberPhases: 3 }],
+        },
+      },
+    });
+
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      stationId: 'CS-EMS',
+      source: 'EMS',
+      isGridCritical: true,
+      limitKw: 8,
+    });
+    expect(loadManager.getExternalLimit('CS-EMS')?.limitKw).toBe(8);
+    expect(loadManager.getEffectiveMaxPowerKw('CS-EMS')).toBe(8);
+
+    // Profile send should be clamped to external 8 kW even if 15 requested
+    sendSpy.mockClear();
+    loadManager.setStationChargingLimit('CS-EMS', 15);
+    const msg = sendSpy.mock.calls[0][0] as any;
+    expect(msg.payload.chargingProfile.chargingSchedule.chargingSchedulePeriod[0].limit).toBe(8000);
+  });
+
+  test('GetCompositeSchedule request/response round-trip', async () => {
+    const sendSpy = jest.spyOn(loadManager as any, 'sendWsMessage').mockImplementation((message: any) => {
+      // Simulate async response with same uniqueId
+      setTimeout(() => {
+        (loadManager as any).handleCitrineMessage({
+          action: 'GetCompositeScheduleResponse',
+          uniqueId: message.uniqueId,
+          stationId: message.stationId,
+          payload: {
+            status: 'Accepted',
+            evseId: 0,
+            schedule: {
+              duration: 3600,
+              chargingRateUnit: 'W',
+              startSchedule: new Date().toISOString(),
+              chargingSchedulePeriod: [
+                { startPeriod: 0, limit: 11000, numberPhases: 3 },
+              ],
+            },
+          },
+        });
+      }, 5);
+      return true;
+    });
+
+    const result = await loadManager.requestCompositeSchedule('CS-COMP', {
+      durationSeconds: 3600,
+      timeoutMs: 2000,
+    });
+
+    expect(sendSpy).toHaveBeenCalled();
+    const req = sendSpy.mock.calls[0][0] as any;
+    expect(req.action).toBe('GetCompositeSchedule');
+    expect(req.payload).toMatchObject({
+      duration: 3600,
+      chargingRateUnit: 'W',
+      evseId: 0,
+    });
+    expect(result).not.toBeNull();
+    expect(result!.effectiveLimitKw).toBe(11);
+    expect(loadManager.getCompositeSchedule('CS-COMP')?.status).toBe('Accepted');
+  });
+
+  test('ClearedChargingLimit removes external limit', () => {
+    loadManager.registerStation('CS-CLR', 22);
+    (loadManager as any).handleCitrineMessage({
+      action: 'NotifyChargingLimit',
+      stationId: 'CS-CLR',
+      payload: {
+        chargingLimit: { chargingLimitSource: 'SO' },
+        chargingSchedule: {
+          chargingRateUnit: 'W',
+          chargingSchedulePeriod: [{ startPeriod: 0, limit: 5000 }],
+        },
+      },
+    });
+    expect(loadManager.getExternalLimit('CS-CLR')?.limitKw).toBe(5);
+
+    (loadManager as any).handleCitrineMessage({
+      action: 'ClearedChargingLimit',
+      stationId: 'CS-CLR',
+      payload: { chargingLimitSource: 'SO' },
+    });
+    expect(loadManager.getExternalLimit('CS-CLR')).toBeUndefined();
+    expect(loadManager.getEffectiveMaxPowerKw('CS-CLR')).toBe(22);
+  });
+
 });

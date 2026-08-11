@@ -319,12 +319,12 @@ export async function listSessions(userId) {
       'SELECT data_json FROM charging_sessions WHERE user_id = $1 ORDER BY created_at DESC',
       [userId]
     );
-    return rows.map((r) => parseJson(r.data_json));
+    return rows.map((r) => parseJson(r.data_json)).filter(Boolean);
   }
   const rows = sqliteDb
     .prepare('SELECT data_json FROM charging_sessions WHERE user_id = ? ORDER BY created_at DESC')
     .all(userId);
-  return rows.map((r) => JSON.parse(r.data_json));
+  return rows.map((r) => parseJson(r.data_json)).filter(Boolean);
 }
 
 export async function findActiveSessionForUser(userId, excludeSessionId = null) {
@@ -347,7 +347,7 @@ export async function findActiveSessionForUser(userId, excludeSessionId = null) 
        ORDER BY updated_at DESC LIMIT 1`
     )
     .all(...(excludeSessionId ? [userId, excludeSessionId] : [userId]));
-  return rows[0] ? JSON.parse(rows[0].data_json) : null;
+  return rows[0] ? parseJson(rows[0].data_json) : null;
 }
 
 export async function findSessionById(userId, sessionId) {
@@ -361,7 +361,7 @@ export async function findSessionById(userId, sessionId) {
   const row = sqliteDb
     .prepare('SELECT data_json FROM charging_sessions WHERE id = ? AND user_id = ?')
     .get(sessionId, userId);
-  return row ? JSON.parse(row.data_json) : null;
+  return row ? parseJson(row.data_json) : null;
 }
 
 export async function upsertSession(userId, session) {
@@ -620,7 +620,7 @@ export async function findAdhocSession(id, accessToken) {
   const row = sqliteDb
     .prepare('SELECT data_json FROM adhoc_sessions WHERE id = ? AND access_token = ?')
     .get(id, accessToken);
-  return row ? JSON.parse(row.data_json) : null;
+  return row ? parseJson(row.data_json) : null;
 }
 
 export async function getLeaderboardData(limit = 20) {
@@ -633,7 +633,7 @@ export async function getLeaderboardData(limit = 20) {
       [limit]
     );
     return rows.map((row) => {
-      const profile = parseJson(row.profile_json);
+      const profile = parseJson(row.profile_json) ?? {};
       const points = profile.loyaltyPoints ?? 0;
       const tier = computeTier(points);
       const firstName = profile.firstName ?? 'Nutzer';
@@ -657,7 +657,7 @@ export async function getLeaderboardData(limit = 20) {
     .all(limit);
 
   return rows.map((row) => {
-    const profile = JSON.parse(row.profile_json ?? '{}');
+    const profile = parseJson(row.profile_json) ?? {};
     const points = profile.loyaltyPoints ?? 0;
     const tier = computeTier(points);
     const firstName = profile.firstName ?? 'Nutzer';
@@ -1043,12 +1043,31 @@ export async function applyCitrineosWebhookToSessions(event) {
     }
   }
 
-  if (transactionId && (event.totalKwh != null || event.totalCost != null)) {
+  if (transactionId && (event.totalKwh != null || event.totalCost != null || event.seqNo != null)) {
     const rows = await listActiveSessionRowsByJsonField('citrineosTransactionId', transactionId);
     for (const row of rows) {
+      const data = parseJson(row.data_json) ?? {};
+      const prevSeq =
+        data.lastCitrineosEventSeqNo == null ? null : Number(data.lastCitrineosEventSeqNo);
+      const nextSeq = event.seqNo == null ? null : Number(event.seqNo);
+      // OCPP 2.0.1 offline replay: ignore strictly older TransactionEvent seqNo for metrics.
+      if (
+        nextSeq != null &&
+        Number.isFinite(nextSeq) &&
+        prevSeq != null &&
+        Number.isFinite(prevSeq) &&
+        nextSeq < prevSeq
+      ) {
+        actions.push(`stale-seq:tx=${transactionId}:seq=${nextSeq}<${prevSeq}`);
+        matched += 1;
+        continue;
+      }
       const patch = {};
       if (event.totalKwh != null) patch.energyKwh = event.totalKwh;
       if (event.totalCost != null) patch.costEur = event.totalCost;
+      if (nextSeq != null && Number.isFinite(nextSeq)) patch.lastCitrineosEventSeqNo = nextSeq;
+      if (event.eventType != null) patch.lastCitrineosEventType = event.eventType;
+      if (Object.keys(patch).length === 0) continue;
       await persistPatchedSessionRow(row, patch);
       matched += 1;
       actions.push(`metrics:tx=${transactionId}`);
@@ -1058,11 +1077,30 @@ export async function applyCitrineosWebhookToSessions(event) {
   if (transactionId && event.isActive === false) {
     const rows = await listActiveSessionRowsByJsonField('citrineosTransactionId', transactionId);
     for (const row of rows) {
-      await persistPatchedSessionRow(row, {
+      const data = parseJson(row.data_json) ?? {};
+      const prevSeq =
+        data.lastCitrineosEventSeqNo == null ? null : Number(data.lastCitrineosEventSeqNo);
+      const nextSeq = event.seqNo == null ? null : Number(event.seqNo);
+      // Still allow Ended if seq is equal/newer/unknown; skip only clearly stale ends.
+      if (
+        nextSeq != null &&
+        Number.isFinite(nextSeq) &&
+        prevSeq != null &&
+        Number.isFinite(prevSeq) &&
+        nextSeq < prevSeq
+      ) {
+        actions.push(`stale-stop:tx=${transactionId}:seq=${nextSeq}<${prevSeq}`);
+        matched += 1;
+        continue;
+      }
+      const patch = {
         status: 'completed',
         endedAt: new Date().toISOString(),
         citrineosTxActive: false,
-      });
+      };
+      if (nextSeq != null && Number.isFinite(nextSeq)) patch.lastCitrineosEventSeqNo = nextSeq;
+      if (event.eventType != null) patch.lastCitrineosEventType = event.eventType;
+      await persistPatchedSessionRow(row, patch);
       matched += 1;
       actions.push(`stop:tx=${transactionId}`);
     }

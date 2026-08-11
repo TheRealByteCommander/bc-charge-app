@@ -6,6 +6,8 @@
  *   CANARY_SAMPLE_RATE   0..1 (default 0.1 = 10%)
  *   CANARY_FORCE         "1" forces 100% sampling (tests/debug)
  *   CANARY_DISABLED      "1" disables validation
+ *   CANARY_PIN_MIN_SAMPLES / CANARY_PIN_MAX_FAIL_RATE / CANARY_PIN_REQUIRE_FORCE
+ *                        pin-bump readiness gate (see evaluatePinBumpReadiness)
  */
 
 import { canarySchemas } from './citrineosSchemas.mjs';
@@ -57,6 +59,11 @@ function flattenZodError(error) {
   } catch {
     return { formErrors: [String(error?.message ?? error)], fieldErrors: {} };
   }
+}
+
+function failRate(fail, total) {
+  if (!total) return 0;
+  return fail / total;
 }
 
 /**
@@ -129,6 +136,72 @@ export function canaryValidateAlways(schemaId, payload, ctx = {}) {
   }
 }
 
+/**
+ * Gate for bumping CITRINEOS_INTEGRATION_VERSION / cutting over toward upstreamWatch.
+ * Staging soak with CANARY_FORCE=1 before any pin bump.
+ *
+ * Env:
+ *   CANARY_PIN_MIN_SAMPLES   default 50
+ *   CANARY_PIN_MAX_FAIL_RATE default 0.02
+ *   CANARY_PIN_REQUIRE_FORCE default 1 (ready only when CANARY_FORCE=1)
+ */
+export function evaluatePinBumpReadiness(opts = {}) {
+  const minSamples = Number(opts.minSamples ?? process.env.CANARY_PIN_MIN_SAMPLES ?? 50);
+  const maxFailRate = Number(opts.maxFailRate ?? process.env.CANARY_PIN_MAX_FAIL_RATE ?? 0.02);
+  const requireForce =
+    opts.requireForce != null
+      ? Boolean(opts.requireForce)
+      : process.env.CANARY_PIN_REQUIRE_FORCE !== '0' &&
+        process.env.CANARY_PIN_REQUIRE_FORCE !== 'false';
+
+  let ok = 0;
+  let fail = 0;
+  const perSchema = {};
+  for (const [id, s] of statsBySchema.entries()) {
+    ok += s.ok;
+    fail += s.fail;
+    const total = s.ok + s.fail;
+    perSchema[id] = {
+      ok: s.ok,
+      fail: s.fail,
+      total,
+      failRate: total > 0 ? failRate(s.fail, total) : 0,
+    };
+  }
+  const total = ok + fail;
+  const rate = total > 0 ? failRate(fail, total) : 1;
+  const forceOn = process.env.CANARY_FORCE === '1' || process.env.CANARY_FORCE === 'true';
+  const disabled = isDisabled();
+
+  /** @type {string[]} */
+  const blockers = [];
+  if (disabled) blockers.push('CANARY_DISABLED');
+  if (requireForce && !forceOn) blockers.push('CANARY_FORCE_REQUIRED');
+  if (total < minSamples) blockers.push(`MIN_SAMPLES(${total}<${minSamples})`);
+  if (total > 0 && rate > maxFailRate) {
+    blockers.push(`FAIL_RATE(${rate.toFixed(4)}>${maxFailRate})`);
+  }
+  for (const [id, s] of Object.entries(perSchema)) {
+    if (s.total >= 5 && s.failRate > maxFailRate) {
+      blockers.push(`SCHEMA_FAIL:${id}`);
+    }
+  }
+
+  return {
+    ready: blockers.length === 0 && total > 0,
+    blockers,
+    totals: { ok, fail, total, failRate: rate },
+    thresholds: { minSamples, maxFailRate, requireForce },
+    forceOn,
+    disabled,
+    perSchema,
+    guidance:
+      blockers.length === 0
+        ? 'Canary soak looks clean — pin bump / v2 cutover may proceed with explicit review.'
+        : 'Do not bump CITRINEOS_INTEGRATION_VERSION until blockers are cleared (staging CANARY_FORCE=1 soak).',
+  };
+}
+
 export function getCanaryStats() {
   const bySchema = {};
   for (const [id, s] of statsBySchema.entries()) {
@@ -139,6 +212,7 @@ export function getCanaryStats() {
     sampleRate: sampleRate(),
     bySchema,
     recentMismatches: recentMismatches.slice(0, 20),
+    pinBump: evaluatePinBumpReadiness(),
   };
 }
 
@@ -152,5 +226,6 @@ export default {
   canaryValidate,
   canaryValidateAlways,
   getCanaryStats,
+  evaluatePinBumpReadiness,
   resetCanaryStats,
 };

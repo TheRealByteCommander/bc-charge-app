@@ -9,6 +9,7 @@ import {
   canaryValidate,
   canaryValidateAlways,
   getCanaryStats,
+  evaluatePinBumpReadiness,
   resetCanaryStats,
 } from './canaryValidator.mjs';
 import {
@@ -23,6 +24,9 @@ beforeEach(() => {
   delete process.env.CANARY_DISABLED;
   delete process.env.CANARY_FORCE;
   delete process.env.CANARY_SAMPLE_RATE;
+  delete process.env.CANARY_PIN_MIN_SAMPLES;
+  delete process.env.CANARY_PIN_MAX_FAIL_RATE;
+  delete process.env.CANARY_PIN_REQUIRE_FORCE;
 });
 
 describe('citrineosSchemas', () => {
@@ -114,6 +118,7 @@ describe('canaryValidate', () => {
     const stats = getCanaryStats();
     assert.equal(stats.bySchema['hasura.transaction'].ok, 1);
     assert.equal(stats.bySchema['hasura.transaction'].fail, 0);
+    assert.ok(stats.pinBump);
   });
 
   it('records fail and recent mismatch on drift', () => {
@@ -151,5 +156,58 @@ describe('canaryValidate', () => {
       { source: 'test' }
     );
     assert.equal(r.ok, true);
+  });
+});
+
+describe('pinBump readiness gate', () => {
+  it('blocks without CANARY_FORCE and insufficient samples', () => {
+    const r = evaluatePinBumpReadiness({ minSamples: 50, requireForce: true });
+    assert.equal(r.ready, false);
+    assert.ok(
+      r.blockers.some((b) => b.startsWith('MIN_SAMPLES') || b === 'CANARY_FORCE_REQUIRED')
+    );
+  });
+
+  it('ready after forced clean soak', () => {
+    process.env.CANARY_FORCE = '1';
+    for (let i = 0; i < 50; i += 1) {
+      canaryValidateAlways('hasura.transaction', {
+        transactionId: `t-${i}`,
+        isActive: false,
+        totalKwh: 1,
+      });
+    }
+    const r = evaluatePinBumpReadiness({
+      minSamples: 50,
+      maxFailRate: 0.02,
+      requireForce: true,
+    });
+    assert.equal(r.ready, true, JSON.stringify(r.blockers));
+    assert.equal(r.totals.total >= 50, true);
+    const stats = getCanaryStats();
+    assert.equal(stats.pinBump.ready, true);
+  });
+
+  it('blocks on high fail rate', () => {
+    process.env.CANARY_FORCE = '1';
+    for (let i = 0; i < 40; i += 1) {
+      canaryValidateAlways('hasura.transaction', {
+        transactionId: `ok-${i}`,
+        isActive: true,
+        totalKwh: 1,
+      });
+    }
+    for (let i = 0; i < 20; i += 1) {
+      canaryValidateAlways('hasura.transaction', null, { source: 'fail-test' });
+    }
+    const r = evaluatePinBumpReadiness({
+      minSamples: 50,
+      maxFailRate: 0.02,
+      requireForce: true,
+    });
+    assert.equal(r.ready, false);
+    assert.ok(
+      r.blockers.some((b) => b.startsWith('FAIL_RATE') || b.startsWith('SCHEMA_FAIL'))
+    );
   });
 });

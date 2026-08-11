@@ -77,6 +77,19 @@ function normalizeCitrineosWebhookPayload(raw) {
   let totalKwhRaw = body.totalKwh ?? body.totalEnergyKwh ?? body.energyKwh ?? body.total_kwh;
   const totalCostRaw = body.totalCost ?? body.cost ?? body.costEur ?? body.total_cost;
   const isActiveRaw = body.isActive ?? body.active ?? body.is_active;
+  const eventType =
+    typeof body.eventType === 'string'
+      ? body.eventType
+      : typeof body.event_type === 'string'
+        ? body.event_type
+        : null;
+  const seqNoRaw = body.seqNo ?? body.seq_no ?? transactionInfo?.seqNo ?? transactionInfo?.seq_no;
+  const seqNo =
+    seqNoRaw == null || seqNoRaw === ''
+      ? null
+      : Number.isFinite(Number(seqNoRaw))
+        ? Number(seqNoRaw)
+        : null;
 
   // OCPP 2.0.1 TransactionEvent: energy often only in meterValue[].sampledValue
   // (triggerReason e.g. ChargingRateChanged / MeterValuePeriodic) — no flat totalKwh.
@@ -124,6 +137,8 @@ function normalizeCitrineosWebhookPayload(raw) {
     totalKwh: Number.isFinite(totalKwh) ? totalKwh : null,
     totalCost: Number.isFinite(totalCost) ? totalCost : null,
     isActive,
+    eventType,
+    seqNo,
   };
 }
 

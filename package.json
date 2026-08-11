@@ -19,7 +19,10 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test:e2e": "playwright test",
-    "test:canary": "node --test server/services/canaryValidator.test.mjs"
+    "test:canary": "node --test server/services/canaryValidator.test.mjs",
+    "test:lm-client": "node --test server/services/loadManagementClient.test.mjs",
+    "test:server-unit": "node --test server/services/canaryValidator.test.mjs server/services/loadManagementClient.test.mjs",
+    "smoke:lm": "node scripts/smoke-load-management.mjs"
   },
   "dependencies": {
     "@stripe/react-stripe-js": "^3.10.0",

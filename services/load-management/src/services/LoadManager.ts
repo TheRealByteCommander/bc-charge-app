@@ -18,6 +18,50 @@ interface ChargingStation {
   lastUpdate: Date;
 }
 
+/** OCPP 2.0.1 ChargingLimitSourceEnumType */
+export type ChargingLimitSource = 'EMS' | 'Other' | 'SO' | 'CSO';
+
+export interface ExternalChargingLimit {
+  stationId: string;
+  evseId: number;
+  source: ChargingLimitSource;
+  isGridCritical: boolean;
+  /** Derived station-wide cap in kW when schedule periods are present */
+  limitKw: number | null;
+  chargingSchedule?: unknown;
+  receivedAt: Date;
+  raw?: unknown;
+}
+
+export interface CompositeSchedulePeriod {
+  startPeriod: number;
+  limit: number;
+  numberPhases?: number;
+}
+
+export interface CompositeSchedule {
+  stationId: string;
+  evseId: number;
+  status: string;
+  duration?: number;
+  chargingRateUnit?: string;
+  startSchedule?: string;
+  chargingSchedulePeriod: CompositeSchedulePeriod[];
+  /** Lowest period limit converted to kW when unit is W/A-ish */
+  effectiveLimitKw: number | null;
+  fetchedAt: Date;
+  raw?: unknown;
+}
+
+interface PendingCompositeRequest {
+  stationId: string;
+  requestId: string;
+  evseId: number;
+  sentAt: number;
+  timer: NodeJS.Timeout;
+  resolve: (value: CompositeSchedule | null) => void;
+}
+
 interface LoadManagementConfig {
   maxSitePower: number;        // Maximum power allowed for the site (kW)
   adjustmentThreshold: number; // Threshold to trigger adjustment (kW)
@@ -28,6 +72,11 @@ interface LoadManagementConfig {
 export class LoadManager extends EventEmitter {
   private stations: Map<string, ChargingStation> = new Map();
   private config: LoadManagementConfig;
+  /** External limits from NotifyChargingLimit (EMS/SO/…) keyed by stationId */
+  private externalLimits: Map<string, ExternalChargingLimit> = new Map();
+  /** Last successful GetCompositeSchedule per stationId */
+  private compositeSchedules: Map<string, CompositeSchedule> = new Map();
+  private pendingComposite = new Map<string, PendingCompositeRequest>();
   private citrineWs: WebSocket;
   private monitoringTimer: NodeJS.Timeout | null = null;
   private reconnectTimer: NodeJS.Timeout | null = null;
@@ -35,12 +84,14 @@ export class LoadManager extends EventEmitter {
   private intentionalClose = false;
   private readonly wsUrl: string;
   private readonly defaultMaxPowerKw: number;
+  private readonly compositeTimeoutMs: number;
 
   constructor(config: LoadManagementConfig, citrineWsUrl: string, defaultMaxPowerKw = 22) {
     super();
     this.config = config;
     this.wsUrl = citrineWsUrl;
     this.defaultMaxPowerKw = defaultMaxPowerKw;
+    this.compositeTimeoutMs = Number(process.env.COMPOSITE_SCHEDULE_TIMEOUT_MS || 15_000);
     this.citrineWs = this.createSocket();
   }
 
@@ -59,6 +110,31 @@ export class LoadManager extends EventEmitter {
 
   public getStations(): ChargingStation[] {
     return Array.from(this.stations.values()).map((s) => ({ ...s }));
+  }
+
+  public getExternalLimit(stationId: string): ExternalChargingLimit | undefined {
+    const limit = this.externalLimits.get(stationId);
+    return limit ? { ...limit } : undefined;
+  }
+
+  public getExternalLimits(): ExternalChargingLimit[] {
+    return Array.from(this.externalLimits.values()).map((l) => ({ ...l }));
+  }
+
+  public getCompositeSchedule(stationId: string): CompositeSchedule | undefined {
+    const schedule = this.compositeSchedules.get(stationId);
+    return schedule
+      ? {
+          ...schedule,
+          chargingSchedulePeriod: schedule.chargingSchedulePeriod.map((p) => ({ ...p })),
+        }
+      : undefined;
+  }
+
+  public getCompositeSchedules(): CompositeSchedule[] {
+    return this.getStationIds()
+      .map((id) => this.getCompositeSchedule(id))
+      .filter((s): s is CompositeSchedule => Boolean(s));
   }
 
   public isWebSocketOpen(): boolean {
@@ -117,6 +193,104 @@ export class LoadManager extends EventEmitter {
   }
 
   /**
+   * OCPP 2.0.1 GetCompositeSchedule — request merged schedule for EVSE/station.
+   * Resolves with parsed schedule or null on timeout/reject/WS-down.
+   */
+  public requestCompositeSchedule(
+    stationId: string,
+    options: {
+      durationSeconds?: number;
+      chargingRateUnit?: 'W' | 'A';
+      evseId?: number;
+      timeoutMs?: number;
+    } = {}
+  ): Promise<CompositeSchedule | null> {
+    if (!this.stations.has(stationId)) {
+      this.registerStation(stationId, this.defaultMaxPowerKw);
+    }
+
+    const evseId = options.evseId ?? 0;
+    const duration = options.durationSeconds ?? 86400;
+    const chargingRateUnit = options.chargingRateUnit ?? 'W';
+    const timeoutMs = options.timeoutMs ?? this.compositeTimeoutMs;
+    const requestId = uuidv4();
+
+    const message = {
+      action: 'GetCompositeSchedule',
+      payload: {
+        duration,
+        chargingRateUnit,
+        evseId,
+      },
+      uniqueId: requestId,
+      stationId,
+    };
+
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        this.pendingComposite.delete(requestId);
+        console.warn(
+          `GetCompositeSchedule timeout for station ${stationId} (request ${requestId})`
+        );
+        resolve(null);
+      }, timeoutMs);
+
+      this.pendingComposite.set(requestId, {
+        stationId,
+        requestId,
+        evseId,
+        sentAt: Date.now(),
+        timer,
+        resolve,
+      });
+
+      const sent = this.sendWsMessage(message);
+      if (!sent) {
+        clearTimeout(timer);
+        this.pendingComposite.delete(requestId);
+        resolve(null);
+      }
+    });
+  }
+
+  /**
+   * Refresh composite schedules for all known stations (best-effort).
+   */
+  public async refreshAllCompositeSchedules(
+    options: { durationSeconds?: number; chargingRateUnit?: 'W' | 'A' } = {}
+  ): Promise<Array<CompositeSchedule | null>> {
+    const ids = this.getStationIds();
+    return Promise.all(ids.map((id) => this.requestCompositeSchedule(id, options)));
+  }
+
+  /**
+   * Clear a stored external limit (e.g. after ClearedChargingLimit).
+   */
+  public clearExternalLimit(stationId: string, source?: ChargingLimitSource): boolean {
+    const existing = this.externalLimits.get(stationId);
+    if (!existing) return false;
+    if (source && existing.source !== source) return false;
+    this.externalLimits.delete(stationId);
+    this.emit('externalLimitCleared', { stationId, source: source ?? existing.source });
+    // Re-run load check so site-level shedding can re-apply without external cap
+    this.checkLoadAdjustment();
+    return true;
+  }
+
+  /**
+   * Effective operational ceiling for a station: min(hardware max, external limit if any).
+   */
+  public getEffectiveMaxPowerKw(stationId: string): number | null {
+    const station = this.stations.get(stationId);
+    if (!station) return null;
+    const ext = this.externalLimits.get(stationId);
+    if (ext?.limitKw != null && Number.isFinite(ext.limitKw)) {
+      return Math.min(station.maxPower, Math.max(0, ext.limitKw));
+    }
+    return station.maxPower;
+  }
+
+  /**
    * Distribute available site headroom (e.g. PV surplus) across active stations.
    */
   public applySurplusBudget(surplusKw: number, minPerStationKw = 1.4): void {
@@ -127,7 +301,9 @@ export class LoadManager extends EventEmitter {
     const budget = Math.max(0, surplusKw);
     const share = budget / active.length;
     for (const station of active) {
-      const target = Math.min(station.maxPower, Math.max(minPerStationKw, share));
+      const ceiling =
+        this.getEffectiveMaxPowerKw(station.id) ?? station.maxPower;
+      const target = Math.min(ceiling, Math.max(minPerStationKw, share));
       this.sendSetChargingProfile(station.id, target);
       console.log(
         `PV surplus budget: station ${station.id} limited to ${target.toFixed(2)}kW (share ${share.toFixed(2)}kW)`
@@ -247,7 +423,8 @@ export class LoadManager extends EventEmitter {
     // Proportional reduction preserves relative share; floor at 1.4 kW when possible
     for (const station of activeStations) {
       const proportional = station.currentPower * scale;
-      const newMaxPower = Math.max(0, Math.min(station.maxPower, Math.max(1.4, proportional)));
+      const ceiling = this.getEffectiveMaxPowerKw(station.id) ?? station.maxPower;
+      const newMaxPower = Math.max(0, Math.min(ceiling, Math.max(1.4, proportional)));
       this.sendSetChargingProfile(station.id, newMaxPower);
     }
   }
@@ -256,6 +433,11 @@ export class LoadManager extends EventEmitter {
    * Send SetChargingProfile command to a charging station
    */
   private sendSetChargingProfile(stationId: string, maxPower: number): void {
+    const ceiling = this.getEffectiveMaxPowerKw(stationId);
+    const capped =
+      ceiling != null && Number.isFinite(ceiling) ? Math.min(maxPower, ceiling) : maxPower;
+    maxPower = Math.max(0, capped);
+
     // OCPP 2.0.1 K01: station-wide cap is ChargingStationMaxProfile (not 1.6 ChargePointMaxProfile).
     // Absolute profiles require startSchedule — stations reject missing startSchedule (see CitrineOS #785).
     const chargingProfile = {
@@ -423,6 +605,16 @@ export class LoadManager extends EventEmitter {
       if (stationId && !this.stations.has(stationId)) {
         this.registerStation(String(stationId), this.defaultMaxPowerKw);
       }
+    } else if (action === 'NotifyChargingLimit') {
+      this.handleNotifyChargingLimit(message);
+    } else if (action === 'ClearedChargingLimit') {
+      this.handleClearedChargingLimit(message);
+    } else if (
+      action === 'GetCompositeScheduleResponse' ||
+      action === 'GetCompositeSchedule'
+    ) {
+      // Some gateways wrap the response action as GetCompositeSchedule with status
+      this.handleGetCompositeScheduleResponse(message);
     } else if (action === "SetChargingProfileResponse") {
       this.handleSetChargingProfileResponse(message);
     }
@@ -652,6 +844,207 @@ export class LoadManager extends EventEmitter {
     }
   }
 
+  private normalizeChargingLimitSource(raw: unknown): ChargingLimitSource {
+    const s = String(raw ?? 'Other').toUpperCase();
+    if (s === 'EMS') return 'EMS';
+    if (s === 'SO') return 'SO';
+    if (s === 'CSO') return 'CSO';
+    return 'Other';
+  }
+
+  /**
+   * Lowest limit from schedule period(s), normalized to kW when unit is W.
+   */
+  private deriveLimitKwFromSchedule(
+    schedule: unknown,
+    fallbackUnit?: string
+  ): number | null {
+    if (!schedule) return null;
+    const schedules = Array.isArray(schedule) ? schedule : [schedule];
+    let minKw: number | null = null;
+
+    for (const sch of schedules) {
+      if (!sch || typeof sch !== 'object') continue;
+      const unit = String(
+        (sch as any).chargingRateUnit || fallbackUnit || 'W'
+      ).toUpperCase();
+      const periods =
+        (sch as any).chargingSchedulePeriod ||
+        (sch as any).charging_schedule_period ||
+        [];
+      if (!Array.isArray(periods)) continue;
+      for (const p of periods) {
+        const raw = Number(p?.limit);
+        if (!Number.isFinite(raw)) continue;
+        let kw = raw;
+        if (unit === 'W') kw = raw / 1000;
+        // Amps: approximate 3-phase 230V → kW = A * 0.23 * phases
+        if (unit === 'A') {
+          const phases = Number(p?.numberPhases ?? p?.number_phases ?? 3) || 3;
+          kw = (raw * 230 * phases) / 1000;
+        }
+        if (minKw == null || kw < minKw) minKw = kw;
+      }
+    }
+    return minKw;
+  }
+
+  /**
+   * OCPP 2.0.1 NotifyChargingLimit — CS reports external EMS/SO/CSO limit.
+   * We store it, optionally apply SetChargingProfile, and emit externalLimit.
+   */
+  private handleNotifyChargingLimit(message: any): void {
+    const payload = (message?.payload || {}) as Record<string, any>;
+    const stationId = this.extractStationId(message, payload);
+    if (!stationId) {
+      console.warn('NotifyChargingLimit missing stationId', message);
+      return;
+    }
+
+    if (!this.stations.has(stationId)) {
+      this.registerStation(stationId, this.defaultMaxPowerKw);
+    }
+
+    const chargingLimit = payload.chargingLimit || payload.charging_limit || {};
+    const source = this.normalizeChargingLimitSource(
+      chargingLimit.chargingLimitSource ?? chargingLimit.charging_limit_source
+    );
+    const isGridCritical = Boolean(
+      chargingLimit.isGridCritical ?? chargingLimit.is_grid_critical ?? false
+    );
+    const evseId = Number(
+      payload.evseId ?? payload.evse_id ?? this.extractConnectorId(payload) ?? 0
+    );
+    const schedule =
+      payload.chargingSchedule ??
+      payload.charging_schedule ??
+      chargingLimit.chargingSchedule;
+    const limitKw = this.deriveLimitKwFromSchedule(schedule);
+
+    const entry: ExternalChargingLimit = {
+      stationId,
+      evseId: Number.isFinite(evseId) ? evseId : 0,
+      source,
+      isGridCritical,
+      limitKw,
+      chargingSchedule: schedule,
+      receivedAt: new Date(),
+      raw: payload,
+    };
+
+    this.externalLimits.set(stationId, entry);
+    console.log(
+      `NotifyChargingLimit ${stationId}: source=${source} gridCritical=${isGridCritical}` +
+        (limitKw != null ? ` limitKw=${limitKw.toFixed(2)}` : ' (no schedule limit)')
+    );
+
+    // Apply external cap immediately when we can derive kW
+    if (limitKw != null && Number.isFinite(limitKw)) {
+      this.sendSetChargingProfile(stationId, limitKw);
+    }
+
+    this.emit('externalLimit', entry);
+    this.checkLoadAdjustment();
+  }
+
+  private handleClearedChargingLimit(message: any): void {
+    const payload = (message?.payload || {}) as Record<string, any>;
+    const stationId = this.extractStationId(message, payload);
+    if (!stationId) return;
+    const sourceRaw =
+      payload.chargingLimitSource ??
+      payload.charging_limit_source ??
+      payload.chargingLimit?.chargingLimitSource;
+    const source = sourceRaw
+      ? this.normalizeChargingLimitSource(sourceRaw)
+      : undefined;
+    this.clearExternalLimit(stationId, source);
+  }
+
+  private handleGetCompositeScheduleResponse(message: any): void {
+    const payload = (message?.payload || {}) as Record<string, any>;
+    const uniqueId = String(
+      message?.uniqueId ?? message?.unique_id ?? message?.messageId ?? ''
+    );
+    const pending = uniqueId ? this.pendingComposite.get(uniqueId) : undefined;
+
+    const stationId =
+      this.extractStationId(message, payload) || pending?.stationId || null;
+    if (!stationId) {
+      if (pending) {
+        clearTimeout(pending.timer);
+        this.pendingComposite.delete(uniqueId);
+        pending.resolve(null);
+      }
+      return;
+    }
+
+    const status = String(payload.status ?? message?.status ?? 'Unknown');
+    const schedule =
+      payload.schedule ||
+      payload.chargingSchedule ||
+      payload.compositeSchedule ||
+      null;
+    const evseId = Number(
+      payload.evseId ?? payload.evse_id ?? pending?.evseId ?? 0
+    );
+
+    const periodsRaw =
+      schedule?.chargingSchedulePeriod ||
+      schedule?.charging_schedule_period ||
+      [];
+    const periods: CompositeSchedulePeriod[] = Array.isArray(periodsRaw)
+      ? periodsRaw.map((p: any) => ({
+          startPeriod: Number(p?.startPeriod ?? p?.start_period ?? 0) || 0,
+          limit: Number(p?.limit) || 0,
+          numberPhases:
+            p?.numberPhases != null || p?.number_phases != null
+              ? Number(p?.numberPhases ?? p?.number_phases)
+              : undefined,
+        }))
+      : [];
+
+    const unit = schedule
+      ? String(schedule.chargingRateUnit || schedule.charging_rate_unit || 'W')
+      : undefined;
+    const effectiveLimitKw =
+      status.toLowerCase() === 'accepted'
+        ? this.deriveLimitKwFromSchedule(schedule, unit)
+        : null;
+
+    const composite: CompositeSchedule = {
+      stationId,
+      evseId: Number.isFinite(evseId) ? evseId : 0,
+      status,
+      duration: schedule?.duration != null ? Number(schedule.duration) : undefined,
+      chargingRateUnit: unit,
+      startSchedule: schedule?.startSchedule || schedule?.start_schedule,
+      chargingSchedulePeriod: periods,
+      effectiveLimitKw,
+      fetchedAt: new Date(),
+      raw: payload,
+    };
+
+    if (status.toLowerCase() === 'accepted') {
+      this.compositeSchedules.set(stationId, composite);
+      // If composite is tighter than current power, apply profile
+      if (effectiveLimitKw != null) {
+        const station = this.stations.get(stationId);
+        if (station?.isActive && station.currentPower > effectiveLimitKw) {
+          this.sendSetChargingProfile(stationId, effectiveLimitKw);
+        }
+      }
+    }
+
+    this.emit('compositeSchedule', composite);
+
+    if (pending) {
+      clearTimeout(pending.timer);
+      this.pendingComposite.delete(uniqueId);
+      pending.resolve(status.toLowerCase() === 'accepted' ? composite : null);
+    }
+  }
+
   /**
    * Handle responses to SetChargingProfile commands
    */
@@ -685,6 +1078,12 @@ export class LoadManager extends EventEmitter {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
+
+    for (const pending of this.pendingComposite.values()) {
+      clearTimeout(pending.timer);
+      pending.resolve(null);
+    }
+    this.pendingComposite.clear();
 
     if (
       this.citrineWs.readyState === WebSocket.OPEN ||

@@ -24,7 +24,8 @@ const userLinks: { to: string; icon: typeof Map; labelKey: NavKey; end?: boolean
 export function BottomNav() {
   const { t } = useLocale();
   const user = useAppStore((s) => s.user);
-  const activeSession = useAppStore((s) => s.activeSession);
+  // Boolean only — live kWh/cost ticks must not re-render the whole nav chrome.
+  const hasActiveSession = useAppStore((s) => Boolean(s.activeSession));
   const links = user ? userLinks : guestLinks;
 
   return (
@@ -33,8 +34,8 @@ export function BottomNav() {
         {links.map((link) => {
           const { to, icon: Icon, labelKey, ...rest } = link;
           const isSessionTab = 'sessionTab' in link && link.sessionTab;
-          const target = isSessionTab && activeSession ? '/laden' : to;
-          const DisplayIcon = isSessionTab && activeSession ? BatteryCharging : Icon;
+          const target = isSessionTab && hasActiveSession ? '/laden' : to;
+          const DisplayIcon = isSessionTab && hasActiveSession ? BatteryCharging : Icon;
           const label = t.nav[labelKey];
 
           return (
@@ -44,7 +45,7 @@ export function BottomNav() {
               end={'end' in rest ? rest.end : undefined}
               className={({ isActive }) =>
                 `a11y-nav-link relative flex min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-[10px] font-medium transition sm:text-xs ${
-                  isActive || (isSessionTab && activeSession)
+                  isActive || (isSessionTab && hasActiveSession)
                     ? 'text-bc-accent'
                     : 'text-bc-muted hover:text-bc-text'
                 }`
@@ -55,17 +56,17 @@ export function BottomNav() {
                   <span className="relative">
                     <DisplayIcon
                       className={`h-5 w-5 shrink-0 ${
-                        isActive || (isSessionTab && activeSession) ? 'text-bc-accent' : ''
-                      } ${isSessionTab && activeSession ? 'animate-charge' : ''}`}
+                        isActive || (isSessionTab && hasActiveSession) ? 'text-bc-accent' : ''
+                      } ${isSessionTab && hasActiveSession ? 'animate-charge' : ''}`}
                     />
-                    {isSessionTab && activeSession ? (
+                    {isSessionTab && hasActiveSession ? (
                       <span className="absolute -right-1 -top-1 flex h-2.5 w-2.5">
                         <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-bc-accent opacity-60" />
                         <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-bc-accent" />
                       </span>
                     ) : null}
                   </span>
-                  <span className="truncate">{isSessionTab && activeSession ? t.nav.charging : label}</span>
+                  <span className="truncate">{isSessionTab && hasActiveSession ? t.nav.charging : label}</span>
                 </>
               )}
             </NavLink>
