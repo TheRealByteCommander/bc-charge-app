@@ -399,13 +399,44 @@ function applyEstimatedLiveMetrics(session) {
   return { ...session, energyKwh, costEur };
 }
 
-export async function stopAccountTransaction(stationId, transactionId, stationRow) {
-  if (!transactionId) {
-    throw Object.assign(new Error('Keine Transaktions-ID für Stoppen verfügbar'), { status: 400 });
-  }
+/** First confirmation entry from CitrineOS message API (array or single object). */
+export function pickRemoteConfirmation(confirmations) {
+  if (confirmations == null) return null;
+  return Array.isArray(confirmations) ? confirmations[0] ?? null : confirmations;
+}
 
-  const useOcpp16 = stationRow ? isOcpp16Station(stationRow) : false;
-  let confirmations;
+/** True when station/CitrineOS accepted a remote start/stop. */
+export function isRemoteCommandAccepted(confirmations) {
+  const first = pickRemoteConfirmation(confirmations);
+  if (!first || typeof first !== 'object') return false;
+  return (
+    first.success === true ||
+    String(first.status ?? first.payload ?? '').toLowerCase() === 'accepted'
+  );
+}
+
+export function remoteCommandFailureMessage(confirmations, fallback) {
+  const first = pickRemoteConfirmation(confirmations);
+  if (typeof first?.payload === 'string' && first.payload.trim()) return first.payload;
+  if (typeof first?.status === 'string' && first.status.trim()) return first.status;
+  return fallback;
+}
+
+/**
+ * Whether a dual-path caller should try OCPP 2.0.1 after a 1.6 attempt.
+ * True on throw-equivalent (null) or non-accept (Rejected / success:false).
+ */
+export function shouldFallbackToOcpp201(confirmations) {
+  return !isRemoteCommandAccepted(confirmations);
+}
+
+/**
+ * OCPP 1.6 path first when applicable; fall back to 2.0.1 on throw OR non-accept
+ * (Rejected/success:false). Previous logic only fell back when 1.6 threw, so a
+ * bridge that answers HTTP 200 + Rejected never tried 2.0.1.
+ */
+async function remoteStopWithOcppFallback(stationId, transactionId, useOcpp16) {
+  let confirmations = null;
 
   if (useOcpp16) {
     try {
@@ -420,29 +451,96 @@ export async function stopAccountTransaction(stationId, transactionId, stationRo
     }
   }
 
-  if (!confirmations) {
-    confirmations = await citrineosMessage(
-      '/ocpp/2.0.1/evdriver/requestStopTransaction',
-      stationId,
-      { transactionId: String(transactionId) },
-      15_000
-    );
+  if (!isRemoteCommandAccepted(confirmations)) {
+    try {
+      const fallback = await citrineosMessage(
+        '/ocpp/2.0.1/evdriver/requestStopTransaction',
+        stationId,
+        { transactionId: String(transactionId) },
+        15_000
+      );
+      // Prefer accepted 2.0.1; if both reject, keep 2.0.1 response for error detail.
+      // If 2.0.1 throws and 1.6 had a body, keep the 1.6 rejection.
+      confirmations = fallback;
+    } catch (err) {
+      if (confirmations == null) throw err;
+    }
   }
 
-  const first = Array.isArray(confirmations) ? confirmations[0] : confirmations;
-  const accepted =
-    first?.success === true ||
-    String(first?.status ?? first?.payload ?? '').toLowerCase() === 'accepted';
-  if (!accepted) {
-    const msg =
-      typeof first?.payload === 'string'
-        ? first.payload
-        : typeof first?.status === 'string'
-          ? first.status
-          : 'Stoppen fehlgeschlagen';
-    throw Object.assign(new Error(msg), { status: 502 });
+  if (!isRemoteCommandAccepted(confirmations)) {
+    throw Object.assign(
+      new Error(remoteCommandFailureMessage(confirmations, 'Stoppen fehlgeschlagen')),
+      { status: 502 }
+    );
   }
   return true;
+}
+
+async function remoteStartWithOcppFallback(
+  stationId,
+  { useOcpp16, stationRow, connectorId, idToken, evseId, remoteStartId }
+) {
+  let confirmations = null;
+
+  if (useOcpp16) {
+    try {
+      const maxPowerWatts = stationRow?.connector?.powerKw
+        ? stationRow.connector.powerKw * 1000
+        : undefined;
+      confirmations = await citrineosMessage(
+        '/ocpp/1.6/evdriver/remoteStartTransaction',
+        stationId,
+        buildOcpp16RemoteStartBody({
+          connectorId,
+          idTag: idToken,
+          vendor: stationRow?.chargePointVendor,
+          maxPowerWatts,
+        }),
+        15_000
+      );
+    } catch {
+      confirmations = null;
+    }
+  }
+
+  if (!isRemoteCommandAccepted(confirmations)) {
+    try {
+      const fallback = await citrineosMessage(
+        '/ocpp/2.0.1/evdriver/requestStartTransaction',
+        stationId,
+        {
+          evseId,
+          remoteStartId,
+          idToken: { idToken, type: idTokenType() },
+        },
+        15_000
+      );
+      confirmations = fallback;
+    } catch (err) {
+      if (confirmations == null) throw err;
+    }
+  }
+
+  if (!isRemoteCommandAccepted(confirmations)) {
+    throw Object.assign(
+      new Error(
+        remoteCommandFailureMessage(confirmations, 'Ladestart von der Station abgelehnt')
+      ),
+      { status: 502 }
+    );
+  }
+  return true;
+}
+
+export async function stopAccountTransaction(stationId, transactionId, stationRow) {
+  if (!transactionId) {
+    throw Object.assign(new Error('Keine Transaktions-ID für Stoppen verfügbar'), { status: 400 });
+  }
+
+  // Resolve station when caller only has stationId (parity with stopAdhocTransaction).
+  const row = stationRow ?? (await fetchStationRow(stationId).catch(() => null));
+  const useOcpp16 = row ? isOcpp16Station(row) : false;
+  return remoteStopWithOcppFallback(stationId, transactionId, useOcpp16);
 }
 
 async function citrineosMessage(path, stationId, body, timeoutMs = 12_000) {
@@ -490,54 +588,14 @@ export async function startAdhocTransaction(stationId, evseId, connectorId, idTo
   const remoteStartId = Math.floor(Math.random() * 2_000_000_000);
   const useOcpp16 = stationRow ? isOcpp16Station(stationRow) : false;
 
-  let confirmations;
-  if (useOcpp16) {
-    try {
-      const maxPowerWatts = stationRow?.connector?.powerKw
-        ? stationRow.connector.powerKw * 1000
-        : undefined;
-      confirmations = await citrineosMessage(
-        '/ocpp/1.6/evdriver/remoteStartTransaction',
-        stationId,
-        buildOcpp16RemoteStartBody({
-          connectorId,
-          idTag: idToken,
-          vendor: stationRow?.chargePointVendor,
-          maxPowerWatts,
-        }),
-        15_000
-      );
-    } catch {
-      confirmations = null;
-    }
-  }
-
-  if (!confirmations) {
-    confirmations = await citrineosMessage(
-      '/ocpp/2.0.1/evdriver/requestStartTransaction',
-      stationId,
-      {
-        evseId,
-        remoteStartId,
-        idToken: { idToken, type: idTokenType() },
-      },
-      15_000
-    );
-  }
-
-  const first = Array.isArray(confirmations) ? confirmations[0] : confirmations;
-  const accepted =
-    first?.success === true ||
-    String(first?.status ?? first?.payload ?? '').toLowerCase() === 'accepted';
-  if (!accepted) {
-    const msg =
-      typeof first?.payload === 'string'
-        ? first.payload
-        : typeof first?.status === 'string'
-          ? first.status
-          : 'Ladestart von der Station abgelehnt';
-    throw Object.assign(new Error(msg), { status: 502 });
-  }
+  await remoteStartWithOcppFallback(stationId, {
+    useOcpp16,
+    stationRow,
+    connectorId,
+    idToken,
+    evseId,
+    remoteStartId,
+  });
 
   // The transactionId will now be resolved asynchronously via CitrineOS webhooks.
   // We return the remoteStartId so the frontend can track the pending session.
@@ -552,44 +610,7 @@ export async function stopAdhocTransaction(stationId, transactionId, stationRow)
   // Resolve station row when caller only has stationId (adhoc routes).
   const row = stationRow ?? (await fetchStationRow(stationId).catch(() => null));
   const useOcpp16 = row ? isOcpp16Station(row) : false;
-  let confirmations;
-
-  if (useOcpp16) {
-    try {
-      confirmations = await citrineosMessage(
-        '/ocpp/1.6/evdriver/remoteStopTransaction',
-        stationId,
-        { transactionId: Number(transactionId) || transactionId },
-        15_000
-      );
-    } catch {
-      confirmations = null;
-    }
-  }
-
-  if (!confirmations) {
-    confirmations = await citrineosMessage(
-      '/ocpp/2.0.1/evdriver/requestStopTransaction',
-      stationId,
-      { transactionId: String(transactionId) },
-      15_000
-    );
-  }
-
-  const first = Array.isArray(confirmations) ? confirmations[0] : confirmations;
-  const accepted =
-    first?.success === true ||
-    String(first?.status ?? first?.payload ?? '').toLowerCase() === 'accepted';
-  if (!accepted) {
-    const msg =
-      typeof first?.payload === 'string'
-        ? first.payload
-        : typeof first?.status === 'string'
-          ? first.status
-          : 'Stoppen fehlgeschlagen';
-    throw Object.assign(new Error(msg), { status: 502 });
-  }
-  return true;
+  return remoteStopWithOcppFallback(stationId, transactionId, useOcpp16);
 }
 
 export async function fetchTransactionByRemoteStartId(stationId, remoteStartId, stationDatabaseId) {

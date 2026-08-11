@@ -65,4 +65,30 @@ describe('normalizeCitrineosWebhookPayload OCPP2 nested', () => {
     assert.equal(normalizeCitrineosWebhookPayload(null), null);
     assert.equal(normalizeCitrineosWebhookPayload({ foo: 1 }), null);
   });
+
+  it('maps snake_case event_type Ended to isActive=false (session complete)', () => {
+    const event = normalizeCitrineosWebhookPayload({
+      event_type: 'Ended',
+      transaction_id: 'tx-snake-end',
+      seq_no: 9,
+      total_kwh: 4.2,
+    });
+    assert.equal(event?.transactionId, 'tx-snake-end');
+    assert.equal(event?.eventType, 'Ended');
+    assert.equal(event?.seqNo, 9);
+    assert.equal(event?.totalKwh, 4.2);
+    assert.equal(event?.isActive, false);
+  });
+
+  it('maps nested chargingState Idle on Ended without flat isActive', () => {
+    const event = normalizeCitrineosWebhookPayload({
+      eventType: 'Ended',
+      transactionInfo: {
+        transactionId: 'tx-idle-end',
+        chargingState: 'Idle',
+      },
+    });
+    assert.equal(event?.transactionId, 'tx-idle-end');
+    assert.equal(event?.isActive, false);
+  });
 });

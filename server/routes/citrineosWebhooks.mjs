@@ -100,6 +100,7 @@ function normalizeCitrineosWebhookPayload(raw) {
     if (fromMeter != null) totalKwhRaw = fromMeter;
   }
 
+  // Prefer explicit flags, then status, then resolved eventType (camel- or snake_case).
   let isActive = undefined;
   if (typeof isActiveRaw === 'boolean') isActive = isActiveRaw;
   else if (isActiveRaw === 'true' || isActiveRaw === 1) isActive = true;
@@ -108,8 +109,10 @@ function normalizeCitrineosWebhookPayload(raw) {
     const s = body.status.toLowerCase();
     if (s === 'completed' || s === 'stopped' || s === 'ended' || s === 'finished') isActive = false;
     if (s === 'active' || s === 'charging' || s === 'started') isActive = true;
-  } else if (typeof body.eventType === 'string') {
-    const s = body.eventType.toLowerCase();
+  } else if (typeof eventType === 'string') {
+    // Must use resolved eventType — body.event_type alone used to leave isActive unset,
+    // so Ended webhooks never completed local sessions.
+    const s = eventType.toLowerCase();
     if (s === 'ended' || s.includes('end') || s.includes('stop') || s.includes('complete')) {
       isActive = false;
     } else if (s === 'started' || s === 'updated') {
