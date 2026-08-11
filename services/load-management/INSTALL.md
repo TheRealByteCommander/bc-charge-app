@@ -48,9 +48,14 @@ export MAX_SITE_POWER=50
 export ADJUSTMENT_THRESHOLD=5
 export PRICING_API_PORT=3003
 export HEALTH_PORT=3001
+# Admin API (Token mint, pricing, billing, stations) — required in production:
+# export LM_API_KEY="$(openssl rand -hex 32)"
+# export LM_API_AUTH_REQUIRED=1
 # optional Bootstrap-Stationen:
 # export KNOWN_STATIONS=CS001,CS002
 ```
+
+Deep-Link **start/stop** bleiben öffentlich (Token im Pfad). Alle anderen `/api/*`-Routen erwarten `Authorization: Bearer $LM_API_KEY` oder Header `x-api-key`.
 
 Vollständige ENV-Liste: siehe [README.md](README.md).
 

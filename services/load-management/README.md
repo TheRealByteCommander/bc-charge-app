@@ -95,6 +95,8 @@ npx ts-node src/test-billing.ts
 |----------|---------|--------------|
 | `PRICING_API_PORT` / `API_PORT` | `3003` | REST-API-Port |
 | `HEALTH_PORT` | `3001` | Health-Port |
+| `LM_API_KEY` | _(leer)_ | Admin-API-Key (Bearer / `x-api-key` / `x-lm-api-key`). Alias: `LOAD_MANAGEMENT_API_KEY` |
+| `LM_API_AUTH_REQUIRED` | `false` | `1`/`true` erzwingt Auth auch ohne Production; in `NODE_ENV=production` immer required |
 | `HEALTH_CHECK_INTERVAL_MS` | `300000` | Bot-Intervall |
 | `HEALTH_RESPONSE_TIMEOUT_MS` | `30000` | Antwort-Timeout |
 | `HEALTH_FAILURE_THRESHOLD` | `3` | Failures vor Reset-Versuch |
@@ -125,6 +127,25 @@ Runtime-Ordner `data/`, `exports/`, `dist/`, `node_modules/` sind gitignored.
 
 ## HTTP API
 
+### Auth-Modell
+
+| Bereich | Auth |
+|---------|------|
+| Health (`:3001`) | öffentlich |
+| `GET /api/deep-link/start/:token`, `GET /api/deep-link/stop/:token` | öffentlich — Deep-Link-Token ist das Capability-Secret |
+| alle übrigen `/api/*` (Token mint/list/revoke, Pricing, PV, Billing, Stations) | **Admin-API-Key** wenn `LM_API_KEY` gesetzt oder Production/`LM_API_AUTH_REQUIRED` |
+
+Header (eine Variante genügt):
+
+```http
+Authorization: Bearer <LM_API_KEY>
+x-api-key: <LM_API_KEY>
+x-lm-api-key: <LM_API_KEY>
+```
+
+Ohne Key in Production → geschützte Routen antworten `503 AUTH_NOT_CONFIGURED`.  
+Falscher/fehlender Key → `401 UNAUTHORIZED`.
+
 ### Health
 
 - `GET http://localhost:3001/health`
@@ -132,14 +153,14 @@ Runtime-Ordner `data/`, `exports/`, `dist/`, `node_modules/` sind gitignored.
 
 `status` ist `degraded` nur wenn Stationen bekannt sind **und** der CitrineOS-WS down ist.
 
-### PV Surplus
+### PV Surplus (admin)
 
 - `POST /api/pv-surplus` — Body: `{ "surplus": 15.5 }` (kW)
 - `GET /api/pv-surplus`
 
 Surplus wird über `LoadManager.applySurplusBudget` auf aktive Stationen verteilt.
 
-### Pricing
+### Pricing (admin)
 
 - `POST /api/pricing/tariff`
 - `GET /api/pricing/tariff`
@@ -155,12 +176,12 @@ Details: [src/services/pricing/README.md](src/services/pricing/README.md)
 
 ### Deep-Link
 
-- `POST /api/deep-link/tokens` — Token erzeugen  
+- `POST /api/deep-link/tokens` — Token erzeugen (**admin**)  
   Body u. a.: `stationId`, `connectorId`, optional `purpose` (`start`|`stop`|`both`), `ttlSeconds`, `maxUses`, `customerId`, `idTag`, …
-- `GET /api/deep-link/tokens?includeRevoked=false`
-- `DELETE /api/deep-link/tokens/:token`
-- `GET /api/deep-link/start/:token` — optional `?meterValue=`
-- `GET /api/deep-link/stop/:token` — optional `?meterValue=`
+- `GET /api/deep-link/tokens?includeRevoked=false` (**admin**)
+- `DELETE /api/deep-link/tokens/:token` (**admin**)
+- `GET /api/deep-link/start/:token` — public, optional `?meterValue=`
+- `GET /api/deep-link/stop/:token` — public, optional `?meterValue=`
 
 Verhalten (Stand Fix `64a095d`):
 

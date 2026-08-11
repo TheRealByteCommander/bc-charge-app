@@ -7,6 +7,11 @@ import { PricingService, PricingController } from './services/pricing';
 import { HealthCheckBot } from './services/HealthCheckBot';
 import { DeepLinkController } from './services/DeepLinkController';
 import { DeepLinkTokenStore } from './services/DeepLinkTokenStore';
+import {
+  createApiAuthMiddleware,
+  isApiAuthRequiredFromEnv,
+  resolveApiKeyFromEnv,
+} from './middleware/apiAuth';
 
 /**
  * Main entry point for the Dynamic Load Management service.
@@ -103,33 +108,51 @@ const API_PORT = Number(process.env.PRICING_API_PORT || process.env.API_PORT || 
 
 apiApp.use(express.json());
 
+// Admin API auth: protects token mint/list/revoke, pricing, PV, billing, stations.
+// Deep-link start/stop stay public — the deep-link token is the capability secret.
+const lmApiKey = resolveApiKeyFromEnv();
+const requireAdminAuth = createApiAuthMiddleware({
+  apiKey: lmApiKey,
+  required: isApiAuthRequiredFromEnv() || Boolean(lmApiKey),
+});
+console.log(
+  `- Admin API auth: ${
+    lmApiKey
+      ? 'enabled (LM_API_KEY set)'
+      : isApiAuthRequiredFromEnv()
+        ? 'REQUIRED but LM_API_KEY missing → protected routes return 503'
+        : 'disabled (dev; set LM_API_KEY before production)'
+  }`
+);
+
 const pvSurplusController = new PvSurplusController(pvSurplusService, console);
 const pricingController = new PricingController(pricingService, console);
 
-// PV Surplus
-apiApp.post('/api/pv-surplus', (req, res, next) => pvSurplusController.updateSurplus(req, res, next));
-apiApp.get('/api/pv-surplus', (req, res, next) => pvSurplusController.getSurplus(req, res, next));
+// PV Surplus (admin)
+apiApp.post('/api/pv-surplus', requireAdminAuth, (req, res, next) => pvSurplusController.updateSurplus(req, res, next));
+apiApp.get('/api/pv-surplus', requireAdminAuth, (req, res, next) => pvSurplusController.getSurplus(req, res, next));
 
-// Pricing
-apiApp.post('/api/pricing/tariff', (req, res, next) => pricingController.addTariffPeriod(req, res, next));
-apiApp.get('/api/pricing/tariff', (req, res, next) => pricingController.getTariffPeriods(req, res, next));
-apiApp.post('/api/pricing/session/start', (req, res, next) => pricingController.startSession(req, res, next));
-apiApp.post('/api/pricing/session/end', (req, res, next) => pricingController.endSession(req, res, next));
-apiApp.post('/api/pricing/session/idle/start', (req, res, next) => pricingController.startIdleTracking(req, res, next));
-apiApp.post('/api/pricing/session/idle/end', (req, res, next) => pricingController.endIdleTracking(req, res, next));
-apiApp.get('/api/pricing/session/:sessionId', (req, res, next) => pricingController.getSession(req, res, next));
-apiApp.post('/api/pricing/energy-price', (req, res, next) => pricingController.updateEnergyPrice(req, res, next));
-apiApp.get('/api/pricing/config', (req, res, next) => pricingController.getConfig(req, res, next));
+// Pricing (admin)
+apiApp.post('/api/pricing/tariff', requireAdminAuth, (req, res, next) => pricingController.addTariffPeriod(req, res, next));
+apiApp.get('/api/pricing/tariff', requireAdminAuth, (req, res, next) => pricingController.getTariffPeriods(req, res, next));
+apiApp.post('/api/pricing/session/start', requireAdminAuth, (req, res, next) => pricingController.startSession(req, res, next));
+apiApp.post('/api/pricing/session/end', requireAdminAuth, (req, res, next) => pricingController.endSession(req, res, next));
+apiApp.post('/api/pricing/session/idle/start', requireAdminAuth, (req, res, next) => pricingController.startIdleTracking(req, res, next));
+apiApp.post('/api/pricing/session/idle/end', requireAdminAuth, (req, res, next) => pricingController.endIdleTracking(req, res, next));
+apiApp.get('/api/pricing/session/:sessionId', requireAdminAuth, (req, res, next) => pricingController.getSession(req, res, next));
+apiApp.post('/api/pricing/energy-price', requireAdminAuth, (req, res, next) => pricingController.updateEnergyPrice(req, res, next));
+apiApp.get('/api/pricing/config', requireAdminAuth, (req, res, next) => pricingController.getConfig(req, res, next));
 
-// Deep-Link
-apiApp.post('/api/deep-link/tokens', (req, res, next) => deepLinkController.createToken(req, res, next));
-apiApp.get('/api/deep-link/tokens', (req, res, next) => deepLinkController.listTokens(req, res, next));
-apiApp.delete('/api/deep-link/tokens/:token', (req, res, next) => deepLinkController.revokeToken(req, res, next));
+// Deep-Link admin (mint / list / revoke) — auth required when LM_API_KEY set or production
+apiApp.post('/api/deep-link/tokens', requireAdminAuth, (req, res, next) => deepLinkController.createToken(req, res, next));
+apiApp.get('/api/deep-link/tokens', requireAdminAuth, (req, res, next) => deepLinkController.listTokens(req, res, next));
+apiApp.delete('/api/deep-link/tokens/:token', requireAdminAuth, (req, res, next) => deepLinkController.revokeToken(req, res, next));
+// Public capability URLs (token in path is the secret)
 apiApp.get('/api/deep-link/start/:token', (req, res, next) => deepLinkController.startCharging(req, res, next));
 apiApp.get('/api/deep-link/stop/:token', (req, res, next) => deepLinkController.stopCharging(req, res, next));
 
-// Load / stations
-apiApp.get('/api/stations', (_req, res) => {
+// Load / stations (admin)
+apiApp.get('/api/stations', requireAdminAuth, (_req, res) => {
   res.status(200).json({
     success: true,
     data: {
@@ -139,7 +162,7 @@ apiApp.get('/api/stations', (_req, res) => {
   });
 });
 
-apiApp.get('/api/health/stations', (_req, res) => {
+apiApp.get('/api/health/stations', requireAdminAuth, (_req, res) => {
   res.status(200).json({
     success: true,
     data: {
@@ -148,8 +171,8 @@ apiApp.get('/api/health/stations', (_req, res) => {
   });
 });
 
-// Billing export
-apiApp.post('/api/billing/export', async (req, res, next) => {
+// Billing export (admin)
+apiApp.post('/api/billing/export', requireAdminAuth, async (req, res, next) => {
   try {
     const body = req.body ?? {};
     const sessionIds: string[] | undefined = Array.isArray(body.sessionIds)

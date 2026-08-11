@@ -102,6 +102,7 @@ Erwartet: Typecheck OK, 28 Jest-Tests OK, Billing-Selftest OK.
 
 ## Offene Betriebs-Themen (kein Code-Placeholder)
 
-- Deep-Link-Routen in Produktion authentifizieren
+- ~~Deep-Link-Routen in Produktion authentifizieren~~ → erledigt 2026-08-11: Admin-API-Key (`LM_API_KEY`) auf mint/list/revoke + Pricing/PV/Billing/Stations; start/stop bleiben token-capability-public
 - Pricing-Session-Persistenz (aktuell in-memory)
+- Load-Management mit Haupt-App/Server verdrahten + CitrineOS Smoke / PR → master
 - Fälschlich angelegtes Repo `TheRealByteCommander/bc-charge` manuell löschen (PAT ohne `delete_repo`)

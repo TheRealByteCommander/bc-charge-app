@@ -49,6 +49,9 @@ services:
       - PRICING_TIMEZONE=Europe/Berlin
       - DEEP_LINK_STORE_PATH=/app/data/deep-link-tokens.json
       - BILLING_EXPORT_DIR=/app/exports
+      # Admin API auth (required in production). Use a long random secret:
+      # - LM_API_KEY=change-me-to-a-long-random-secret
+      # - LM_API_AUTH_REQUIRED=1
       # - KNOWN_STATIONS=CS001,CS002
     depends_on:
       - citrineos
