@@ -2,6 +2,11 @@ import { Router } from 'express';
 import logger from '../utils/logger.mjs';
 import { applyCitrineosWebhookToSessions } from '../db.mjs';
 import { canaryValidate } from '../services/canaryValidator.mjs';
+import {
+  resolveStationIdsForReopt,
+  shouldTriggerLmReopt,
+  triggerLmReoptFromWebhook,
+} from '../services/loadManagementReopt.mjs';
 
 const router = Router();
 
@@ -90,6 +95,34 @@ function normalizeCitrineosWebhookPayload(raw) {
       : Number.isFinite(Number(seqNoRaw))
         ? Number(seqNoRaw)
         : null;
+  // OCPP 2.0.1 TransactionEvent triggerReason (ChargingRateChanged → LM re-opt signal).
+  const triggerReasonRaw =
+    body.triggerReason ??
+    body.trigger_reason ??
+    transactionInfo?.triggerReason ??
+    transactionInfo?.trigger_reason ??
+    null;
+  const triggerReason =
+    typeof triggerReasonRaw === 'string' && triggerReasonRaw.trim()
+      ? triggerReasonRaw.trim()
+      : null;
+
+  // Station id for LM GetCompositeSchedule re-opt (top-level or nested).
+  const stationIdRaw =
+    body.stationId ??
+    body.station_id ??
+    body.chargingStationId ??
+    body.charging_station_id ??
+    body.identifier ??
+    body.connectionName ??
+    body.connection_name ??
+    transactionInfo?.stationId ??
+    transactionInfo?.station_id ??
+    null;
+  const stationId =
+    stationIdRaw == null || stationIdRaw === ''
+      ? null
+      : String(stationIdRaw).trim() || null;
 
   // OCPP 2.0.1 TransactionEvent: energy often only in meterValue[].sampledValue
   // (triggerReason e.g. ChargingRateChanged / MeterValuePeriodic) — no flat totalKwh.
@@ -130,7 +163,9 @@ function normalizeCitrineosWebhookPayload(raw) {
     remoteStartId != null ||
     totalKwh != null ||
     totalCost != null ||
-    isActive !== undefined;
+    isActive !== undefined ||
+    // Rate/limit re-opt may arrive with only trigger + station context.
+    (triggerReason != null && shouldTriggerLmReopt(triggerReason));
 
   if (!hasSignal) return null;
 
@@ -142,6 +177,8 @@ function normalizeCitrineosWebhookPayload(raw) {
     isActive,
     eventType,
     seqNo,
+    triggerReason,
+    stationId,
   };
 }
 
@@ -180,9 +217,49 @@ router.post('/', async (req, res) => {
     if (result.matched === 0) {
       logger.info('[CitrineOS Webhook] No matching local sessions', event);
     } else {
-      logger.info('[CitrineOS Webhook] Applied', result);
+      logger.info('[CitrineOS Webhook] Applied', {
+        matched: result.matched,
+        actions: result.actions,
+      });
     }
-    res.json({ received: true, matched: result.matched, actions: result.actions });
+
+    // Fire-and-forget LM re-opt on ChargingRateChanged (and related). Never block/fail webhook.
+    let lmReopt = null;
+    if (shouldTriggerLmReopt(event.triggerReason)) {
+      const stationIds = resolveStationIdsForReopt({
+        event,
+        sessionRows: result.matchedRows,
+      });
+      try {
+        lmReopt = await triggerLmReoptFromWebhook({
+          triggerReason: event.triggerReason,
+          stationIds,
+          transactionId: event.transactionId,
+        });
+        if (lmReopt.attempted) {
+          logger.info('[CitrineOS Webhook] LM reopt', lmReopt);
+        } else if (lmReopt.skipped && lmReopt.skipped !== 'lm_disabled') {
+          logger.info('[CitrineOS Webhook] LM reopt skipped', lmReopt);
+        }
+      } catch (reoptErr) {
+        logger.warn('[CitrineOS Webhook] LM reopt error (ignored)', {
+          message: reoptErr instanceof Error ? reoptErr.message : String(reoptErr),
+        });
+        lmReopt = {
+          attempted: false,
+          skipped: 'error',
+          stations: stationIds,
+          results: [],
+        };
+      }
+    }
+
+    res.json({
+      received: true,
+      matched: result.matched,
+      actions: result.actions,
+      ...(lmReopt ? { lmReopt } : {}),
+    });
   } catch (e) {
     logger.error('[CitrineOS Webhook] Error processing event:', e);
     res.status(500).json({ error: 'Internal Server Error' });

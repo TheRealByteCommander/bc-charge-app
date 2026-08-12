@@ -21,7 +21,8 @@
     "test:e2e": "playwright test",
     "test:canary": "node --test server/services/canaryValidator.test.mjs",
     "test:lm-client": "node --test server/services/loadManagementClient.test.mjs",
-    "test:server-unit": "node --test server/services/canaryValidator.test.mjs server/services/loadManagementClient.test.mjs server/services/citrineosRemoteCommand.test.mjs server/routes/citrineosWebhooks.normalize.test.mjs",
+    "test:lm-reopt": "node --test server/services/loadManagementReopt.test.mjs",
+    "test:server-unit": "node --test server/services/canaryValidator.test.mjs server/services/loadManagementClient.test.mjs server/services/loadManagementReopt.test.mjs server/services/citrineosRemoteCommand.test.mjs server/routes/citrineosWebhooks.normalize.test.mjs",
     "smoke:lm": "node scripts/smoke-load-management.mjs"
   },
   "dependencies": {

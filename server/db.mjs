@@ -371,13 +371,16 @@ export async function upsertSession(userId, session) {
   const dataJson = JSON.stringify(session);
   try {
     if (isPostgres()) {
+      // Skip no-op updates (IS DISTINCT FROM) to cut WAL/bloat on high-frequency session ticks.
       await pgPool.query(
         `INSERT INTO charging_sessions (id, user_id, data_json, status, created_at, updated_at)
          VALUES ($1, $2, $3::jsonb, $4, $5, $6)
          ON CONFLICT (id) DO UPDATE
          SET data_json = EXCLUDED.data_json,
              status = EXCLUDED.status,
-             updated_at = EXCLUDED.updated_at`,
+             updated_at = EXCLUDED.updated_at
+         WHERE charging_sessions.data_json IS DISTINCT FROM EXCLUDED.data_json
+            OR charging_sessions.status IS DISTINCT FROM EXCLUDED.status`,
         [session.id, userId, dataJson, session.status, session.startedAt ?? now, now]
       );
       return;
@@ -926,7 +929,7 @@ async function listActiveSessionRowsByJsonField(field, value) {
     rows.push(...chargeRows);
 
     const { rows: adhocRows } = await pgPool.query(
-      `SELECT 'adhoc' AS kind, id, access_token, data_json, status
+      `SELECT 'adhoc' AS kind, id, access_token, station_id, data_json, status
        FROM adhoc_sessions
        WHERE status IN ('active', 'pending', 'charging')
          AND (
@@ -957,7 +960,7 @@ async function listActiveSessionRowsByJsonField(field, value) {
 
   const adhocRows = sqliteDb
     .prepare(
-      `SELECT 'adhoc' AS kind, id, access_token, data_json, status
+      `SELECT 'adhoc' AS kind, id, access_token, station_id, data_json, status
        FROM adhoc_sessions
        WHERE status IN ('active', 'pending', 'charging')
          AND (
@@ -1018,11 +1021,22 @@ async function persistPatchedSessionRow(row, patch) {
 
 /**
  * Apply a normalized CitrineOS transaction webhook event to local session rows.
- * @returns {{ matched: number, actions: string[] }}
+ * @returns {{ matched: number, actions: string[], matchedRows: object[] }}
  */
 export async function applyCitrineosWebhookToSessions(event) {
   const actions = [];
   let matched = 0;
+  /** @type {object[]} rows touched this apply — used by LM re-opt station resolution */
+  const matchedRows = [];
+  /** @type {Set<string>} */
+  const matchedRowKeys = new Set();
+
+  const rememberRow = (row) => {
+    const key = `${row.kind}:${row.id}`;
+    if (matchedRowKeys.has(key)) return;
+    matchedRowKeys.add(key);
+    matchedRows.push(row);
+  };
 
   const remoteStartId = event.remoteStartId;
   const transactionId = event.transactionId != null ? String(event.transactionId) : null;
@@ -1039,11 +1053,12 @@ export async function applyCitrineosWebhookToSessions(event) {
         status: data.status === 'pending' ? 'active' : data.status ?? row.status,
       });
       matched += 1;
+      rememberRow(row);
       actions.push(`resolve:remoteStartId=${remoteStartId}->tx=${transactionId}`);
     }
   }
 
-  if (transactionId && (event.totalKwh != null || event.totalCost != null || event.seqNo != null)) {
+  if (transactionId && (event.totalKwh != null || event.totalCost != null || event.seqNo != null || event.triggerReason != null)) {
     const rows = await listActiveSessionRowsByJsonField('citrineosTransactionId', transactionId);
     for (const row of rows) {
       const data = parseJson(row.data_json) ?? {};
@@ -1060,6 +1075,7 @@ export async function applyCitrineosWebhookToSessions(event) {
       ) {
         actions.push(`stale-seq:tx=${transactionId}:seq=${nextSeq}<${prevSeq}`);
         matched += 1;
+        rememberRow(row);
         continue;
       }
       const patch = {};
@@ -1067,10 +1083,16 @@ export async function applyCitrineosWebhookToSessions(event) {
       if (event.totalCost != null) patch.costEur = event.totalCost;
       if (nextSeq != null && Number.isFinite(nextSeq)) patch.lastCitrineosEventSeqNo = nextSeq;
       if (event.eventType != null) patch.lastCitrineosEventType = event.eventType;
+      if (event.triggerReason != null) patch.lastCitrineosTriggerReason = event.triggerReason;
       if (Object.keys(patch).length === 0) continue;
       await persistPatchedSessionRow(row, patch);
       matched += 1;
-      actions.push(`metrics:tx=${transactionId}`);
+      rememberRow(row);
+      actions.push(
+        event.triggerReason
+          ? `metrics:tx=${transactionId}:trigger=${event.triggerReason}`
+          : `metrics:tx=${transactionId}`
+      );
     }
   }
 
@@ -1091,6 +1113,7 @@ export async function applyCitrineosWebhookToSessions(event) {
       ) {
         actions.push(`stale-stop:tx=${transactionId}:seq=${nextSeq}<${prevSeq}`);
         matched += 1;
+        rememberRow(row);
         continue;
       }
       const patch = {
@@ -1100,11 +1123,13 @@ export async function applyCitrineosWebhookToSessions(event) {
       };
       if (nextSeq != null && Number.isFinite(nextSeq)) patch.lastCitrineosEventSeqNo = nextSeq;
       if (event.eventType != null) patch.lastCitrineosEventType = event.eventType;
+      if (event.triggerReason != null) patch.lastCitrineosTriggerReason = event.triggerReason;
       await persistPatchedSessionRow(row, patch);
       matched += 1;
+      rememberRow(row);
       actions.push(`stop:tx=${transactionId}`);
     }
   }
 
-  return { matched, actions };
+  return { matched, actions, matchedRows };
 }

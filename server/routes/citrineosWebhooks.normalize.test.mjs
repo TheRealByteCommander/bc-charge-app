@@ -46,7 +46,42 @@ describe('normalizeCitrineosWebhookPayload OCPP2 nested', () => {
       isActive: true,
       eventType: null,
       seqNo: null,
+      triggerReason: null,
+      stationId: null,
     });
+  });
+
+  it('passes through triggerReason ChargingRateChanged for LM re-opt hooks', () => {
+    const event = normalizeCitrineosWebhookPayload({
+      eventType: 'Updated',
+      triggerReason: 'ChargingRateChanged',
+      stationId: 'cp-42',
+      seqNo: 3,
+      transactionInfo: { transactionId: 'tx-rate' },
+      meterValue: [
+        {
+          sampledValue: [
+            { measurand: 'Energy.Active.Import.Register', value: '1000', unit: 'Wh' },
+          ],
+        },
+      ],
+    });
+    assert.equal(event?.transactionId, 'tx-rate');
+    assert.equal(event?.triggerReason, 'ChargingRateChanged');
+    assert.equal(event?.stationId, 'cp-42');
+    assert.equal(event?.eventType, 'Updated');
+    assert.equal(event?.totalKwh, 1);
+    assert.equal(event?.isActive, true);
+  });
+
+  it('accepts ChargingRateChanged + stationId without energy/tx as re-opt signal', () => {
+    const event = normalizeCitrineosWebhookPayload({
+      trigger_reason: 'ChargingRateChanged',
+      station_id: 'go-e-1',
+    });
+    assert.equal(event?.triggerReason, 'ChargingRateChanged');
+    assert.equal(event?.stationId, 'go-e-1');
+    assert.equal(event?.transactionId, null);
   });
 
   it('passes through Updated seqNo for offline-replay ordering', () => {
