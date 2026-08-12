@@ -1,3 +1,4 @@
+import { timingSafeEqual } from 'crypto';
 import { Router } from 'express';
 import logger from '../utils/logger.mjs';
 import { applyCitrineosWebhookToSessions } from '../db.mjs';
@@ -9,6 +10,66 @@ import {
 } from '../services/loadManagementReopt.mjs';
 
 const router = Router();
+
+/**
+ * Optional shared-secret gate for CitrineOS webhooks.
+ * Env: CITRINEOS_WEBHOOK_SECRET (or alias BC_CITRINEOS_WEBHOOK_SECRET).
+ * Accepts Authorization: Bearer <secret>, x-citrineos-webhook-secret, or x-webhook-secret.
+ * When unset: allow in non-production (dev); reject with 503 in production.
+ */
+export function resolveCitrineosWebhookSecret(env = process.env) {
+  const secret = (env.CITRINEOS_WEBHOOK_SECRET || env.BC_CITRINEOS_WEBHOOK_SECRET || '').trim();
+  return secret || null;
+}
+
+function readPresentedWebhookSecret(req) {
+  const auth = req.get('authorization') || req.get('Authorization') || '';
+  if (typeof auth === 'string' && auth.toLowerCase().startsWith('bearer ')) {
+    return auth.slice(7).trim();
+  }
+  const header =
+    req.get('x-citrineos-webhook-secret') ||
+    req.get('x-webhook-secret') ||
+    req.get('x-bc-webhook-secret') ||
+    '';
+  return typeof header === 'string' ? header.trim() : '';
+}
+
+function secretsEqual(presented, expected) {
+  if (!presented || !expected) return false;
+  const a = Buffer.from(presented, 'utf8');
+  const b = Buffer.from(expected, 'utf8');
+  if (a.length !== b.length) return false;
+  try {
+    return timingSafeEqual(a, b);
+  } catch {
+    return false;
+  }
+}
+
+export function assertCitrineosWebhookAuthorized(req, env = process.env) {
+  const expected = resolveCitrineosWebhookSecret(env);
+  const nodeEnv = (env.NODE_ENV || '').toLowerCase();
+  const production = nodeEnv === 'production';
+
+  if (!expected) {
+    if (production) {
+      return {
+        ok: false,
+        status: 503,
+        error:
+          'CitrineOS webhook secret not configured (set CITRINEOS_WEBHOOK_SECRET)',
+      };
+    }
+    return { ok: true, mode: 'open-dev' };
+  }
+
+  const presented = readPresentedWebhookSecret(req);
+  if (!secretsEqual(presented, expected)) {
+    return { ok: false, status: 401, error: 'Unauthorized webhook' };
+  }
+  return { ok: true, mode: 'secret' };
+}
 
 /**
  * Pull Energy.Active.Import.Register from OCPP 2.0.1 meterValue arrays (Wh or kWh).
@@ -187,6 +248,22 @@ function normalizeCitrineosWebhookPayload(raw) {
  * Writes into charging_sessions / adhoc_sessions data_json (not flat SQL columns).
  */
 router.post('/', async (req, res) => {
+  const authz = assertCitrineosWebhookAuthorized(req);
+  if (!authz.ok) {
+    if (authz.status === 503) {
+      logger.error('[CitrineOS Webhook] Rejected: secret missing in production');
+    } else {
+      logger.warn('[CitrineOS Webhook] Unauthorized request');
+    }
+    res.status(authz.status).json({ error: authz.error });
+    return;
+  }
+  if (authz.mode === 'open-dev') {
+    logger.warn(
+      '[CitrineOS Webhook] CITRINEOS_WEBHOOK_SECRET unset — accepting unauthenticated (dev only)'
+    );
+  }
+
   const payload = req.body;
 
   if (payload == null || payload === '') {

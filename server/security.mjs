@@ -145,7 +145,16 @@ export function getCorsOptions() {
     },
     credentials: true,
     methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'X-BC-API-Key', 'X-BC-User-Id', 'Cookie'],
+    allowedHeaders: [
+      'Content-Type',
+      'X-BC-API-Key',
+      'X-BC-User-Id',
+      'Cookie',
+      'Authorization',
+      'X-Citrineos-Webhook-Secret',
+      'X-Webhook-Secret',
+      'X-BC-Webhook-Secret',
+    ],
   };
 }
 

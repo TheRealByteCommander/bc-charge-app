@@ -136,8 +136,23 @@ function handleWsOpen(): void {
  */
 function handleWsMessage(event: MessageEvent): void {
   try {
-    const message = JSON.parse(event.data);
-    
+    let message: {
+      type?: string;
+      payload?: { data?: { ChargingStations?: HasuraChargingStationRow[] } };
+    };
+    try {
+      const raw = typeof event.data === 'string' ? event.data : String(event.data ?? '');
+      const parsed: unknown = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        logger.warn('Ignoring non-object Hasura WS payload');
+        return;
+      }
+      message = parsed as typeof message;
+    } catch (parseErr) {
+      logger.error('Error parsing WebSocket message:', parseErr);
+      return;
+    }
+
     switch (message.type) {
       case 'connection_ack':
         // Connection acknowledged, now start subscription

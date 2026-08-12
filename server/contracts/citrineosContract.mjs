@@ -91,8 +91,8 @@ export const citrineosIntegrationContract = {
       method: 'POST',
       path: '/api/webhooks/citrineos',
       purpose:
-        'Push TransactionEvent / session updates (aliases + meterValue energy + seqNo ordering)',
-      appUsage: 'citrineosWebhooks.normalizeCitrineosWebhookPayload → db.applyCitrineosWebhookToSessions',
+        'Push TransactionEvent / session updates (aliases + meterValue energy + seqNo ordering); auth via CITRINEOS_WEBHOOK_SECRET (Bearer / x-citrineos-webhook-secret)',
+      appUsage: 'citrineosWebhooks.assertCitrineosWebhookAuthorized → normalize → db.applyCitrineosWebhookToSessions',
     },
   ],
   canary: {
