@@ -21,6 +21,9 @@ import rewardsRouter from './routes/rewards.mjs';
 import adminConfigRouter from './routes/adminConfig.mjs';
 import citrineosWebhooksRouter from './routes/citrineosWebhooks.mjs';
 import loadManagementRouter from './routes/loadManagement.mjs';
+import priceOptimizationRouter from './routes/priceOptimization.mjs';
+import pvSurplusChargingRouter from './routes/pvSurplusCharging.mjs';
+import pricingRouter from './routes/pricing.mjs';
 
 const PORT = Number(process.env.BC_SERVER_PORT ?? process.env.STRIPE_SERVER_PORT ?? 4242);
 
@@ -56,9 +59,12 @@ app.use('/api/profile', profileRouter);
 app.use('/api/sessions', sessionsRouter);
 app.use('/api/stripe', stripeRouter);
 app.use('/api/citrineos', citrineosRouter);
+app.use('/api/price-optimization', priceOptimizationRouter);
+app.use('/api/pv-surplus', pvSurplusChargingRouter);
 app.use('/api/invoices', invoicesRouter);
 app.use('/api/gamification', gamificationRouter);
 app.use('/api/rewards', rewardsRouter);
+app.use('/api/pricing', pricingRouter);
 app.use('/api/adhoc', adhocRouter);
 app.use('/api/admin/config', adminConfigRouter);
 app.use(

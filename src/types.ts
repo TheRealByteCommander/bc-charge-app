@@ -195,6 +195,12 @@ export interface ChargingSession {
   /** Anzeige-Label der Prämie */
   rewardLabel?: string;
   pricePerMin?: number;
+  /** ISO-4217 aus Tarif-Snapshot */
+  currency?: string;
+  /** BC Pricing Engine – unveränderlicher Tarif-Snapshot */
+  tariffSnapshotId?: string;
+  tariffSnapshotHash?: string;
+  tariffVersionId?: string;
 }
 
 export type RewardFulfillmentType =

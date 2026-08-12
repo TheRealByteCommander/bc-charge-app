@@ -50,7 +50,10 @@ Ziel: **Eine App für E-Auto-Fahrer**, die Fragmentierung, unzuverlässige Daten
 | Feature | Status |
 |---------|--------|
 | Stripe Karte/SEPA | ✅ |
-| Echtzeit-Tarife CitrineOS | ✅ |
+| Echtzeit-Tarife CitrineOS (Anzeige) | ✅ |
+| Dynamic Pricing Engine (TariffSnapshot, Idle via OCPP) | ✅ App Server |
+| Price-Driven Charging (Ladeoptimierung) | ✅ App Server |
+| PV-Überschussladen | ✅ App Server |
 | Gast-Zahlung / ohne Pflicht-Account | Teilweise (Karte ohne Login) |
 | Plug & Charge ISO 15118 | Phase 2 |
 | OCPI-Roaming-Abrechnung | Phase 2 |

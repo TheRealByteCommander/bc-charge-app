@@ -288,8 +288,8 @@ export const helpFaqs: HelpFaq[] = [
       en: 'Are idle/blocking fees charged?',
     },
     answer: {
-      de: 'Nein. BC Charge erhebt keine Blockier- oder Standgebühren nach dem Laden. Der Tarif pro kWh ist vor dem Start sichtbar; abgerechnet wird nach Ladeende nur die tatsächlich geladene Energie (kWh).',
-      en: 'No. BC Charge does not charge idle or blocking fees after charging. The price per kWh is shown before you start; you are billed after charging for the energy actually delivered (kWh).',
+      de: 'Das hängt vom aktiven Tarif ab. Standardtarife von BC Charge enthalten in der Regel keine Standgebühr nach dem Laden. Ist eine Idle-Komponente im TariffSnapshot konfiguriert, beginnt die Blockiergebühr erst nach einer Karenzzeit – und nur wenn OCPP meldet, dass das Laden beendet ist und das Fahrzeug noch angesteckt ist (Zustände SuspendedEV, SuspendedEVSE oder Idle). Konstante Zählerstände allein lösen keine Gebühr aus. Der Tarif ist vor dem Start sichtbar.',
+      en: 'It depends on the active tariff. Standard BC Charge tariffs usually have no post-charging idle fee. If an idle component is configured in the TariffSnapshot, the fee starts only after a grace period and only when OCPP reports charging has ended while the vehicle remains plugged in (SuspendedEV, SuspendedEVSE, or Idle). Flat meter readings alone do not trigger a fee. The tariff is shown before you start.',
     },
   },
   {
