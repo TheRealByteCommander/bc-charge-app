@@ -7,6 +7,10 @@ import type {
   Station,
 } from '../../types';
 import { parseGeoPoint } from '../../utils/geo';
+import {
+  detectHardwareProtocol,
+  toHardwareFeatures,
+} from '../../utils/hardwareProtocol';
 import { mapUnifiedOcppConnectorStatusToApp } from '../../utils/ocppStateMapping';
 import { mapTariffToConnectorPricing, type TariffCatalog } from './tariffPricing';
 import type { HasuraChargingStationRow } from './types';
@@ -19,81 +23,15 @@ const GRADIENTS = [
   'from-amber-900/50 to-bc-surface',
 ];
 
-/** Hardware-Konfigurationen für bekannte Modelle (basierend auf Arias CITRINE_H2_CONFIG.json) */
-const HARDWARE_CONFIGS: Record<string, { model: KnownHardwareModel; features: HardwareFeatures }> = {
-  'CityCharge H2': {
-    model: 'CityCharge H2',
-    features: {
-      midCertifiedMeters: true,
-      dynamicLoadManagement: true,
-      ocppVersion: '1.6',
-      multiConnector: true,
-    },
-  },
-  'Elinta CityCharge H2': {
-    model: 'CityCharge H2',
-    features: {
-      midCertifiedMeters: true,
-      dynamicLoadManagement: true,
-      ocppVersion: '1.6',
-      multiConnector: true,
-    },
-  },
-  'go-e': {
-    model: 'generic',
-    features: {
-      midCertifiedMeters: false,
-      dynamicLoadManagement: false,
-      ocppVersion: '1.6',
-      multiConnector: false,
-    },
-  },
-  GO_E_HOMEPLUS: {
-    model: 'generic',
-    features: {
-      midCertifiedMeters: false,
-      dynamicLoadManagement: false,
-      ocppVersion: '1.6',
-      multiConnector: false,
-    },
-  },
-};
-
-/** Erkennt Hardware-Modell und Features basierend auf chargePointModel/Vendor */
+/** Erkennt Hardware-Modell und Features basierend auf chargePointModel/Vendor (shared protocol source). */
 function detectHardwareFeatures(
   chargePointModel?: string | null,
   chargePointVendor?: string | null
 ): { hardwareModel: KnownHardwareModel; hardwareFeatures: HardwareFeatures } {
-  const modelKey = chargePointModel ?? '';
-  const vendorModelKey = `${chargePointVendor ?? ''} ${modelKey}`.trim();
-  const vendorLower = (chargePointVendor ?? '').toLowerCase();
-
-  const config = HARDWARE_CONFIGS[modelKey] ?? HARDWARE_CONFIGS[vendorModelKey];
-  
-  if (config) {
-    return { hardwareModel: config.model, hardwareFeatures: config.features };
-  }
-
-  if (vendorLower.includes('go-e') || vendorLower.includes('goe')) {
-    return {
-      hardwareModel: 'generic',
-      hardwareFeatures: {
-        midCertifiedMeters: false,
-        dynamicLoadManagement: false,
-        ocppVersion: '1.6',
-        multiConnector: false,
-      },
-    };
-  }
-  
+  const detected = detectHardwareProtocol(chargePointVendor, chargePointModel);
   return {
-    hardwareModel: 'generic',
-    hardwareFeatures: {
-      midCertifiedMeters: false,
-      dynamicLoadManagement: false,
-      ocppVersion: '2.0.1',
-      multiConnector: false,
-    },
+    hardwareModel: detected.hardwareModel,
+    hardwareFeatures: toHardwareFeatures(detected),
   };
 }
 

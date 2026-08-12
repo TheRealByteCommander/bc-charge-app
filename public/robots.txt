@@ -1,0 +1,25 @@
+# BC Charge — public crawl policy
+User-agent: *
+Allow: /
+Allow: /karte
+Allow: /stationen
+Allow: /tarife
+Allow: /hilfe
+Allow: /impressum
+Allow: /datenschutz
+Allow: /nutzungsbedingungen
+Allow: /barrierefreiheit
+
+# Private / account surfaces
+Disallow: /profil
+Disallow: /laden
+Disallow: /historie
+Disallow: /zahlung
+Disallow: /fahrzeuge
+Disallow: /benachrichtigungen
+Disallow: /anmelden
+Disallow: /registrieren
+Disallow: /admin
+Disallow: /api/
+
+Sitemap: https://bc-charge.com/sitemap.xml

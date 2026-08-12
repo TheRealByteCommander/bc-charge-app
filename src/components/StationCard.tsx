@@ -42,16 +42,16 @@ export function StationCard({
     >
       <Link
         to={`/station/${station.id}`}
-        className="block overflow-hidden rounded-2xl border border-bc-border bg-bc-elevated shadow-card transition active:scale-[0.99]"
+        className="block overflow-hidden rounded-2xl border border-bc-border bg-bc-elevated shadow-card transition-all duration-200 hover:border-bc-accent/40 active:scale-[0.99]"
       >
-        <div className={`h-2 bg-gradient-to-r ${station.imageGradient}`} />
+        <div className={`h-1.5 bg-gradient-to-r ${station.imageGradient}`} />
         <div className="p-4">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0 flex-1">
-              <h3 className="font-display font-semibold text-bc-text leading-tight">{station.name}</h3>
+              <h3 className="font-display font-bold text-bc-text leading-tight">{station.name}</h3>
               {!compact && (
-                <p className="mt-1 flex items-center gap-1 text-sm text-bc-muted">
-                  <MapPin className="h-3.5 w-3.5 shrink-0" />
+                <p className="mt-1 flex items-center gap-1 text-sm text-bc-muted/80">
+                  <MapPin className="h-3.5 w-3.5 shrink-0 text-bc-accent/60" />
                   <span className="truncate">
                     {station.address}, {station.zip} {station.city}
                   </span>
@@ -65,25 +65,33 @@ export function StationCard({
                   e.preventDefault();
                   toggleFavorite(station.id);
                 }}
-                className="rounded-full p-2 text-bc-muted hover:bg-bc-surface"
+                className="rounded-full p-2 text-bc-muted transition-all hover:bg-bc-surface active:scale-90"
                 aria-label={isFav ? 'Aus Favoriten entfernen' : 'Zu Favoriten'}
               >
-                <Heart className={`h-5 w-5 ${isFav ? 'fill-bc-danger text-bc-danger' : ''}`} />
+                <Heart className={`h-5 w-5 transition-colors ${isFav ? 'fill-bc-danger text-bc-danger' : ''}`} />
               </button>
             )}
           </div>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <span className="inline-flex items-center gap-1 rounded-lg bg-bc-accent/15 px-2 py-1 text-xs font-semibold text-bc-accent">
-              <Zap className="h-3.5 w-3.5" />
+          <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-bc-accent-soft px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-bc-accent border border-bc-accent/20">
+              <Zap className="h-3 w-3 fill-current" />
               {available} frei
             </span>
             {minPrice != null && (
-              <span className="text-xs text-bc-muted">ab {formatCurrency(minPrice)}/kWh</span>
+              <div className="flex items-center gap-1 text-xs font-medium text-bc-text/80">
+                <span className="text-bc-muted">ab</span>
+                <span className="text-bc-text font-bold">{formatCurrency(minPrice)}/kWh</span>
+              </div>
             )}
-            {distance != null && <span className="text-xs text-bc-muted">{distance} km</span>}
+            {distance != null && (
+              <div className="flex items-center gap-1 text-xs font-medium text-bc-muted">
+                <MapPin className="h-3 w-3" />
+                {distance} km
+              </div>
+            )}
             {!compact && (
-              <>
-                <span className="inline-flex items-center gap-0.5 text-xs text-bc-muted" title="PlugScore">
+              <div className="flex items-center gap-2 ml-auto">
+                <span className="inline-flex items-center gap-0.5 text-xs font-medium text-bc-muted" title="PlugScore">
                   <Star className="h-3 w-3 fill-bc-warn text-bc-warn" />
                   {plugScore}
                 </span>
@@ -94,7 +102,7 @@ export function StationCard({
                   offlineCount={station.connectors.filter((c) => c.status === 'offline').length}
                   compact
                 />
-              </>
+              </div>
             )}
           </div>
         </div>

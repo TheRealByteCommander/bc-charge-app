@@ -1,7 +1,8 @@
 import type { Connector, Vehicle } from '../types';
 import { connectorHasKnownPrice } from './pricing';
+import { calculateDynamicPrice } from './dynamicPricing';
 
-const CHARGE_EFFICIENCY = 0.85;
+const CHARGE_EFFICIENCY = 0.92;
 const DEFAULT_START_SOC = 30;
 const DEFAULT_TARGET_SOC = 80;
 
@@ -36,7 +37,11 @@ export function estimateChargeSession(
 
   let totalEur = 0;
   if (connectorHasKnownPrice(connector)) {
-    totalEur = kwh * connector.pricePerKwh;
+    const activePrice = connector.livePricing 
+      ? calculateDynamicPrice(connector.pricePerKwh) 
+      : connector.pricePerKwh;
+
+    totalEur = kwh * activePrice;
     if (connector.pricePerMin) totalEur += estMinutes * connector.pricePerMin;
   }
 
@@ -65,11 +70,11 @@ export function estimateSessionEnergyKwh(
 }
 
 export function estimateRemainingChargeMinutes(
-  energyKwh: number,
+  energy로Kwh: number,
   targetKwh: number,
   powerKw: number
 ): number | null {
-  const remaining = targetKwh - energyKwh;
+  const remaining = targetKwh - energy로Kwh;
   if (remaining <= 0) return 0;
   if (powerKw <= 0) return null;
   return Math.ceil((remaining / (powerKw * CHARGE_EFFICIENCY)) * 60);

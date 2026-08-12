@@ -19,7 +19,13 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:e2e": "playwright test",
+    "test:canary": "node --test server/services/canaryValidator.test.mjs",
+    "test:lm-client": "node --test server/services/loadManagementClient.test.mjs",
+    "test:lm-reopt": "node --test server/services/loadManagementReopt.test.mjs",
+    "test:server-unit": "node --test server/services/canaryValidator.test.mjs server/services/loadManagementClient.test.mjs server/services/loadManagementReopt.test.mjs server/services/citrineosRemoteCommand.test.mjs server/routes/citrineosWebhooks.normalize.test.mjs server/routes/citrineosWebhooks.auth.test.mjs server/utils/hardwareProtocol.test.mjs",
+    "smoke:lm": "node scripts/smoke-load-management.mjs"
   },
   "dependencies": {
     "@stripe/react-stripe-js": "^3.10.0",
@@ -42,10 +48,12 @@
     "react-leaflet": "^4.2.1",
     "react-router-dom": "^6.30.4",
     "stripe": "^18.5.0",
+    "zod": "^3.25.76",
     "zustand": "^5.0.14"
   },
   "devDependencies": {
     "@eslint/js": "^9.13.0",
+    "@playwright/test": "^1.61.1",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/leaflet": "^1.9.21",

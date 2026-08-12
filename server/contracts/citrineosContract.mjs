@@ -1,9 +1,20 @@
-/** Integrationsvertrag CitrineOS ↔ bc-charge-app (v1.8.4) */
+/** Integrationsvertrag CitrineOS ↔ bc-charge-app (v1.8.4)
+ * Upstream watch (2026-08-11): citrineos-core still latest pre-release v2.0.0-beta2 (#830 OCPP
+ * message request migration). v2 monorepo+types/Awilix/message-DB refactor remain the drift risk.
+ * Webhooks: TransactionEvent seqNo ordering + meterValue energy (see citrineosWebhooks.mjs).
+ * Do not silently assume 1.8.x wire shapes once production tracks v2 betas.
+ * Pin bump only when /api/citrineos/canary pinBump.ready after CANARY_FORCE=1 soak.
+ * Load-Management: /api/load-management proxy + composite/external limits.
+ */
 
 export const CITRINEOS_INTEGRATION_VERSION = '1.8.4';
 
+/** Latest upstream tag observed by intelligence cron (informational, not a hard pin). */
+export const CITRINEOS_UPSTREAM_WATCH = 'v2.0.0-beta2';
+
 export const citrineosIntegrationContract = {
   version: CITRINEOS_INTEGRATION_VERSION,
+  upstreamWatch: CITRINEOS_UPSTREAM_WATCH,
   operator: {
     brand: 'BC Charge',
     company: 'Byte Commander GmbH',
@@ -75,15 +86,66 @@ export const citrineosIntegrationContract = {
       purpose: 'Transaktion nach remoteStartId / aktiv',
       appUsage: 'fetchTransactionByRemoteStartId, fetchActiveTransaction',
     },
+    {
+      id: 'transactionWebhook',
+      method: 'POST',
+      path: '/api/webhooks/citrineos',
+      purpose:
+        'Push TransactionEvent / session updates (aliases + meterValue energy + seqNo ordering); auth via CITRINEOS_WEBHOOK_SECRET (Bearer / x-citrineos-webhook-secret)',
+      appUsage: 'citrineosWebhooks.assertCitrineosWebhookAuthorized → normalize → db.applyCitrineosWebhookToSessions',
+    },
   ],
+  canary: {
+    description:
+      'Sampled Zod validation of live CitrineOS/Hasura responses (graceful; logs drift, does not block). Pin-bump gate via evaluatePinBumpReadiness (staging CANARY_FORCE=1 soak).',
+    sampleRateEnv: 'CANARY_SAMPLE_RATE',
+    forceEnv: 'CANARY_FORCE',
+    pinMinSamplesEnv: 'CANARY_PIN_MIN_SAMPLES',
+    pinMaxFailRateEnv: 'CANARY_PIN_MAX_FAIL_RATE',
+    statsPath: '/api/citrineos/canary',
+    pinBumpField: 'canary.pinBump',
+    schemas: [
+      'hasura.transaction',
+      'hasura.transactionsData',
+      'hasura.chargingStation',
+      'hasura.chargingStationsData',
+      'rest.transaction',
+      'rest.tariffList',
+      'webhook.citrineos.raw',
+    ],
+  },
+  loadManagement: {
+    servicePath: 'services/load-management',
+    apiProxyMount: '/api/load-management',
+    healthPorts: { health: 3001, api: 3003 },
+    env: [
+      'LOAD_MANAGEMENT_ENABLED',
+      'LOAD_MANAGEMENT_API_URL',
+      'LOAD_MANAGEMENT_HEALTH_URL',
+      'LM_API_KEY',
+    ],
+    features: [
+      'SetChargingProfile (OCPP 2.0.1 ChargingStationMaxProfile)',
+      'GetCompositeSchedule request/response',
+      'NotifyChargingLimit / ClearedChargingLimit external limits',
+    ],
+  },
   bcApiProxyRoutes: [
     { method: 'GET', path: '/api/citrineos/health' },
     { method: 'GET', path: '/api/citrineos/status' },
+    { method: 'GET', path: '/api/citrineos/canary' },
     { method: 'GET', path: '/api/citrineos/contract' },
     { method: 'GET', path: '/api/citrineos/tariffs' },
     { method: 'POST', path: '/api/citrineos/hasura' },
     { method: 'POST', path: '/api/citrineos/proxy' },
     { method: 'POST', path: '/api/citrineos/ensure-authorization' },
+    { method: 'POST', path: '/api/webhooks/citrineos' },
+    { method: 'GET', path: '/api/load-management/status' },
+    { method: 'GET', path: '/api/load-management/health' },
+    { method: 'GET', path: '/api/load-management/stations' },
+    { method: 'GET', path: '/api/load-management/external-limits' },
+    { method: 'POST', path: '/api/load-management/composite-schedules' },
+    { method: 'POST', path: '/api/load-management/proxy' },
   ],
   connectorIdFormat: 'evse-{evseId}-conn-{connectorId}',
   deploymentRepo: 'https://github.com/TheRealByteCommander/bc-citrineos',

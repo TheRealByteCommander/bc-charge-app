@@ -4,7 +4,7 @@ export type ConnectorType = 'CCS' | 'Type2' | 'CHAdeMO';
 export type ConnectorStatus = 'available' | 'occupied' | 'offline' | 'reserved';
 
 /** Bekannte Hardware-Modelle mit spezifischen Features */
-export type KnownHardwareModel = 'CityCharge H2' | 'generic';
+export type KnownHardwareModel = 'CityCharge H2' | 'go-e' | 'generic';
 
 /** Hardware-Features für spezifische Ladepunkt-Modelle */
 export interface HardwareFeatures {

@@ -2,7 +2,11 @@
 
 import { mapConnectorStatus } from '../utils/ocppStatus.mjs';
 import { buildOcpp16RemoteStartBody } from '../utils/ocpp16RemoteStart.mjs';
+import { isOcpp16Station } from '../utils/hardwareProtocol.mjs';
 import { ensureCitrineosAuthorization } from './citrineosAuth.mjs';
+import { canaryValidate } from './canaryValidator.mjs';
+
+export { isOcpp16Station, detectHardwareProtocol } from '../utils/hardwareProtocol.mjs';
 
 function citrineosApiUrl() {
   return (process.env.CITRINEOS_API_URL ?? 'http://localhost:8080').replace(/\/$/, '');
@@ -191,7 +195,33 @@ async function hasuraRequest(query, variables) {
       status: 502,
     });
   }
-  return json.data;
+  const data = json.data;
+  // Sampled canary: detect Hasura/CitrineOS GraphQL shape drift without blocking.
+  if (data && typeof data === 'object') {
+    if (Array.isArray(data.Transactions) || 'Transactions' in data) {
+      canaryValidate('hasura.transactionsData', data, {
+        source: 'citrineosServer.hasuraRequest',
+        meta: { hasTransactions: true },
+      });
+      for (const row of data.Transactions ?? []) {
+        canaryValidate('hasura.transaction', row, {
+          source: 'citrineosServer.hasuraRequest.transaction',
+        });
+      }
+    }
+    if (Array.isArray(data.ChargingStations) || 'ChargingStations' in data) {
+      canaryValidate('hasura.chargingStationsData', data, {
+        source: 'citrineosServer.hasuraRequest',
+        meta: { hasStations: true },
+      });
+      for (const row of data.ChargingStations ?? []) {
+        canaryValidate('hasura.chargingStation', row, {
+          source: 'citrineosServer.hasuraRequest.station',
+        });
+      }
+    }
+  }
+  return data;
 }
 
 function parseConnectorRef(connectorAppId) {
@@ -280,17 +310,6 @@ export async function resolveAdhocConnector(stationId, connectorAppId) {
   };
 }
 
-function isOcpp16Station(row) {
-  const vendor = String(row?.chargePointVendor ?? '').toLowerCase();
-  const model = String(row?.chargePointModel ?? '').toLowerCase();
-  return (
-    vendor.includes('go-e') ||
-    vendor.includes('goe') ||
-    vendor.includes('elinta') ||
-    model.includes('citycharge')
-  );
-}
-
 async function citrineosDataGet(path, query, timeoutMs = 8000) {
   if (!process.env.CITRINEOS_API_URL) return null;
   const url = new URL(path, `${citrineosApiUrl()}/`);
@@ -329,6 +348,13 @@ async function fetchTransactionFromRestApi(stationId, transactionId) {
 
 function normalizeTransactionRow(tx) {
   if (!tx || typeof tx !== 'object') return null;
+  canaryValidate('rest.transaction', tx, {
+    source: 'citrineosServer.normalizeTransactionRow',
+  });
+  // Also accept Hasura-shaped rows through the same alias map.
+  canaryValidate('hasura.transaction', tx, {
+    source: 'citrineosServer.normalizeTransactionRow.hasuraShape',
+  });
   return {
     transactionId: tx.transactionId ?? tx.id ?? null,
     isActive: tx.isActive ?? tx.active ?? null,
@@ -340,7 +366,14 @@ function normalizeTransactionRow(tx) {
 
 function estimateEnergyKwh(session, minutes) {
   const powerKw = Number(session.powerKw) || 11;
-  const efficiency = 0.85;
+  
+  // Refined efficiency based on power levels to improve accuracy
+  // High power chargers typically have higher losses (lower efficiency)
+  let efficiency = 0.85;
+  if (powerKw >= 50) efficiency = 0.82; 
+  else if (powerKw >= 22) efficiency = 0.84;
+  else if (powerKw < 11) efficiency = 0.88;
+
   const estimated = (powerKw * efficiency * minutes) / 60;
   return Math.round(Math.min(estimated, 120) * 100) / 100;
 }
@@ -358,13 +391,44 @@ function applyEstimatedLiveMetrics(session) {
   return { ...session, energyKwh, costEur };
 }
 
-export async function stopAccountTransaction(stationId, transactionId, stationRow) {
-  if (!transactionId) {
-    throw Object.assign(new Error('Keine Transaktions-ID für Stoppen verfügbar'), { status: 400 });
-  }
+/** First confirmation entry from CitrineOS message API (array or single object). */
+export function pickRemoteConfirmation(confirmations) {
+  if (confirmations == null) return null;
+  return Array.isArray(confirmations) ? confirmations[0] ?? null : confirmations;
+}
 
-  const useOcpp16 = stationRow ? isOcpp16Station(stationRow) : false;
-  let confirmations;
+/** True when station/CitrineOS accepted a remote start/stop. */
+export function isRemoteCommandAccepted(confirmations) {
+  const first = pickRemoteConfirmation(confirmations);
+  if (!first || typeof first !== 'object') return false;
+  return (
+    first.success === true ||
+    String(first.status ?? first.payload ?? '').toLowerCase() === 'accepted'
+  );
+}
+
+export function remoteCommandFailureMessage(confirmations, fallback) {
+  const first = pickRemoteConfirmation(confirmations);
+  if (typeof first?.payload === 'string' && first.payload.trim()) return first.payload;
+  if (typeof first?.status === 'string' && first.status.trim()) return first.status;
+  return fallback;
+}
+
+/**
+ * Whether a dual-path caller should try OCPP 2.0.1 after a 1.6 attempt.
+ * True on throw-equivalent (null) or non-accept (Rejected / success:false).
+ */
+export function shouldFallbackToOcpp201(confirmations) {
+  return !isRemoteCommandAccepted(confirmations);
+}
+
+/**
+ * OCPP 1.6 path first when applicable; fall back to 2.0.1 on throw OR non-accept
+ * (Rejected/success:false). Previous logic only fell back when 1.6 threw, so a
+ * bridge that answers HTTP 200 + Rejected never tried 2.0.1.
+ */
+async function remoteStopWithOcppFallback(stationId, transactionId, useOcpp16) {
+  let confirmations = null;
 
   if (useOcpp16) {
     try {
@@ -379,29 +443,96 @@ export async function stopAccountTransaction(stationId, transactionId, stationRo
     }
   }
 
-  if (!confirmations) {
-    confirmations = await citrineosMessage(
-      '/ocpp/2.0.1/evdriver/requestStopTransaction',
-      stationId,
-      { transactionId: String(transactionId) },
-      15_000
-    );
+  if (!isRemoteCommandAccepted(confirmations)) {
+    try {
+      const fallback = await citrineosMessage(
+        '/ocpp/2.0.1/evdriver/requestStopTransaction',
+        stationId,
+        { transactionId: String(transactionId) },
+        15_000
+      );
+      // Prefer accepted 2.0.1; if both reject, keep 2.0.1 response for error detail.
+      // If 2.0.1 throws and 1.6 had a body, keep the 1.6 rejection.
+      confirmations = fallback;
+    } catch (err) {
+      if (confirmations == null) throw err;
+    }
   }
 
-  const first = Array.isArray(confirmations) ? confirmations[0] : confirmations;
-  const accepted =
-    first?.success === true ||
-    String(first?.status ?? first?.payload ?? '').toLowerCase() === 'accepted';
-  if (!accepted) {
-    const msg =
-      typeof first?.payload === 'string'
-        ? first.payload
-        : typeof first?.status === 'string'
-          ? first.status
-          : 'Stoppen fehlgeschlagen';
-    throw Object.assign(new Error(msg), { status: 502 });
+  if (!isRemoteCommandAccepted(confirmations)) {
+    throw Object.assign(
+      new Error(remoteCommandFailureMessage(confirmations, 'Stoppen fehlgeschlagen')),
+      { status: 502 }
+    );
   }
   return true;
+}
+
+async function remoteStartWithOcppFallback(
+  stationId,
+  { useOcpp16, stationRow, connectorId, idToken, evseId, remoteStartId }
+) {
+  let confirmations = null;
+
+  if (useOcpp16) {
+    try {
+      const maxPowerWatts = stationRow?.connector?.powerKw
+        ? stationRow.connector.powerKw * 1000
+        : undefined;
+      confirmations = await citrineosMessage(
+        '/ocpp/1.6/evdriver/remoteStartTransaction',
+        stationId,
+        buildOcpp16RemoteStartBody({
+          connectorId,
+          idTag: idToken,
+          vendor: stationRow?.chargePointVendor,
+          maxPowerWatts,
+        }),
+        15_000
+      );
+    } catch {
+      confirmations = null;
+    }
+  }
+
+  if (!isRemoteCommandAccepted(confirmations)) {
+    try {
+      const fallback = await citrineosMessage(
+        '/ocpp/2.0.1/evdriver/requestStartTransaction',
+        stationId,
+        {
+          evseId,
+          remoteStartId,
+          idToken: { idToken, type: idTokenType() },
+        },
+        15_000
+      );
+      confirmations = fallback;
+    } catch (err) {
+      if (confirmations == null) throw err;
+    }
+  }
+
+  if (!isRemoteCommandAccepted(confirmations)) {
+    throw Object.assign(
+      new Error(
+        remoteCommandFailureMessage(confirmations, 'Ladestart von der Station abgelehnt')
+      ),
+      { status: 502 }
+    );
+  }
+  return true;
+}
+
+export async function stopAccountTransaction(stationId, transactionId, stationRow) {
+  if (!transactionId) {
+    throw Object.assign(new Error('Keine Transaktions-ID für Stoppen verfügbar'), { status: 400 });
+  }
+
+  // Resolve station when caller only has stationId (parity with stopAdhocTransaction).
+  const row = stationRow ?? (await fetchStationRow(stationId).catch(() => null));
+  const useOcpp16 = row ? isOcpp16Station(row) : false;
+  return remoteStopWithOcppFallback(stationId, transactionId, useOcpp16);
 }
 
 async function citrineosMessage(path, stationId, body, timeoutMs = 12_000) {
@@ -449,84 +580,29 @@ export async function startAdhocTransaction(stationId, evseId, connectorId, idTo
   const remoteStartId = Math.floor(Math.random() * 2_000_000_000);
   const useOcpp16 = stationRow ? isOcpp16Station(stationRow) : false;
 
-  let confirmations;
-  if (useOcpp16) {
-    try {
-      const maxPowerWatts = stationRow?.connector?.powerKw
-        ? stationRow.connector.powerKw * 1000
-        : undefined;
-      confirmations = await citrineosMessage(
-        '/ocpp/1.6/evdriver/remoteStartTransaction',
-        stationId,
-        buildOcpp16RemoteStartBody({
-          connectorId,
-          idTag: idToken,
-          vendor: stationRow?.chargePointVendor,
-          maxPowerWatts,
-        }),
-        15_000
-      );
-    } catch {
-      confirmations = null;
-    }
-  }
+  await remoteStartWithOcppFallback(stationId, {
+    useOcpp16,
+    stationRow,
+    connectorId,
+    idToken,
+    evseId,
+    remoteStartId,
+  });
 
-  if (!confirmations) {
-    confirmations = await citrineosMessage(
-      '/ocpp/2.0.1/evdriver/requestStartTransaction',
-      stationId,
-      {
-        evseId,
-        remoteStartId,
-        idToken: { idToken, type: idTokenType() },
-      },
-      15_000
-    );
-  }
-
-  const first = Array.isArray(confirmations) ? confirmations[0] : confirmations;
-  const accepted =
-    first?.success === true ||
-    String(first?.status ?? first?.payload ?? '').toLowerCase() === 'accepted';
-  if (!accepted) {
-    const msg =
-      typeof first?.payload === 'string'
-        ? first.payload
-        : typeof first?.status === 'string'
-          ? first.status
-          : 'Ladestart von der Station abgelehnt';
-    throw Object.assign(new Error(msg), { status: 502 });
-  }
-
-  let transactionId;
-  for (let i = 0; i < 20; i++) {
-    await sleep(1500);
-    const tx = await fetchTransactionByRemoteStartId(
-      stationId,
-      remoteStartId,
-      stationRow?.stationDatabaseId ?? stationRow?.id
-    );
-    if (tx?.transactionId) {
-      transactionId = tx.transactionId;
-      break;
-    }
-  }
-
-  return { remoteStartId, transactionId };
+  // The transactionId will now be resolved asynchronously via CitrineOS webhooks.
+  // We return the remoteStartId so the frontend can track the pending session.
+  return { remoteStartId, transactionId: null };
 }
 
-export async function stopAdhocTransaction(stationId, transactionId) {
-  const confirmations = await citrineosMessage(
-    '/ocpp/2.0.1/evdriver/requestStopTransaction',
-    stationId,
-    { transactionId }
-  );
-  const first = Array.isArray(confirmations) ? confirmations[0] : null;
-  if (!first?.success) {
-    const msg = typeof first?.payload === 'string' ? first.payload : 'Stoppen fehlgeschlagen';
-    throw Object.assign(new Error(msg), { status: 502 });
+export async function stopAdhocTransaction(stationId, transactionId, stationRow) {
+  if (!transactionId) {
+    throw Object.assign(new Error('Keine Transaktions-ID für Stoppen verfügbar'), { status: 400 });
   }
-  return true;
+
+  // Resolve station row when caller only has stationId (adhoc routes).
+  const row = stationRow ?? (await fetchStationRow(stationId).catch(() => null));
+  const useOcpp16 = row ? isOcpp16Station(row) : false;
+  return remoteStopWithOcppFallback(stationId, transactionId, useOcpp16);
 }
 
 export async function fetchTransactionByRemoteStartId(stationId, remoteStartId, stationDatabaseId) {
@@ -577,10 +653,16 @@ export async function fetchActiveTransactionForStation(stationId, stationDatabas
 function computeCostFromSession(energyKwh, session, minutes = 0) {
   const kwh = Number(energyKwh) || 0;
   const min = Number(minutes) || 0;
-  const energy = kwh * (session.pricePerKwh ?? 0.49);
-  const time = min * (session.pricePerMin ?? 0);
-  const fee = session.sessionFee ?? 0;
-  return Math.round((energy + time + fee) * 100) / 100;
+  
+  // Support for complex pricing (Session fee + Energy + Time)
+  const energyPrice = session.pricePerKwh ?? 0.49;
+  const timePrice = session.pricePerMin ?? 0;
+  const sessionFee = session.sessionFee ?? 0;
+  
+  const energy = kwh * energyPrice;
+  const time = min * timePrice;
+  
+  return Math.round((energy + time + sessionFee) * 100) / 100;
 }
 
 /** Live-Daten aus CitrineOS für Konto-Sessions (Hasura, unabhängig vom Frontend-Station-Cache). */

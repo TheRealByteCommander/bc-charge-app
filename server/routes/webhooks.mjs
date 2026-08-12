@@ -1,5 +1,6 @@
 import { Router } from 'express';
-import Stripe from 'stripe';
+import logger from '../utils/logger.mjs';
+
 
 const router = Router();
 const stripeSecret = process.env.STRIPE_SECRET_KEY;
@@ -30,7 +31,8 @@ router.post('/', async (req, res) => {
   switch (event.type) {
     case 'payment_intent.succeeded':
     case 'payment_intent.payment_failed':
-      console.log(`[bc-charge] Stripe webhook: ${event.type}`, event.data.object?.id);
+      logger.info(`Stripe webhook: ${event.type}`, event.data.object?.id);
+
       break;
     default:
       break;
