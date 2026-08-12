@@ -9,13 +9,28 @@ const KEYS = {
   rewardFulfillments: 'bc_reward_fulfillments',
 } as const;
 
-export function loadUsers(): UserProfile[] {
+/** Parse localStorage JSON without throwing; wrong shapes degrade to fallback. */
+function safeParseJson<T>(raw: string | null, fallback: T): T {
+  if (raw == null || raw === '') return fallback;
   try {
-    const raw = localStorage.getItem(KEYS.users);
-    return raw ? (JSON.parse(raw) as UserProfile[]) : [];
+    return JSON.parse(raw) as T;
   } catch {
-    return [];
+    return fallback;
   }
+}
+
+function asRecordOfArrays<T>(value: unknown): Record<string, T[]> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const out: Record<string, T[]> = {};
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    if (Array.isArray(v)) out[k] = v as T[];
+  }
+  return out;
+}
+
+export function loadUsers(): UserProfile[] {
+  const parsed = safeParseJson<unknown>(localStorage.getItem(KEYS.users), []);
+  return Array.isArray(parsed) ? (parsed as UserProfile[]) : [];
 }
 
 export function saveUsers(users: UserProfile[]): void {
@@ -32,18 +47,16 @@ export function setCurrentUserId(id: string | null): void {
 }
 
 export function loadSessions(userId: string): ChargingSession[] {
-  try {
-    const raw = localStorage.getItem(KEYS.sessions);
-    const all = raw ? (JSON.parse(raw) as Record<string, ChargingSession[]>) : {};
-    return all[userId] ?? [];
-  } catch {
-    return [];
-  }
+  const all = asRecordOfArrays<ChargingSession>(
+    safeParseJson(localStorage.getItem(KEYS.sessions), {})
+  );
+  return all[userId] ?? [];
 }
 
 export function saveSessions(userId: string, sessions: ChargingSession[]): void {
-  const raw = localStorage.getItem(KEYS.sessions);
-  const all = raw ? (JSON.parse(raw) as Record<string, ChargingSession[]>) : {};
+  const all = asRecordOfArrays<ChargingSession>(
+    safeParseJson(localStorage.getItem(KEYS.sessions), {})
+  );
   all[userId] = sessions;
   localStorage.setItem(KEYS.sessions, JSON.stringify(all));
 }
@@ -63,15 +76,14 @@ export function saveActiveSessionCache(userId: string, session: ChargingSession)
 }
 
 export function loadActiveSessionCache(userId: string): ChargingSession | null {
-  try {
-    const raw = sessionStorage.getItem(ACTIVE_SESSION_CACHE);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as { userId: string; session: ChargingSession };
-    if (parsed.userId !== userId || parsed.session.status !== 'active') return null;
-    return parsed.session;
-  } catch {
+  const parsed = safeParseJson<{ userId?: string; session?: ChargingSession } | null>(
+    sessionStorage.getItem(ACTIVE_SESSION_CACHE),
+    null
+  );
+  if (!parsed?.session || parsed.userId !== userId || parsed.session.status !== 'active') {
     return null;
   }
+  return parsed.session;
 }
 
 export function clearActiveSessionCache(): void {
@@ -87,35 +99,31 @@ export function setOnboardingDone(): void {
 }
 
 export function loadRedeemed(userId: string): string[] {
-  try {
-    const raw = localStorage.getItem(KEYS.redeemedRewards);
-    const all = raw ? (JSON.parse(raw) as Record<string, string[]>) : {};
-    return all[userId] ?? [];
-  } catch {
-    return [];
-  }
+  const all = asRecordOfArrays<string>(
+    safeParseJson(localStorage.getItem(KEYS.redeemedRewards), {})
+  );
+  return all[userId] ?? [];
 }
 
 export function saveRedeemed(userId: string, ids: string[]): void {
-  const raw = localStorage.getItem(KEYS.redeemedRewards);
-  const all = raw ? (JSON.parse(raw) as Record<string, string[]>) : {};
+  const all = asRecordOfArrays<string>(
+    safeParseJson(localStorage.getItem(KEYS.redeemedRewards), {})
+  );
   all[userId] = ids;
   localStorage.setItem(KEYS.redeemedRewards, JSON.stringify(all));
 }
 
 export function loadFulfillments(userId: string): RewardFulfillment[] {
-  try {
-    const raw = localStorage.getItem(KEYS.rewardFulfillments);
-    const all = raw ? (JSON.parse(raw) as Record<string, RewardFulfillment[]>) : {};
-    return all[userId] ?? [];
-  } catch {
-    return [];
-  }
+  const all = asRecordOfArrays<RewardFulfillment>(
+    safeParseJson(localStorage.getItem(KEYS.rewardFulfillments), {})
+  );
+  return all[userId] ?? [];
 }
 
 export function saveFulfillments(userId: string, fulfillments: RewardFulfillment[]): void {
-  const raw = localStorage.getItem(KEYS.rewardFulfillments);
-  const all = raw ? (JSON.parse(raw) as Record<string, RewardFulfillment[]>) : {};
+  const all = asRecordOfArrays<RewardFulfillment>(
+    safeParseJson(localStorage.getItem(KEYS.rewardFulfillments), {})
+  );
   all[userId] = fulfillments;
   localStorage.setItem(KEYS.rewardFulfillments, JSON.stringify(all));
 }

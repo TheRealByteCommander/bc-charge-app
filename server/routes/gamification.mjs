@@ -6,6 +6,20 @@ import { computeTier } from '../services/loyalty.mjs';
 
 const router = Router();
 
+/** Safe profile_json read: pg returns object, sqlite string; never throw on corrupt rows. */
+function readProfile(row) {
+  const raw = row?.profile_json ?? row?.profile;
+  if (raw == null) return {};
+  if (typeof raw === 'object') return { ...raw };
+  if (typeof raw !== 'string') return {};
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
 function getWeekKey(d = new Date()) {
   const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
   const day = date.getUTCDay() || 7;
@@ -42,7 +56,7 @@ router.get('/challenges', requireAuth, async (req, res) => {
     return;
   }
 
-  const profile = JSON.parse(row.profile ?? '{}');
+  const profile = readProfile(row);
   const gamification = profile.gamification ?? {};
   const currentWeek = getWeekKey();
 
@@ -90,7 +104,7 @@ router.post('/challenges/:id/claim', requireAuth, async (req, res) => {
     return;
   }
 
-  const profile = JSON.parse(row.profile ?? '{}');
+  const profile = readProfile(row);
   const gamification = profile.gamification ?? {};
 
   if ((gamification.completedChallengeIds ?? []).includes(id)) {

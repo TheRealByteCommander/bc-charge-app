@@ -2,8 +2,11 @@
 
 import { mapConnectorStatus } from '../utils/ocppStatus.mjs';
 import { buildOcpp16RemoteStartBody } from '../utils/ocpp16RemoteStart.mjs';
+import { isOcpp16Station } from '../utils/hardwareProtocol.mjs';
 import { ensureCitrineosAuthorization } from './citrineosAuth.mjs';
 import { canaryValidate } from './canaryValidator.mjs';
+
+export { isOcpp16Station, detectHardwareProtocol } from '../utils/hardwareProtocol.mjs';
 
 function citrineosApiUrl() {
   return (process.env.CITRINEOS_API_URL ?? 'http://localhost:8080').replace(/\/$/, '');
@@ -305,17 +308,6 @@ export async function resolveAdhocConnector(stationId, connectorAppId) {
     chargePointModel: row.chargePointModel ?? undefined,
     connector,
   };
-}
-
-function isOcpp16Station(row) {
-  const vendor = String(row?.chargePointVendor ?? '').toLowerCase();
-  const model = String(row?.chargePointModel ?? '').toLowerCase();
-  return (
-    vendor.includes('go-e') ||
-    vendor.includes('goe') ||
-    vendor.includes('elinta') ||
-    model.includes('citycharge')
-  );
 }
 
 async function citrineosDataGet(path, query, timeoutMs = 8000) {

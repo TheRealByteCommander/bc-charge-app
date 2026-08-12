@@ -160,6 +160,7 @@ export const CitrineosWebhookRawSchema = z
     seqNo: optionalNumber.optional(),
     seq_no: optionalNumber.optional(),
     triggerReason: z.string().optional().nullable(),
+    trigger_reason: z.string().optional().nullable(),
     meterValue: z.unknown().optional(),
     meterValues: z.unknown().optional(),
     transactionInfo: z.record(z.unknown()).optional(),
