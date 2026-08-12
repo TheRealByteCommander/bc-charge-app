@@ -158,4 +158,68 @@ describe('triggerLmReoptFromWebhook', () => {
     assert.match(calls[0].url, /\/api\/load\/composite-schedules$/);
     assert.equal(calls[0].method, 'POST');
   });
+
+  it('uses short backoff after LM failure so next rate event can retry', async () => {
+    process.env.LM_ENABLED = '1';
+    process.env.LM_API_KEY = 'secret';
+    process.env.LM_API_URL = 'http://lm.test:3003';
+
+    const calls = [];
+    mock.method(globalThis, 'fetch', async (url, init) => {
+      calls.push({ url: String(url), method: init?.method });
+      if (calls.length === 1) {
+        return {
+          ok: false,
+          status: 504,
+          text: async () =>
+            JSON.stringify({ success: false, message: 'GetCompositeSchedule timed out' }),
+        };
+      }
+      return {
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            success: true,
+            data: { stationId: 'st-fail', status: 'Accepted' },
+          }),
+      };
+    });
+
+    const t0 = 3_000_000;
+    const first = await triggerLmReoptFromWebhook({
+      triggerReason: 'ChargingRateChanged',
+      stationIds: ['st-fail'],
+      now: t0,
+      debounceMs: 15_000,
+      failBackoffMs: 2_000,
+    });
+    assert.equal(first.attempted, true);
+    assert.equal(first.results[0]?.ok, false);
+    assert.equal(calls.length, 1);
+
+    // Still within fail backoff → debounced
+    const mid = await triggerLmReoptFromWebhook({
+      triggerReason: 'ChargingRateChanged',
+      stationIds: ['st-fail'],
+      now: t0 + 1_000,
+      debounceMs: 15_000,
+      failBackoffMs: 2_000,
+    });
+    assert.equal(mid.attempted, false);
+    assert.equal(mid.skipped, 'debounced');
+    assert.equal(calls.length, 1);
+
+    // After fail backoff (but still inside full success debounce) → retry allowed
+    const retry = await triggerLmReoptFromWebhook({
+      triggerReason: 'ChargingRateChanged',
+      stationIds: ['st-fail'],
+      now: t0 + 2_500,
+      debounceMs: 15_000,
+      failBackoffMs: 2_000,
+    });
+    assert.equal(retry.attempted, true);
+    assert.equal(retry.results[0]?.ok, true);
+    assert.equal(calls.length, 2);
+  });
 });

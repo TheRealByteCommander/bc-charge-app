@@ -223,42 +223,43 @@ router.post('/', async (req, res) => {
       });
     }
 
-    // Fire-and-forget LM re-opt on ChargingRateChanged (and related). Never block/fail webhook.
-    let lmReopt = null;
+    // True fire-and-forget: never await LM/OCPP composite refresh on the webhook path
+    // (GetCompositeSchedule can take many seconds / 504). Respond first, reopt in background.
+    let lmReoptMeta = null;
     if (shouldTriggerLmReopt(event.triggerReason)) {
       const stationIds = resolveStationIdsForReopt({
         event,
         sessionRows: result.matchedRows,
       });
-      try {
-        lmReopt = await triggerLmReoptFromWebhook({
-          triggerReason: event.triggerReason,
+      lmReoptMeta = { queued: true, stations: stationIds };
+      const triggerReason = event.triggerReason;
+      const transactionId = event.transactionId;
+      setImmediate(() => {
+        triggerLmReoptFromWebhook({
+          triggerReason,
           stationIds,
-          transactionId: event.transactionId,
-        });
-        if (lmReopt.attempted) {
-          logger.info('[CitrineOS Webhook] LM reopt', lmReopt);
-        } else if (lmReopt.skipped && lmReopt.skipped !== 'lm_disabled') {
-          logger.info('[CitrineOS Webhook] LM reopt skipped', lmReopt);
-        }
-      } catch (reoptErr) {
-        logger.warn('[CitrineOS Webhook] LM reopt error (ignored)', {
-          message: reoptErr instanceof Error ? reoptErr.message : String(reoptErr),
-        });
-        lmReopt = {
-          attempted: false,
-          skipped: 'error',
-          stations: stationIds,
-          results: [],
-        };
-      }
+          transactionId,
+        })
+          .then((lmReopt) => {
+            if (lmReopt.attempted) {
+              logger.info('[CitrineOS Webhook] LM reopt', lmReopt);
+            } else if (lmReopt.skipped && lmReopt.skipped !== 'lm_disabled') {
+              logger.info('[CitrineOS Webhook] LM reopt skipped', lmReopt);
+            }
+          })
+          .catch((reoptErr) => {
+            logger.warn('[CitrineOS Webhook] LM reopt error (ignored)', {
+              message: reoptErr instanceof Error ? reoptErr.message : String(reoptErr),
+            });
+          });
+      });
     }
 
     res.json({
       received: true,
       matched: result.matched,
       actions: result.actions,
-      ...(lmReopt ? { lmReopt } : {}),
+      ...(lmReoptMeta ? { lmReopt: lmReoptMeta } : {}),
     });
   } catch (e) {
     logger.error('[CitrineOS Webhook] Error processing event:', e);

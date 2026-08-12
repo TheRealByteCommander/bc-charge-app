@@ -20,10 +20,30 @@ export const LM_REOPT_TRIGGER_REASONS = Object.freeze([
 ]);
 
 const DEFAULT_DEBOUNCE_MS = 15_000;
+/** After a failed LM call, allow retry sooner than full success debounce. */
+const DEFAULT_FAIL_BACKOFF_MS = 2_000;
 const DEFAULT_TIMEOUT_MS = 12_000;
 
 /** @type {Map<string, number>} stationId → last reopt attempt ms */
 const lastReoptAt = new Map();
+
+/**
+ * Record debounce timestamp. On failure use short backoff so transient LM/OCPP
+ * errors can retry on the next ChargingRateChanged (success keeps full window).
+ * @param {string} key
+ * @param {number} now
+ * @param {{ ok: boolean, debounceMs?: number, failBackoffMs?: number }} opts
+ */
+function markReoptAttempt(key, now, opts) {
+  const debounceMs = opts.debounceMs ?? DEFAULT_DEBOUNCE_MS;
+  const failBackoffMs = opts.failBackoffMs ?? DEFAULT_FAIL_BACKOFF_MS;
+  if (opts.ok) {
+    lastReoptAt.set(key, now);
+    return;
+  }
+  // next allowed at now + failBackoffMs  ⇔  stored = now - debounceMs + failBackoffMs
+  lastReoptAt.set(key, now - debounceMs + Math.max(0, failBackoffMs));
+}
 
 /**
  * @param {unknown} triggerReason
@@ -146,6 +166,7 @@ export async function requestCompositeRefreshAll(opts = {}) {
  *   stationIds?: string[],
  *   transactionId?: string|null,
  *   debounceMs?: number,
+ *   failBackoffMs?: number,
  *   now?: number,
  *   force?: boolean,
  * }} input
@@ -177,6 +198,9 @@ export async function triggerLmReoptFromWebhook(input = {}) {
   /** @type {Array<{ stationId: string|null, ok: boolean, status?: number, error?: string|null }>} */
   const results = [];
 
+  const failBackoffMs =
+    typeof input.failBackoffMs === 'number' ? input.failBackoffMs : DEFAULT_FAIL_BACKOFF_MS;
+
   if (stations.length === 0) {
     // No station on event/session — refresh all known LM stations (debounced under "*").
     if (!force && isReoptDebounced('*', { now, debounceMs })) {
@@ -187,12 +211,14 @@ export async function triggerLmReoptFromWebhook(input = {}) {
         results: [],
       };
     }
-    lastReoptAt.set('*', now);
+    // Stampede guard before await; success keeps full window, failure short backoff.
+    markReoptAttempt('*', now, { ok: true, debounceMs, failBackoffMs });
     logger.info('[LM reopt] ChargingRateChanged without stationId — refresh all', {
       triggerReason,
       transactionId: input.transactionId ?? null,
     });
     const r = await requestCompositeRefreshAll();
+    markReoptAttempt('*', now, { ok: r.ok, debounceMs, failBackoffMs });
     results.push({
       stationId: null,
       ok: r.ok,
@@ -212,7 +238,8 @@ export async function triggerLmReoptFromWebhook(input = {}) {
       });
       continue;
     }
-    lastReoptAt.set(stationId, now);
+    // Optimistic stampede guard (overwritten with failure backoff if call fails).
+    markReoptAttempt(stationId, now, { ok: true, debounceMs, failBackoffMs });
     toRun.push(stationId);
   }
 
@@ -234,6 +261,7 @@ export async function triggerLmReoptFromWebhook(input = {}) {
   await Promise.all(
     toRun.map(async (stationId) => {
       const r = await requestCompositeRefreshForStation(stationId);
+      markReoptAttempt(stationId, now, { ok: r.ok, debounceMs, failBackoffMs });
       results.push({
         stationId,
         ok: r.ok,

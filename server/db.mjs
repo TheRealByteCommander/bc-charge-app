@@ -1084,6 +1084,26 @@ export async function applyCitrineosWebhookToSessions(event) {
       if (nextSeq != null && Number.isFinite(nextSeq)) patch.lastCitrineosEventSeqNo = nextSeq;
       if (event.eventType != null) patch.lastCitrineosEventType = event.eventType;
       if (event.triggerReason != null) patch.lastCitrineosTriggerReason = event.triggerReason;
+      // Persist station id from webhook so later re-opt / diagnostics have a stable source.
+      if (event.stationId != null && String(event.stationId).trim()) {
+        patch.citrineosStationId = String(event.stationId).trim();
+      }
+      // Gap detection: offline buffer / dropped TransactionEvents (seq should be monotonic +1).
+      if (
+        nextSeq != null &&
+        Number.isFinite(nextSeq) &&
+        prevSeq != null &&
+        Number.isFinite(prevSeq) &&
+        nextSeq > prevSeq + 1
+      ) {
+        patch.lastCitrineosSeqGap = {
+          from: prevSeq,
+          to: nextSeq,
+          missing: nextSeq - prevSeq - 1,
+          at: new Date().toISOString(),
+        };
+        actions.push(`seq-gap:tx=${transactionId}:seq=${prevSeq}->${nextSeq}`);
+      }
       if (Object.keys(patch).length === 0) continue;
       await persistPatchedSessionRow(row, patch);
       matched += 1;
@@ -1124,6 +1144,24 @@ export async function applyCitrineosWebhookToSessions(event) {
       if (nextSeq != null && Number.isFinite(nextSeq)) patch.lastCitrineosEventSeqNo = nextSeq;
       if (event.eventType != null) patch.lastCitrineosEventType = event.eventType;
       if (event.triggerReason != null) patch.lastCitrineosTriggerReason = event.triggerReason;
+      if (event.stationId != null && String(event.stationId).trim()) {
+        patch.citrineosStationId = String(event.stationId).trim();
+      }
+      if (
+        nextSeq != null &&
+        Number.isFinite(nextSeq) &&
+        prevSeq != null &&
+        Number.isFinite(prevSeq) &&
+        nextSeq > prevSeq + 1
+      ) {
+        patch.lastCitrineosSeqGap = {
+          from: prevSeq,
+          to: nextSeq,
+          missing: nextSeq - prevSeq - 1,
+          at: new Date().toISOString(),
+        };
+        actions.push(`seq-gap:tx=${transactionId}:seq=${prevSeq}->${nextSeq}`);
+      }
       await persistPatchedSessionRow(row, patch);
       matched += 1;
       rememberRow(row);
