@@ -1,7 +1,9 @@
 import { apiConfig } from '../../config/api';
 import { citrineosConfig } from '../../config/citrineos';
 import { isBackendMode } from '../../services/backendMode';
+import { isPlainObject } from '../../utils/safeJson';
 import { fetchWithTimeout } from '../../utils/fetchWithTimeout';
+import { normalizeHasuraTransactionRow } from './dto';
 import { resolveCitrineosStationDbId } from './stationId';
 import type { CitrineosTransaction, HasuraChargingStationRow } from './types';
 
@@ -109,9 +111,29 @@ export async function hasuraGraphql<T>(query: string, variables: Record<string, 
     12_000
   );
 
-  const json = (await res.json()) as { data?: T; errors?: Array<{ message: string }> };
-  if (!res.ok || json.errors?.length) {
-    throw new Error(json.errors?.[0]?.message ?? `Hasura ${res.status}`);
+  let json: unknown;
+  try {
+    json = await res.json();
+  } catch {
+    throw new Error(`Hasura ${res.status}: invalid JSON`);
+  }
+  if (!isPlainObject(json)) {
+    throw new Error(`Hasura ${res.status}: non-object payload`);
+  }
+  const errors = json.errors;
+  if (Array.isArray(errors) && errors.length > 0) {
+    const first = errors[0];
+    const msg =
+      isPlainObject(first) && typeof first.message === 'string'
+        ? first.message
+        : `Hasura ${res.status}`;
+    throw new Error(msg);
+  }
+  if (!res.ok) {
+    throw new Error(`Hasura ${res.status}`);
+  }
+  if (json.data === undefined) {
+    throw new Error('Hasura response missing data');
   }
   return json.data as T;
 }
@@ -126,21 +148,21 @@ export async function fetchChargingStationsFromHasura(): Promise<HasuraChargingS
 export async function fetchActiveTransaction(
   stationAppId: string
 ): Promise<CitrineosTransaction | undefined> {
-  const data = await hasuraGraphql<{ Transactions: CitrineosTransaction[] }>(ACTIVE_TX_QUERY, {
+  const data = await hasuraGraphql<{ Transactions: unknown[] }>(ACTIVE_TX_QUERY, {
     stationId: resolveCitrineosStationDbId(stationAppId),
     tenantId: citrineosConfig.tenantId,
   });
-  return data.Transactions?.[0];
+  return normalizeHasuraTransactionRow(data.Transactions?.[0]);
 }
 
 export async function fetchTransactionByRemoteStartId(
   stationAppId: string,
   remoteStartId: number
 ): Promise<CitrineosTransaction | undefined> {
-  const data = await hasuraGraphql<{ Transactions: CitrineosTransaction[] }>(TX_BY_REMOTE_START_QUERY, {
+  const data = await hasuraGraphql<{ Transactions: unknown[] }>(TX_BY_REMOTE_START_QUERY, {
     stationId: resolveCitrineosStationDbId(stationAppId),
     tenantId: citrineosConfig.tenantId,
     remoteStartId,
   });
-  return data.Transactions?.[0];
+  return normalizeHasuraTransactionRow(data.Transactions?.[0]);
 }

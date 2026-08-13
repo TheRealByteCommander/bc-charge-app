@@ -1,6 +1,11 @@
 export { citrineosHealth, citrineosFetch, CitrineosApiError } from './client';
 export { getTransaction, getTariffs } from './data';
 export {
+  normalizeCitrineosTransaction,
+  normalizeCitrineosTariffs,
+  normalizeHasuraTransactionRow,
+} from './dto';
+export {
   fetchActiveTransaction,
   fetchChargingStationsFromHasura,
   fetchTransactionByRemoteStartId,
