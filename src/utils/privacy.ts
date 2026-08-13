@@ -1,4 +1,5 @@
 import type { ChargingSession, UserProfile } from '../types';
+import { asRecordOfArrays, safeParseJson } from './safeJson';
 import { loadRedeemed, loadSessions, loadUsers } from './storage';
 
 export const LOCAL_STORAGE_DISCLOSURE = [
@@ -14,12 +15,8 @@ export const LOCAL_STORAGE_DISCLOSURE = [
 ] as const;
 
 function loadStationReports(): unknown[] {
-  try {
-    const raw = localStorage.getItem('bc_station_reports');
-    return raw ? (JSON.parse(raw) as unknown[]) : [];
-  } catch {
-    return [];
-  }
+  const parsed = safeParseJson<unknown>(localStorage.getItem('bc_station_reports'), []);
+  return Array.isArray(parsed) ? parsed : [];
 }
 
 function sanitizeUserForExport(user: UserProfile) {
@@ -61,14 +58,14 @@ export function purgeUserLocalData(userId: string): void {
 
   const sessionsRaw = localStorage.getItem('bc_sessions');
   if (sessionsRaw) {
-    const all = JSON.parse(sessionsRaw) as Record<string, ChargingSession[]>;
+    const all = asRecordOfArrays<ChargingSession>(safeParseJson(sessionsRaw, {}));
     delete all[userId];
     localStorage.setItem('bc_sessions', JSON.stringify(all));
   }
 
   const redeemedRaw = localStorage.getItem('bc_redeemed');
   if (redeemedRaw) {
-    const all = JSON.parse(redeemedRaw) as Record<string, string[]>;
+    const all = asRecordOfArrays<string>(safeParseJson(redeemedRaw, {}));
     delete all[userId];
     localStorage.setItem('bc_redeemed', JSON.stringify(all));
   }

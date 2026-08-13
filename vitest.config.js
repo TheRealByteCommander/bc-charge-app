@@ -7,6 +7,8 @@ export default defineConfig({
     include: [
       'server/services/pricing/**/*.test.mjs',
       'server/services/priceOptimization/**/*.test.mjs',
+      'src/utils/safeJson.test.ts',
+      'src/services/localStores.guards.test.ts',
     ],
     environment: 'node',
   },

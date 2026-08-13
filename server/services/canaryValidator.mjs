@@ -11,6 +11,11 @@
  */
 
 import { canarySchemas } from './citrineosSchemas.mjs';
+import {
+  CITRINEOS_INTEGRATION_VERSION,
+  CITRINEOS_UPSTREAM_OPEN,
+  CITRINEOS_UPSTREAM_WATCH,
+} from '../contracts/citrineosContract.mjs';
 import logger from '../utils/logger.mjs';
 
 const recentMismatches = [];
@@ -213,6 +218,10 @@ export function getCanaryStats() {
     bySchema,
     recentMismatches: recentMismatches.slice(0, 20),
     pinBump: evaluatePinBumpReadiness(),
+    /** Informational — pin stays CITRINEOS_INTEGRATION_VERSION until pinBump.ready. */
+    integrationVersion: CITRINEOS_INTEGRATION_VERSION,
+    upstreamWatch: CITRINEOS_UPSTREAM_WATCH,
+    upstreamOpen: CITRINEOS_UPSTREAM_OPEN,
   };
 }
 

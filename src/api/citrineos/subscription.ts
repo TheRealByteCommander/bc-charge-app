@@ -143,6 +143,7 @@ function handleWsMessage(event: MessageEvent): void {
     try {
       const raw = typeof event.data === 'string' ? event.data : String(event.data ?? '');
       const parsed: unknown = JSON.parse(raw);
+      // Shape-guard before cast — arrays/primitives are never Hasura protocol frames.
       if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
         logger.warn('Ignoring non-object Hasura WS payload');
         return;

@@ -1,16 +1,13 @@
 import { getAvailableCount, getStations } from '../data/stations';
 import type { Station, UserProfile } from '../types';
+import { asNumberRecord, safeParseJson } from '../utils/safeJson';
 import { canSendBrowserNotifications, notifyFavoriteAvailable } from './browserNotifications';
 
 const STORAGE_KEY = 'bc_fav_avail_v1';
 
 function loadState(): Record<string, number> {
-  try {
-    const raw = sessionStorage.getItem(STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as Record<string, number>) : {};
-  } catch {
-    return {};
-  }
+  const parsed = safeParseJson<unknown>(sessionStorage.getItem(STORAGE_KEY), {});
+  return asNumberRecord(parsed);
 }
 
 function saveState(state: Record<string, number>): void {

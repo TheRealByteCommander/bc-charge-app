@@ -1,4 +1,5 @@
 import type { ChargingSession, RewardFulfillment, UserProfile } from '../types';
+import { asRecordOfArrays, safeParseJson } from './safeJson';
 
 const KEYS = {
   users: 'bc_users',
@@ -8,25 +9,6 @@ const KEYS = {
   redeemedRewards: 'bc_redeemed',
   rewardFulfillments: 'bc_reward_fulfillments',
 } as const;
-
-/** Parse localStorage JSON without throwing; wrong shapes degrade to fallback. */
-function safeParseJson<T>(raw: string | null, fallback: T): T {
-  if (raw == null || raw === '') return fallback;
-  try {
-    return JSON.parse(raw) as T;
-  } catch {
-    return fallback;
-  }
-}
-
-function asRecordOfArrays<T>(value: unknown): Record<string, T[]> {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
-  const out: Record<string, T[]> = {};
-  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-    if (Array.isArray(v)) out[k] = v as T[];
-  }
-  return out;
-}
 
 export function loadUsers(): UserProfile[] {
   const parsed = safeParseJson<unknown>(localStorage.getItem(KEYS.users), []);

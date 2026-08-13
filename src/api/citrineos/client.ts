@@ -50,7 +50,17 @@ export async function citrineosFetch<T>(
         body: JSON.stringify({ path, method, query, body }),
         signal: controller.signal,
       });
-      const proxyPayload = (await res.json()) as { ok?: boolean; data?: T; error?: string };
+      let proxyPayload: { ok?: boolean; data?: T; error?: string };
+      try {
+        const raw: unknown = await res.json();
+        if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+          throw new CitrineosApiError('CitrineOS Proxy returned non-object payload', res.status, raw);
+        }
+        proxyPayload = raw as { ok?: boolean; data?: T; error?: string };
+      } catch (e) {
+        if (e instanceof CitrineosApiError) throw e;
+        throw new CitrineosApiError('CitrineOS Proxy returned invalid JSON', res.status);
+      }
       if (!res.ok || proxyPayload.ok === false) {
         throw new CitrineosApiError(proxyPayload.error ?? `CitrineOS Proxy ${res.status}`, res.status, proxyPayload);
       }

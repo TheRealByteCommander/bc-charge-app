@@ -1,3 +1,5 @@
+import { asArrayOf, isPlainObject, safeParseJson } from '../utils/safeJson';
+
 export type ReportCategory = 'defect' | 'blocked' | 'offline_wrong' | 'price_wrong' | 'other';
 
 export interface StationReport {
@@ -12,17 +14,42 @@ export interface StationReport {
 
 const REPORTS_KEY = 'bc_station_reports';
 
+const REPORT_CATEGORIES = new Set<ReportCategory>([
+  'defect',
+  'blocked',
+  'offline_wrong',
+  'price_wrong',
+  'other',
+]);
+
+function isReportCategory(value: unknown): value is ReportCategory {
+  return typeof value === 'string' && REPORT_CATEGORIES.has(value as ReportCategory);
+}
+
+/** Narrow unknown localStorage rows to StationReport (drop corrupt / partial entries). */
+export function isStationReport(value: unknown): value is StationReport {
+  if (!isPlainObject(value)) return false;
+  if (typeof value.id !== 'string' || !value.id) return false;
+  if (typeof value.stationId !== 'string' || !value.stationId) return false;
+  if (!isReportCategory(value.category)) return false;
+  if (typeof value.message !== 'string') return false;
+  if (typeof value.createdAt !== 'string' || !value.createdAt) return false;
+  if (typeof value.helpfulVotes !== 'number' || !Number.isFinite(value.helpfulVotes)) return false;
+  if (value.photoBase64 !== undefined && typeof value.photoBase64 !== 'string') return false;
+  return true;
+}
+
 function loadReports(): StationReport[] {
-  try {
-    const raw = localStorage.getItem(REPORTS_KEY);
-    return raw ? (JSON.parse(raw) as StationReport[]) : [];
-  } catch {
-    return [];
-  }
+  const parsed = safeParseJson<unknown>(localStorage.getItem(REPORTS_KEY), []);
+  return asArrayOf(parsed, isStationReport);
 }
 
 function saveReports(reports: StationReport[]): void {
-  localStorage.setItem(REPORTS_KEY, JSON.stringify(reports));
+  try {
+    localStorage.setItem(REPORTS_KEY, JSON.stringify(reports));
+  } catch {
+    /* quota / private mode */
+  }
 }
 
 export function getReportsForStation(stationId: string): StationReport[] {

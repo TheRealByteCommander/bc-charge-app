@@ -186,6 +186,10 @@ describe('pinBump readiness gate', () => {
     assert.equal(r.totals.total >= 50, true);
     const stats = getCanaryStats();
     assert.equal(stats.pinBump.ready, true);
+    assert.equal(stats.upstreamWatch, 'v2.0.0-beta3');
+    assert.equal(stats.integrationVersion, '1.8.4');
+    assert.ok(Array.isArray(stats.upstreamOpen));
+    assert.ok(stats.upstreamOpen.some((x) => x.id === 851));
   });
 
   it('blocks on high fail rate', () => {

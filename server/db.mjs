@@ -592,13 +592,19 @@ export async function updateAdhocSession(session) {
   const now = new Date().toISOString();
   const dataJson = JSON.stringify(session);
   if (isPostgres()) {
+    // No-op skip: identical webhook/poll retries must not rewrite adhoc rows (WAL/bloat).
     await pgPool.query(
       `UPDATE adhoc_sessions
        SET status = $1,
            payment_intent_id = COALESCE($2, payment_intent_id),
            data_json = $3::jsonb,
            updated_at = $4
-       WHERE id = $5 AND access_token = $6`,
+       WHERE id = $5 AND access_token = $6
+         AND (
+           adhoc_sessions.data_json IS DISTINCT FROM $3::jsonb
+           OR adhoc_sessions.status IS DISTINCT FROM $1
+           OR adhoc_sessions.payment_intent_id IS DISTINCT FROM COALESCE($2, adhoc_sessions.payment_intent_id)
+         )`,
       [session.status, session.paymentIntentId ?? null, dataJson, now, session.id, session.accessToken]
     );
     return session;
@@ -990,10 +996,16 @@ async function persistPatchedSessionRow(row, patch) {
 
   if (row.kind === 'charging') {
     if (isPostgres()) {
+      // Webhook/metrics hot path: skip no-op rewrites (same pattern as upsertSession).
+      // Note: row lock is still taken; benefit is WAL/dead-tuple reduction on identical ticks.
       await pgPool.query(
         `UPDATE charging_sessions
          SET data_json = $1::jsonb, status = $2, updated_at = $3
-         WHERE id = $4`,
+         WHERE id = $4
+           AND (
+             charging_sessions.data_json IS DISTINCT FROM $1::jsonb
+             OR charging_sessions.status IS DISTINCT FROM $2
+           )`,
         [dataJson, status, now, row.id]
       );
     } else {
@@ -1012,7 +1024,11 @@ async function persistPatchedSessionRow(row, patch) {
     await pgPool.query(
       `UPDATE adhoc_sessions
        SET data_json = $1::jsonb, status = $2, updated_at = $3
-       WHERE id = $4`,
+       WHERE id = $4
+         AND (
+           adhoc_sessions.data_json IS DISTINCT FROM $1::jsonb
+           OR adhoc_sessions.status IS DISTINCT FROM $2
+         )`,
       [dataJson, status, now, row.id]
     );
   } else {

@@ -4,6 +4,7 @@ import {
   loadStationsFromIndexedDB,
   saveStationsToIndexedDB,
 } from './indexedDbCache';
+import { isPlainObject, safeParseJson } from './safeJson';
 
 const CACHE_KEY = 'bc_stations_offline_v1';
 
@@ -80,11 +81,12 @@ function loadFromLocalStorage(): {
   source: string;
   stations: Station[];
 } | null {
-  try {
-    const raw = localStorage.getItem(CACHE_KEY);
-    if (!raw) return null;
-    return JSON.parse(raw) as { savedAt: string; source: string; stations: Station[] };
-  } catch {
-    return null;
-  }
+  const raw = localStorage.getItem(CACHE_KEY);
+  const parsed = safeParseJson<unknown>(raw, null);
+  if (!isPlainObject(parsed) || !Array.isArray(parsed.stations)) return null;
+  return {
+    savedAt: typeof parsed.savedAt === 'string' ? parsed.savedAt : '',
+    source: typeof parsed.source === 'string' ? parsed.source : 'unknown',
+    stations: parsed.stations as Station[],
+  };
 }

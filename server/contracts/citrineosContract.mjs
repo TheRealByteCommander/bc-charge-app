@@ -1,20 +1,35 @@
 /** Integrationsvertrag CitrineOS ↔ bc-charge-app (v1.8.4)
- * Upstream watch (2026-08-11): citrineos-core still latest pre-release v2.0.0-beta2 (#830 OCPP
- * message request migration). v2 monorepo+types/Awilix/message-DB refactor remain the drift risk.
- * Webhooks: TransactionEvent seqNo ordering + meterValue energy (see citrineosWebhooks.mjs).
- * Do not silently assume 1.8.x wire shapes once production tracks v2 betas.
- * Pin bump only when /api/citrineos/canary pinBump.ready after CANARY_FORCE=1 soak.
- * Load-Management: /api/load-management proxy + composite/external limits.
+ * Upstream watch (2026-08-13): citrineos-core latest pre-release **v2.0.0-beta3** (tag 2026-08-12;
+ * #837 merge train). Still NOT a prod pin — integration stays on 1.8.4 until staging
+ * CANARY_FORCE=1 soak + pinBump.ready.
+ * beta3 highlights for BC: OCPP message correlation (#832), tenant-scoped repo deletes (#842),
+ * OCPI tenant decorator (#841), OCPP messages state/message columns (#855), null VariableAttribute
+ * guard (#847). Open drift risk: **#851 tenant path mapping** (config → tenant DB + cache;
+ * path sanitization) — not in beta3 tag; watch before multi-tenant URL cutover.
+ * Webhooks: TransactionEvent seqNo + triggerReason (ChargingRateChanged → LM reopt) +
+ * meterValue energy (citrineosWebhooks.mjs / loadManagementReopt.mjs).
+ * Load-Management: /api/load-management proxy + composite/external limits (PR #46 merged).
  */
 
 export const CITRINEOS_INTEGRATION_VERSION = '1.8.4';
 
 /** Latest upstream tag observed by intelligence cron (informational, not a hard pin). */
-export const CITRINEOS_UPSTREAM_WATCH = 'v2.0.0-beta2';
+export const CITRINEOS_UPSTREAM_WATCH = 'v2.0.0-beta3';
+
+/** Open upstream PRs/issues that can break BC routing or tenancy (informational). */
+export const CITRINEOS_UPSTREAM_OPEN = [
+  {
+    id: 851,
+    title: 'Feature/refactor tenant path mapping',
+    url: 'https://github.com/citrineos/citrineos-core/pull/851',
+    risk: 'Dynamic tenant pathing moves system-config → tenant DB/cache; base URL/scripts may break',
+  },
+];
 
 export const citrineosIntegrationContract = {
   version: CITRINEOS_INTEGRATION_VERSION,
   upstreamWatch: CITRINEOS_UPSTREAM_WATCH,
+  upstreamOpen: CITRINEOS_UPSTREAM_OPEN,
   operator: {
     brand: 'BC Charge',
     company: 'Byte Commander GmbH',

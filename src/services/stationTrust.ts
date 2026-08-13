@@ -1,5 +1,6 @@
 import { getReportsForStation } from './community';
 import { formatRelative } from '../utils/format';
+import { asArrayOf, isPlainObject, safeParseJson } from '../utils/safeJson';
 
 const SUCCESS_LOG_KEY = 'bc_station_success_log_v1';
 const MAX_ENTRIES = 400;
@@ -18,13 +19,20 @@ interface SuccessEntry {
   at: string;
 }
 
+/** Narrow unknown localStorage rows to SuccessEntry. */
+export function isSuccessEntry(value: unknown): value is SuccessEntry {
+  if (!isPlainObject(value)) return false;
+  return (
+    typeof value.stationId === 'string' &&
+    value.stationId.length > 0 &&
+    typeof value.at === 'string' &&
+    value.at.length > 0
+  );
+}
+
 function loadSuccessLog(): SuccessEntry[] {
-  try {
-    const raw = localStorage.getItem(SUCCESS_LOG_KEY);
-    return raw ? (JSON.parse(raw) as SuccessEntry[]) : [];
-  } catch {
-    return [];
-  }
+  const parsed = safeParseJson<unknown>(localStorage.getItem(SUCCESS_LOG_KEY), []);
+  return asArrayOf(parsed, isSuccessEntry);
 }
 
 function saveSuccessLog(entries: SuccessEntry[]): void {
