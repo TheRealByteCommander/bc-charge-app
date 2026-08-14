@@ -59,7 +59,8 @@ function SuggestionRow({
 
 export function ChargingPlannerCard({ compact = false }: { compact?: boolean }) {
   const user = useAppStore((s) => s.user);
-  const activeSession = useAppStore((s) => s.activeSession);
+  // Presence only — avoid re-render on every live kWh/cost tick (AppShell/BottomNav pattern).
+  const hasActiveSession = useAppStore((s) => Boolean(s.activeSession));
   const userLocation = useAppStore((s) => s.userLocation);
   const stationDataSource = useAppStore((s) => s.stationDataSource);
   const updateProfile = useAppStore((s) => s.updateProfile);
@@ -85,7 +86,7 @@ export function ChargingPlannerCard({ compact = false }: { compact?: boolean }) 
     return pickNearestAvailableStations({ vehicle, userLocation }, MAX_NEARBY_STATION_SUGGESTIONS);
   }, [user, vehicle, userLocation, stationDataSource]);
 
-  const showSuggestion = shouldShowChargeSuggestion(prefs, { activeSession: Boolean(activeSession) });
+  const showSuggestion = shouldShowChargeSuggestion(prefs, { activeSession: hasActiveSession });
   const hasSuggestions = suggestions.length > 0;
 
   if (!user) return null;

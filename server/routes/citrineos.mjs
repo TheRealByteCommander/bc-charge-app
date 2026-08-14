@@ -131,6 +131,8 @@ router.get('/tariffs', optionalAuth, async (_req, res) => {
   }
   try {
     const tenantId = process.env.CITRINEOS_TENANT_ID ?? '1';
+    // /data/transactions/tariff is the legacy Data API surface. Upstream PR #849 removes /data/**
+    // — migrate before any v2 pin bump (contract CITRINEOS_UPSTREAM_OPEN id 849).
     const url = `${citrineosApiUrl()}/data/transactions/tariff?tenantId=${tenantId}`;
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 8000);

@@ -1,7 +1,17 @@
+import type { ZodType } from 'zod';
 import { apiConfig } from '../../config/api';
 import { citrineosConfig } from '../../config/citrineos';
 import { isBackendMode } from '../../services/backendMode';
 import { fetchWithTimeout } from '../../utils/fetchWithTimeout';
+import {
+  ApiParseError,
+  errorMessageFromPayload,
+  OkEnvelopeSchema,
+  parseApiData,
+  parseWithSchema,
+  ProxyEnvelopeSchema,
+  readResponseJson,
+} from '../parse';
 import { citrineosPaths } from './paths';
 
 export class CitrineosApiError extends Error {
@@ -35,9 +45,19 @@ export async function citrineosFetch<T>(
     query?: Record<string, string | number | undefined>;
     body?: unknown;
     timeoutMs?: number;
+    /** Optional Zod schema applied after HTTP/proxy success. */
+    schema?: ZodType<T>;
+    allowNonObject?: boolean;
   } = {}
 ): Promise<T> {
-  const { method = 'GET', query, body, timeoutMs = CITRINEOS_FETCH_MS } = options;
+  const {
+    method = 'GET',
+    query,
+    body,
+    timeoutMs = CITRINEOS_FETCH_MS,
+    schema,
+    allowNonObject = true,
+  } = options;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   let res: Response;
@@ -50,21 +70,44 @@ export async function citrineosFetch<T>(
         body: JSON.stringify({ path, method, query, body }),
         signal: controller.signal,
       });
-      let proxyPayload: { ok?: boolean; data?: T; error?: string };
+      let raw: unknown;
       try {
-        const raw: unknown = await res.json();
-        if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
-          throw new CitrineosApiError('CitrineOS Proxy returned non-object payload', res.status, raw);
-        }
-        proxyPayload = raw as { ok?: boolean; data?: T; error?: string };
+        raw = await readResponseJson(res);
       } catch (e) {
-        if (e instanceof CitrineosApiError) throw e;
-        throw new CitrineosApiError('CitrineOS Proxy returned invalid JSON', res.status);
+        throw new CitrineosApiError(
+          e instanceof ApiParseError ? e.message : 'CitrineOS Proxy returned invalid JSON',
+          res.status
+        );
+      }
+      let proxyPayload: { ok?: boolean; data?: unknown; error?: string };
+      try {
+        proxyPayload = parseWithSchema(raw ?? {}, ProxyEnvelopeSchema, 'citrineos proxy');
+      } catch (e) {
+        throw new CitrineosApiError(
+          e instanceof ApiParseError ? e.message : 'CitrineOS Proxy returned non-object payload',
+          res.status,
+          raw
+        );
       }
       if (!res.ok || proxyPayload.ok === false) {
-        throw new CitrineosApiError(proxyPayload.error ?? `CitrineOS Proxy ${res.status}`, res.status, proxyPayload);
+        throw new CitrineosApiError(
+          proxyPayload.error ??
+            errorMessageFromPayload(proxyPayload, `CitrineOS Proxy ${res.status}`),
+          res.status,
+          proxyPayload
+        );
       }
-      return proxyPayload.data as T;
+      try {
+        return parseApiData<T>(proxyPayload.data, schema, `citrineos proxy ${path}`, {
+          allowNonObject,
+        });
+      } catch (e) {
+        throw new CitrineosApiError(
+          e instanceof ApiParseError ? e.message : 'CitrineOS proxy data parse failed',
+          res.status,
+          proxyPayload.data
+        );
+      }
     }
 
     res = await fetch(buildUrl(path, query), {
@@ -77,35 +120,55 @@ export async function citrineosFetch<T>(
     clearTimeout(timeout);
   }
 
-  const text = await res.text();
   let parsed: unknown = undefined;
-  if (text) {
-    try {
-      parsed = JSON.parse(text) as unknown;
-    } catch {
-      parsed = text;
+  try {
+    parsed = await readResponseJson(res);
+  } catch (e) {
+    if (!res.ok) {
+      throw new CitrineosApiError(`CitrineOS API ${res.status}`, res.status);
     }
+    throw new CitrineosApiError(
+      e instanceof ApiParseError ? e.message : `Invalid JSON (HTTP ${res.status})`,
+      res.status
+    );
   }
 
   if (!res.ok) {
-    const msg =
-      typeof parsed === 'object' && parsed && 'message' in parsed
-        ? String((parsed as { message: string }).message)
-        : `CitrineOS API ${res.status}`;
-    throw new CitrineosApiError(msg, res.status, parsed);
+    throw new CitrineosApiError(
+      errorMessageFromPayload(parsed, `CitrineOS API ${res.status}`),
+      res.status,
+      parsed
+    );
   }
 
-  return parsed as T;
+  try {
+    return parseApiData<T>(parsed, schema, `citrineos ${path}`, { allowNonObject });
+  } catch (e) {
+    throw new CitrineosApiError(
+      e instanceof ApiParseError ? e.message : 'CitrineOS response parse failed',
+      res.status,
+      parsed
+    );
+  }
 }
 
 export async function citrineosHealth(): Promise<boolean> {
   try {
     if (isBackendMode()) {
-      const r = await fetchWithTimeout(`${apiConfig.baseUrl}/api/citrineos/health`, { credentials: 'include' }, 5000);
-      const json = (await r.json()) as { ok?: boolean };
+      const r = await fetchWithTimeout(
+        `${apiConfig.baseUrl}/api/citrineos/health`,
+        { credentials: 'include' },
+        5000
+      );
+      const raw = await readResponseJson(r);
+      if (!r.ok) return false;
+      const json = parseWithSchema(raw ?? {}, OkEnvelopeSchema, 'citrineos health');
       return Boolean(json.ok);
     }
-    await citrineosFetch<{ status?: string }>(citrineosPaths.health);
+    await citrineosFetch(citrineosPaths.health, {
+      schema: OkEnvelopeSchema.partial().passthrough(),
+      allowNonObject: true,
+    });
     return true;
   } catch {
     return false;

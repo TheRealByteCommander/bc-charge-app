@@ -3,6 +3,14 @@ import { citrineosConfig } from '../../config/citrineos';
 import { isBackendMode } from '../../services/backendMode';
 import { isPlainObject } from '../../utils/safeJson';
 import { fetchWithTimeout } from '../../utils/fetchWithTimeout';
+import {
+  ApiParseError,
+  errorMessageFromPayload,
+  HasuraGraphqlEnvelopeSchema,
+  parseWithSchema,
+  readResponseJson,
+  requirePlainObject,
+} from '../parse';
 import { normalizeHasuraTransactionRow } from './dto';
 import { resolveCitrineosStationDbId } from './stationId';
 import type { CitrineosTransaction, HasuraChargingStationRow } from './types';
@@ -113,29 +121,39 @@ export async function hasuraGraphql<T>(query: string, variables: Record<string, 
 
   let json: unknown;
   try {
-    json = await res.json();
-  } catch {
-    throw new Error(`Hasura ${res.status}: invalid JSON`);
+    json = await readResponseJson(res);
+  } catch (e) {
+    throw new Error(
+      e instanceof ApiParseError
+        ? `Hasura ${res.status}: ${e.message}`
+        : `Hasura ${res.status}: invalid JSON`
+    );
   }
-  if (!isPlainObject(json)) {
+
+  let envelope: { data?: unknown; errors?: Array<{ message?: string }> };
+  try {
+    envelope = parseWithSchema(json ?? {}, HasuraGraphqlEnvelopeSchema, 'hasura');
+  } catch {
     throw new Error(`Hasura ${res.status}: non-object payload`);
   }
-  const errors = json.errors;
+
+  const errors = envelope.errors;
   if (Array.isArray(errors) && errors.length > 0) {
     const first = errors[0];
     const msg =
       isPlainObject(first) && typeof first.message === 'string'
         ? first.message
-        : `Hasura ${res.status}`;
+        : errorMessageFromPayload(envelope, `Hasura ${res.status}`);
     throw new Error(msg);
   }
   if (!res.ok) {
     throw new Error(`Hasura ${res.status}`);
   }
-  if (json.data === undefined) {
+  if (envelope.data === undefined) {
     throw new Error('Hasura response missing data');
   }
-  return json.data as T;
+  // GraphQL data root is almost always an object; guard without bare cast of the HTTP body.
+  return requirePlainObject(envelope.data, 'hasura data') as T;
 }
 
 export async function fetchChargingStationsFromHasura(): Promise<HasuraChargingStationRow[]> {

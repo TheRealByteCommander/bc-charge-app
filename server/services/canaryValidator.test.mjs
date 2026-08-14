@@ -189,7 +189,10 @@ describe('pinBump readiness gate', () => {
     assert.equal(stats.upstreamWatch, 'v2.0.0-beta3');
     assert.equal(stats.integrationVersion, '1.8.4');
     assert.ok(Array.isArray(stats.upstreamOpen));
-    assert.ok(stats.upstreamOpen.some((x) => x.id === 851));
+    assert.ok(stats.upstreamOpen.some((x) => x.id === 849), 'watch #849 drop data API');
+    assert.ok(stats.upstreamOpen.some((x) => x.id === 851), 'watch #851 tenant path');
+    assert.ok(stats.upstreamOpen.some((x) => x.id === 846), 'watch #846 audit-insert crash');
+    assert.ok(stats.upstreamOpen.some((x) => x.id === 852), 'watch #852 measurand drop');
   });
 
   it('blocks on high fail rate', () => {

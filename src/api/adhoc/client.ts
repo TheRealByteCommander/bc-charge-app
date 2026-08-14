@@ -1,4 +1,18 @@
+import type { ZodType } from 'zod';
 import { apiConfig } from '../../config/api';
+import { isPlainObject, safeParseJson } from '../../utils/safeJson';
+import {
+  ApiParseError,
+  errorMessageFromPayload,
+  OkEnvelopeSchema,
+  parseApiData,
+  readResponseJson,
+} from '../parse';
+import {
+  AdhocPreparePaymentSchema,
+  AdhocQuoteSchema,
+  AdhocSessionEnvelopeSchema,
+} from './schemas';
 
 export class AdhocApiError extends Error {
   constructor(
@@ -10,21 +24,52 @@ export class AdhocApiError extends Error {
   }
 }
 
-async function adhocApi<T>(path: string, options: RequestInit = {}): Promise<T> {
+type AdhocApiOptions = RequestInit & {
+  schema?: ZodType;
+  allowNonObject?: boolean;
+};
+
+async function adhocApi<T>(path: string, options: AdhocApiOptions = {}): Promise<T> {
+  const { schema, allowNonObject, ...init } = options;
   const url = `${apiConfig.baseUrl}${path}`;
   const res = await fetch(url, {
-    ...options,
+    ...init,
     credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
-      ...options.headers,
+      ...init.headers,
     },
   });
-  const data = (await res.json().catch(() => ({}))) as { error?: string } & T;
-  if (!res.ok) {
-    throw new AdhocApiError(data.error ?? `Ad-Hoc API ${res.status}`, res.status);
+
+  let raw: unknown;
+  try {
+    raw = await readResponseJson(res);
+  } catch (e) {
+    if (!res.ok) {
+      throw new AdhocApiError(`Ad-Hoc API ${res.status}`, res.status);
+    }
+    throw e instanceof ApiParseError
+      ? new AdhocApiError(e.message, res.status)
+      : new AdhocApiError(`Invalid JSON (HTTP ${res.status})`, res.status);
   }
-  return data as T;
+
+  if (!res.ok) {
+    throw new AdhocApiError(
+      errorMessageFromPayload(raw, `Ad-Hoc API ${res.status}`),
+      res.status
+    );
+  }
+
+  try {
+    return parseApiData<T>(raw, schema as ZodType<T> | undefined, `adhoc ${path}`, {
+      allowNonObject,
+    });
+  } catch (e) {
+    if (e instanceof ApiParseError) {
+      throw new AdhocApiError(e.message, res.status);
+    }
+    throw e;
+  }
 }
 
 export interface AdhocQuote {
@@ -69,7 +114,7 @@ export interface AdhocSession {
 
 export async function adhocHealth(): Promise<{ ok: boolean }> {
   try {
-    return await adhocApi<{ ok: boolean }>('/api/adhoc/health');
+    return await adhocApi<{ ok: boolean }>('/api/adhoc/health', { schema: OkEnvelopeSchema });
   } catch {
     return { ok: false };
   }
@@ -79,6 +124,7 @@ export async function fetchAdhocQuote(stationId: string, connectorId: string): P
   return adhocApi('/api/adhoc/quote', {
     method: 'POST',
     body: JSON.stringify({ stationId, connectorId }),
+    schema: AdhocQuoteSchema,
   });
 }
 
@@ -90,6 +136,7 @@ export async function prepareAdhocPayment(params: {
   return adhocApi('/api/adhoc/prepare-payment', {
     method: 'POST',
     body: JSON.stringify(params),
+    schema: AdhocPreparePaymentSchema,
   });
 }
 
@@ -100,6 +147,7 @@ export async function startAdhocSession(
   return adhocApi('/api/adhoc/start', {
     method: 'POST',
     body: JSON.stringify({ sessionId, accessToken }),
+    schema: AdhocSessionEnvelopeSchema,
   });
 }
 
@@ -107,9 +155,13 @@ export async function pollAdhocSession(
   sessionId: string,
   accessToken: string
 ): Promise<{ session: AdhocSession }> {
-  return adhocApi(`/api/adhoc/session/${encodeURIComponent(sessionId)}?token=${encodeURIComponent(accessToken)}`, {
-    headers: { 'X-Adhoc-Token': accessToken },
-  });
+  return adhocApi(
+    `/api/adhoc/session/${encodeURIComponent(sessionId)}?token=${encodeURIComponent(accessToken)}`,
+    {
+      headers: { 'X-Adhoc-Token': accessToken },
+      schema: AdhocSessionEnvelopeSchema,
+    }
+  );
 }
 
 export async function stopAdhocSession(
@@ -119,6 +171,7 @@ export async function stopAdhocSession(
   return adhocApi('/api/adhoc/stop', {
     method: 'POST',
     body: JSON.stringify({ sessionId, accessToken }),
+    schema: AdhocSessionEnvelopeSchema,
   });
 }
 
@@ -131,11 +184,12 @@ export function saveAdhocSessionLocal(sessionId: string, accessToken: string): v
 export function loadAdhocSessionLocal(): { sessionId: string; accessToken: string } | null {
   const raw = sessionStorage.getItem(STORAGE_KEY);
   if (!raw) return null;
-  try {
-    const parsed = JSON.parse(raw) as { sessionId?: string; accessToken?: string };
-    if (parsed.sessionId && parsed.accessToken) return { sessionId: parsed.sessionId, accessToken: parsed.accessToken };
-  } catch {
-    /* ignore */
+  const parsed = safeParseJson<unknown>(raw, null);
+  if (!isPlainObject(parsed)) return null;
+  const sessionId = parsed.sessionId;
+  const accessToken = parsed.accessToken;
+  if (typeof sessionId === 'string' && sessionId && typeof accessToken === 'string' && accessToken) {
+    return { sessionId, accessToken };
   }
   return null;
 }

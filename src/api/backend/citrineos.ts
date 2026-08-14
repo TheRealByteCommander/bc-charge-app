@@ -1,18 +1,21 @@
 import { upsertCitrineosAuthorization } from '../citrineos/authorization';
+import { isPlainObject, safeParseJson } from '../../utils/safeJson';
 import { BackendApiError, backendApi } from './client';
 
 const AUTH_CACHE_KEY = 'bc_citrineos_auth_v1';
 const AUTH_CACHE_MS = 10 * 60_000;
 
 function readAuthCache(token: string): boolean {
-  try {
-    const raw = sessionStorage.getItem(AUTH_CACHE_KEY);
-    if (!raw) return false;
-    const parsed = JSON.parse(raw) as { token?: string; until?: number };
-    return parsed.token === token && typeof parsed.until === 'number' && Date.now() < parsed.until;
-  } catch {
-    return false;
-  }
+  const raw = sessionStorage.getItem(AUTH_CACHE_KEY);
+  if (!raw) return false;
+  const parsed = safeParseJson<unknown>(raw, null);
+  if (!isPlainObject(parsed)) return false;
+  return (
+    parsed.token === token &&
+    typeof parsed.until === 'number' &&
+    Number.isFinite(parsed.until) &&
+    Date.now() < parsed.until
+  );
 }
 
 function writeAuthCache(token: string): void {

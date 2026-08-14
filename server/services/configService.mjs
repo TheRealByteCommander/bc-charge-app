@@ -62,14 +62,25 @@ export async function getLoyaltyConfig() {
 
   const row = sqliteDb.prepare('SELECT value_json FROM app_config WHERE key = ?').get('loyalty');
   if (!row) return DEFAULT_LOYALTY_CONFIG;
-  return JSON.parse(row.value_json);
+  // SQLite stores TEXT; corrupt rows must not crash admin/loyalty reads.
+  try {
+    const parsed = typeof row.value_json === 'string' ? JSON.parse(row.value_json) : row.value_json;
+    return parsed && typeof parsed === 'object' ? parsed : DEFAULT_LOYALTY_CONFIG;
+  } catch {
+    return DEFAULT_LOYALTY_CONFIG;
+  }
 }
 
 export async function setLoyaltyConfig(config) {
   const valueJson = JSON.stringify(config);
   if (isPostgres()) {
+    // Skip no-op rewrites (IS DISTINCT FROM) — rare admin path, but avoids WAL on repeated saves.
     await pgPool.query(
-      'INSERT INTO app_config (key, value_json, updated_at) VALUES ($1, $2, NOW()) ON CONFLICT (key) DO UPDATE SET value_json = EXCLUDED.value_json, updated_at = NOW()',
+      `INSERT INTO app_config (key, value_json, updated_at) VALUES ($1, $2::jsonb, NOW())
+       ON CONFLICT (key) DO UPDATE
+       SET value_json = EXCLUDED.value_json,
+           updated_at = EXCLUDED.updated_at
+       WHERE app_config.value_json IS DISTINCT FROM EXCLUDED.value_json`,
       ['loyalty', valueJson]
     );
   } else {

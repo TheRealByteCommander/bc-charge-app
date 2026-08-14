@@ -1,11 +1,16 @@
 /** Integrationsvertrag CitrineOS ↔ bc-charge-app (v1.8.4)
- * Upstream watch (2026-08-13): citrineos-core latest pre-release **v2.0.0-beta3** (tag 2026-08-12;
- * #837 merge train). Still NOT a prod pin — integration stays on 1.8.4 until staging
+ * Upstream watch (2026-08-14): citrineos-core latest pre-release still **v2.0.0-beta3**
+ * (tag 2026-08-12; no newer tag since). Still NOT a prod pin — stay on 1.8.4 until staging
  * CANARY_FORCE=1 soak + pinBump.ready.
  * beta3 highlights for BC: OCPP message correlation (#832), tenant-scoped repo deletes (#842),
  * OCPI tenant decorator (#841), OCPP messages state/message columns (#855), null VariableAttribute
- * guard (#847). Open drift risk: **#851 tenant path mapping** (config → tenant DB + cache;
- * path sanitization) — not in beta3 tag; watch before multi-tenant URL cutover.
+ * guard (#847).
+ * Open drift risks (not in beta3 tag):
+ *   - **#849 drop data API** (base `next`): removes `/data/**` entirely → breaks BC REST
+ *     `getTransaction`/`getTariffs` paths until migrated (Hasura or new Commands/Api surfaces).
+ *   - **#851 tenant path mapping**: config → tenant DB + cache + path sanitization.
+ *   - **#846** OCPPMessages audit insert can kill process (webhook dispatcher resilience).
+ *   - **#852** unmapped measurands dropped (not relabeled as energy) — good for meter honesty.
  * Webhooks: TransactionEvent seqNo + triggerReason (ChargingRateChanged → LM reopt) +
  * meterValue energy (citrineosWebhooks.mjs / loadManagementReopt.mjs).
  * Load-Management: /api/load-management proxy + composite/external limits (PR #46 merged).
@@ -16,13 +21,32 @@ export const CITRINEOS_INTEGRATION_VERSION = '1.8.4';
 /** Latest upstream tag observed by intelligence cron (informational, not a hard pin). */
 export const CITRINEOS_UPSTREAM_WATCH = 'v2.0.0-beta3';
 
-/** Open upstream PRs/issues that can break BC routing or tenancy (informational). */
+/** Open upstream PRs/issues that can break BC routing, REST, or tenancy (informational). */
 export const CITRINEOS_UPSTREAM_OPEN = [
+  {
+    id: 849,
+    title: 'Feature/drop data api',
+    url: 'https://github.com/citrineos/citrineos-core/pull/849',
+    risk:
+      'Removes /data/** prefix (decorator Data API → explicit Api module). BC uses /data/transactions/transactionType and /data/transactions/tariff — hard break on v2 cutover without path migration or Hasura-only reads',
+  },
   {
     id: 851,
     title: 'Feature/refactor tenant path mapping',
     url: 'https://github.com/citrineos/citrineos-core/pull/851',
     risk: 'Dynamic tenant pathing moves system-config → tenant DB/cache; base URL/scripts may break',
+  },
+  {
+    id: 846,
+    title: "fix(core): don't let a failed message-audit insert kill the process",
+    url: 'https://github.com/citrineos/citrineos-core/pull/846',
+    risk: 'Unguarded OCPPMessages insert in WebhookDispatcher can crash CSMS on audit DB failure — ops resilience on staging/prod Citrine',
+  },
+  {
+    id: 852,
+    title: 'fix(core): drop unmapped OCPP measurands instead of relabeling them as the energy register',
+    url: 'https://github.com/citrineos/citrineos-core/pull/852',
+    risk: 'Positive for BC meter extract (Energy.Active.Import.Register only); watch if energy samples go missing on quirky hardware',
   },
 ];
 
