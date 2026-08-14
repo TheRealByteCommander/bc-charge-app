@@ -126,4 +126,50 @@ describe('normalizeCitrineosWebhookPayload OCPP2 nested', () => {
     assert.equal(event?.transactionId, 'tx-idle-end');
     assert.equal(event?.isActive, false);
   });
+
+  it('defaults missing energy unit to Wh (not kWh) and honors unitOfMeasure.multiplier', () => {
+    const noUnit = normalizeCitrineosWebhookPayload({
+      transactionId: 'tx-nounit',
+      meterValue: [
+        {
+          sampledValue: [
+            { measurand: 'Energy.Active.Import.Register', value: '3500' },
+          ],
+        },
+      ],
+    });
+    assert.equal(noUnit?.totalKwh, 3.5);
+
+    const withMultiplier = normalizeCitrineosWebhookPayload({
+      transactionId: 'tx-mult',
+      meterValue: [
+        {
+          sampledValue: [
+            {
+              measurand: 'Energy.Active.Import.Register',
+              value: '25',
+              unitOfMeasure: { unit: 'Wh', multiplier: 2 }, // 25 × 10^2 = 2500 Wh
+            },
+          ],
+        },
+      ],
+    });
+    assert.equal(withMultiplier?.totalKwh, 2.5);
+
+    const kwhExplicit = normalizeCitrineosWebhookPayload({
+      transactionId: 'tx-kwh',
+      meterValue: [
+        {
+          sampledValue: [
+            {
+              measurand: 'Energy.Active.Import.Register',
+              value: '4.2',
+              unitOfMeasure: { unit: 'kWh' },
+            },
+          ],
+        },
+      ],
+    });
+    assert.equal(kwhExplicit?.totalKwh, 4.2);
+  });
 });

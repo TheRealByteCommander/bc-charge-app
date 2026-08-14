@@ -49,16 +49,30 @@ export function getCheckInsForStation(stationId: string): StationCheckIn[] {
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id));
 }
 
+const MAX_NOTE_LEN = 200;
+
 export function addStationCheckIn(params: {
   stationId: string;
   status: CheckInStatus;
   note?: string;
 }): StationCheckIn {
+  const stationId = typeof params.stationId === 'string' ? params.stationId.trim() : '';
+  if (!stationId) {
+    throw new Error('stationId required');
+  }
+  if (!isCheckInStatus(params.status)) {
+    throw new Error('invalid check-in status');
+  }
+  let note: string | undefined;
+  if (typeof params.note === 'string') {
+    const trimmed = params.note.trim();
+    if (trimmed) note = trimmed.slice(0, MAX_NOTE_LEN);
+  }
   const row: StationCheckIn = {
     id: `ci_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-    stationId: params.stationId,
+    stationId,
     status: params.status,
-    note: params.note?.trim() || undefined,
+    note,
     createdAt: new Date().toISOString(),
   };
   const all = loadAll();
@@ -80,7 +94,8 @@ export function getStationReliabilitySummary(stationId: string): {
   const all = getCheckInsForStation(stationId);
   const now = Date.now();
   const day = 86_400_000;
-  const last30 = all.filter((c) => now - new Date(c.createdAt).getTime() <= 30 * day);
+  const withValidTs = all.filter((c) => Number.isFinite(new Date(c.createdAt).getTime()));
+  const last30 = withValidTs.filter((c) => now - new Date(c.createdAt).getTime() <= 30 * day);
   const last7 = last30.filter((c) => now - new Date(c.createdAt).getTime() <= 7 * day);
   const positive = last30.filter((c) => c.status === 'available' || c.status === 'charging_ok');
   const positiveRate =

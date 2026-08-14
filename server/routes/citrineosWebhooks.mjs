@@ -73,6 +73,8 @@ export function assertCitrineosWebhookAuthorized(req, env = process.env) {
 
 /**
  * Pull Energy.Active.Import.Register from OCPP 2.0.1 meterValue arrays (Wh or kWh).
+ * OCPP default unit for this measurand is Wh when unit/unitOfMeasure is omitted.
+ * Honors unitOfMeasure.multiplier (value × 10^multiplier) per the protocol.
  * Returns null when no usable sample is present.
  */
 function extractEnergyKwhFromMeterValues(meterValue) {
@@ -86,10 +88,34 @@ function extractEnergyKwhFromMeterValues(meterValue) {
       if (measurand !== 'Energy.Active.Import.Register') continue;
       const raw = Number(sample?.value);
       if (!Number.isFinite(raw)) continue;
-      const unit = String(
-        sample?.unit || sample?.unitOfMeasure?.unit || ''
-      ).toLowerCase();
-      energyKwh = unit === 'wh' ? raw / 1000 : raw;
+
+      const uom =
+        sample?.unitOfMeasure && typeof sample.unitOfMeasure === 'object'
+          ? sample.unitOfMeasure
+          : sample?.unit_of_measure && typeof sample.unit_of_measure === 'object'
+            ? sample.unit_of_measure
+            : null;
+      const unitRaw =
+        sample?.unit ??
+        sample?.Unit ??
+        (uom ? uom.unit ?? uom.Unit : null) ??
+        '';
+      // Spec default for Energy.Active.Import.Register is Wh — never treat empty as kWh.
+      const unit = String(unitRaw || 'Wh').trim().toLowerCase();
+
+      let multiplier = 0;
+      if (uom) {
+        const m = uom.multiplier ?? uom.Multiplier;
+        if (m != null && Number.isFinite(Number(m))) multiplier = Number(m);
+      }
+      const scaled = raw * 10 ** multiplier;
+
+      if (unit === 'kwh' || unit === 'kw.h' || unit === 'kilowatthour') {
+        energyKwh = scaled;
+      } else {
+        // Wh / W.h / watthour / unknown → Wh
+        energyKwh = scaled / 1000;
+      }
     }
   }
   return energyKwh;

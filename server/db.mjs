@@ -1165,6 +1165,10 @@ export async function applyCitrineosWebhookToSessions(event) {
         endedAt: new Date().toISOString(),
         citrineosTxActive: false,
       };
+      // Keep final meter/cost on the stop patch so Ended is self-contained even if
+      // the metrics branch skipped (e.g. only isActive=false + energy in one event).
+      if (event.totalKwh != null) patch.energyKwh = event.totalKwh;
+      if (event.totalCost != null) patch.costEur = event.totalCost;
       if (nextSeq != null && Number.isFinite(nextSeq)) patch.lastCitrineosEventSeqNo = nextSeq;
       if (event.eventType != null) patch.lastCitrineosEventType = event.eventType;
       if (event.triggerReason != null) patch.lastCitrineosTriggerReason = event.triggerReason;

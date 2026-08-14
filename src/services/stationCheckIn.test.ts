@@ -69,4 +69,15 @@ describe('stationCheckIn', () => {
     expect(s.positiveRate).toBe(67);
     expect(s.labelDe).toMatch(/67%/);
   });
+
+  it('rejects empty stationId / invalid status and clamps notes', () => {
+    expect(() => addStationCheckIn({ stationId: '  ', status: 'available' })).toThrow(/stationId/);
+    expect(() =>
+      addStationCheckIn({ stationId: 's1', status: 'nope' as 'available' })
+    ).toThrow(/status/);
+    const long = 'x'.repeat(250);
+    const row = addStationCheckIn({ stationId: ' s1 ', status: 'busy', note: `  ${long}  ` });
+    expect(row.stationId).toBe('s1');
+    expect(row.note).toHaveLength(200);
+  });
 });
