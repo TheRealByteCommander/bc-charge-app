@@ -168,7 +168,7 @@ describe('pinBump readiness gate', () => {
     );
   });
 
-  it('ready after forced clean soak', () => {
+  it('soak samples clean but pinBump stays blocked on #849 data-api matrix', () => {
     process.env.CANARY_FORCE = '1';
     for (let i = 0; i < 50; i += 1) {
       canaryValidateAlways('hasura.transaction', {
@@ -182,10 +182,17 @@ describe('pinBump readiness gate', () => {
       maxFailRate: 0.02,
       requireForce: true,
     });
-    assert.equal(r.ready, true, JSON.stringify(r.blockers));
+    // Structural #849 /data/** routes still block even with a clean forced soak.
+    assert.equal(r.ready, false, JSON.stringify(r.blockers));
+    assert.ok(
+      r.blockers.some((b) => b.includes('849') || b.startsWith('DATA_API_') || b.startsWith('ROUTE_BLOCKS:')),
+      JSON.stringify(r.blockers)
+    );
+    assert.ok(r.dataApiMigration);
+    assert.equal(r.dataApiMigration.ready, false);
     assert.equal(r.totals.total >= 50, true);
     const stats = getCanaryStats();
-    assert.equal(stats.pinBump.ready, true);
+    assert.equal(stats.pinBump.ready, false);
     assert.equal(stats.upstreamWatch, 'v2.0.0-beta3');
     assert.equal(stats.integrationVersion, '1.8.4');
     assert.ok(Array.isArray(stats.upstreamOpen));
@@ -193,6 +200,10 @@ describe('pinBump readiness gate', () => {
     assert.ok(stats.upstreamOpen.some((x) => x.id === 851), 'watch #851 tenant path');
     assert.ok(stats.upstreamOpen.some((x) => x.id === 846), 'watch #846 audit-insert crash');
     assert.ok(stats.upstreamOpen.some((x) => x.id === 852), 'watch #852 measurand drop');
+    assert.ok(stats.dataApiMigration);
+    assert.equal(stats.dataApiMigration.upstreamPr, 849);
+    assert.ok(stats.dataApiMigration.blocking >= 1);
+    assert.equal(stats.dataApiMigration.readiness.ready, false);
   });
 
   it('blocks on high fail rate', () => {

@@ -8,6 +8,7 @@
  * Open drift risks (not in beta3 tag):
  *   - **#849 drop data API** (base `next`): removes `/data/**` entirely → breaks BC REST
  *     `getTransaction`/`getTariffs` paths until migrated (Hasura or new Commands/Api surfaces).
+ *     Matrix: `citrineosDataApiMigration.mjs` (CITRINEOS_DATA_API_MIGRATION) — structural pin gate.
  *   - **#851 tenant path mapping**: config → tenant DB + cache + path sanitization.
  *   - **#846** OCPPMessages audit insert can kill process (webhook dispatcher resilience).
  *   - **#852** unmapped measurands dropped (not relabeled as energy) — good for meter honesty.
@@ -28,7 +29,8 @@ export const CITRINEOS_UPSTREAM_OPEN = [
     title: 'Feature/drop data api',
     url: 'https://github.com/citrineos/citrineos-core/pull/849',
     risk:
-      'Removes /data/** prefix (decorator Data API → explicit Api module). BC uses /data/transactions/transactionType and /data/transactions/tariff — hard break on v2 cutover without path migration or Hasura-only reads',
+      'Removes /data/** prefix (decorator Data API → explicit Api module). BC uses /data/transactions/transactionType and /data/transactions/tariff — hard break on v2 cutover without path migration or Hasura-only reads. See CITRINEOS_DATA_API_MIGRATION in citrineosDataApiMigration.mjs',
+    migrationMatrix: 'server/contracts/citrineosDataApiMigration.mjs',
   },
   {
     id: 851,
@@ -50,10 +52,22 @@ export const CITRINEOS_UPSTREAM_OPEN = [
   },
 ];
 
+/** Lazy import helper so consumers can load the #849 matrix without circular deps at module top. */
+export async function loadDataApiMigrationMatrix() {
+  const mod = await import('./citrineosDataApiMigration.mjs');
+  return {
+    matrix: mod.CITRINEOS_DATA_API_MIGRATION,
+    readiness: mod.evaluateDataApiMigrationReadiness(),
+    summary: mod.summarizeDataApiMigration(),
+  };
+}
+
 export const citrineosIntegrationContract = {
   version: CITRINEOS_INTEGRATION_VERSION,
   upstreamWatch: CITRINEOS_UPSTREAM_WATCH,
   upstreamOpen: CITRINEOS_UPSTREAM_OPEN,
+  /** Structural #849 gate — live object attached by canary stats / routes that import the matrix. */
+  dataApiMigrationRef: 'server/contracts/citrineosDataApiMigration.mjs',
   operator: {
     brand: 'BC Charge',
     company: 'Byte Commander GmbH',

@@ -16,6 +16,11 @@ import {
   CITRINEOS_UPSTREAM_OPEN,
   CITRINEOS_UPSTREAM_WATCH,
 } from '../contracts/citrineosContract.mjs';
+import {
+  evaluateDataApiMigrationReadiness,
+  summarizeDataApiMigration,
+  CITRINEOS_DATA_API_MIGRATION,
+} from '../contracts/citrineosDataApiMigration.mjs';
 import logger from '../utils/logger.mjs';
 
 const recentMismatches = [];
@@ -192,12 +197,27 @@ export function evaluatePinBumpReadiness(opts = {}) {
     }
   }
 
+  // Structural #849 /data/** gate — even a clean canary soak must not greenlight a pin bump
+  // while legacy Data-API routes still block cutover.
+  const dataApi = evaluateDataApiMigrationReadiness();
+  if (!dataApi.ready) {
+    for (const b of dataApi.blockers) {
+      if (!blockers.includes(b)) blockers.push(b);
+    }
+  }
+
   return {
     ready: blockers.length === 0 && total > 0,
     blockers,
     totals: { ok, fail, total, failRate: rate },
     thresholds: { minSamples, maxFailRate, requireForce },
     forceOn,
+    dataApiMigration: {
+      ready: dataApi.ready,
+      blockers: dataApi.blockers,
+      blockingRouteIds: dataApi.blockingRouteIds,
+      upstreamPr: dataApi.upstreamPr,
+    },
     disabled,
     perSchema,
     guidance:
@@ -222,6 +242,14 @@ export function getCanaryStats() {
     integrationVersion: CITRINEOS_INTEGRATION_VERSION,
     upstreamWatch: CITRINEOS_UPSTREAM_WATCH,
     upstreamOpen: CITRINEOS_UPSTREAM_OPEN,
+    /** Structural #849 /data/** migration matrix (does not change runtime routing). */
+    dataApiMigration: {
+      ...summarizeDataApiMigration(),
+      readiness: evaluateDataApiMigrationReadiness(),
+      title: CITRINEOS_DATA_API_MIGRATION.title,
+      upstreamUrl: CITRINEOS_DATA_API_MIGRATION.upstreamUrl,
+      cutoverChecklist: CITRINEOS_DATA_API_MIGRATION.cutoverChecklist,
+    },
   };
 }
 
