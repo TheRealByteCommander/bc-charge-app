@@ -6,6 +6,7 @@ import { getAvailableCount } from '../data/stations';
 import { useAppStore } from '../store/appStore';
 import type { Station } from '../types';
 import { computePlugScore } from '../services/community';
+import { StationReliabilityBadge } from '../components/StationReliabilityBadge';
 import { StationTrustBadge } from '../components/StationTrustBadge';
 import { formatCurrency } from '../utils/format';
 import { minKnownPricePerKwh } from '../utils/pricing';
@@ -89,12 +90,15 @@ export function StationCard({
                 {distance} km
               </div>
             )}
-            {!compact && (
-              <div className="flex items-center gap-2 ml-auto">
+            <div className={`flex items-center gap-2 ${compact ? '' : 'ml-auto'}`}>
+              {!compact && (
                 <span className="inline-flex items-center gap-0.5 text-xs font-medium text-bc-muted" title="PlugScore">
                   <Star className="h-3 w-3 fill-bc-warn text-bc-warn" />
                   {plugScore}
                 </span>
+              )}
+              <StationReliabilityBadge stationId={station.id} compact />
+              {!compact && (
                 <StationTrustBadge
                   stationId={station.id}
                   liveData={liveTrust}
@@ -102,8 +106,8 @@ export function StationCard({
                   offlineCount={station.connectors.filter((c) => c.status === 'offline').length}
                   compact
                 />
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
       </Link>

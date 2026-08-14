@@ -11,6 +11,7 @@ export default defineConfig({
       'src/services/localStores.guards.test.ts',
       'src/api/citrineos/dto.test.ts',
       'src/api/parse.test.ts',
+      'src/services/stationCheckIn.test.ts',
     ],
     environment: 'node',
   },

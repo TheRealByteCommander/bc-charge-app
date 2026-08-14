@@ -48,13 +48,28 @@ export function ChargingPage() {
   if (!activeSession) {
     return (
       <div className="flex min-h-dvh flex-col items-center justify-center px-6 pb-28 text-center">
-        <Zap className="h-16 w-16 text-bc-muted opacity-40" />
+        <div className="flex h-20 w-20 items-center justify-center rounded-full bg-bc-elevated">
+          <Zap className="h-10 w-10 text-bc-muted opacity-70" />
+        </div>
         <h1 className="mt-6 font-display text-xl font-bold">
           {locale === 'de' ? 'Kein aktiver Ladevorgang' : 'No active charging session'}
         </h1>
-        <Link to="/scan" className="btn-primary mt-8">
-          {locale === 'de' ? 'Laden starten' : 'Start charging'}
-        </Link>
+        <p className="mt-2 max-w-xs text-sm text-bc-muted">
+          {locale === 'de'
+            ? 'Scanne den QR-Code an der Säule oder wähle eine Station in der Nähe.'
+            : 'Scan the charger QR code or pick a nearby station.'}
+        </p>
+        <div className="mt-8 flex w-full max-w-xs flex-col gap-3">
+          <Link to="/scan" className="btn-primary">
+            {locale === 'de' ? 'QR scannen' : 'Scan QR'}
+          </Link>
+          <Link to="/karte" className="btn-secondary">
+            {locale === 'de' ? 'Karte öffnen' : 'Open map'}
+          </Link>
+          <Link to="/stationen" className="text-sm font-medium text-bc-accent">
+            {locale === 'de' ? 'Stationen-Liste' : 'Station list'}
+          </Link>
+        </div>
       </div>
     );
   }
@@ -162,6 +177,27 @@ export function ChargingPage() {
         {locale === 'de' ? 'Details & Hilfe' : 'Details & help'}
         <ChevronRight className="h-4 w-4" />
       </button>
+
+      <div className="mt-6 grid grid-cols-3 gap-2 text-center">
+        <div className="rounded-2xl border border-bc-border bg-bc-elevated/80 px-2 py-3">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-bc-muted">
+            {locale === 'de' ? 'Leistung' : 'Power'}
+          </p>
+          <p className="mt-1 text-sm font-bold text-bc-text">{formatPower(activeSession.powerKw)}</p>
+        </div>
+        <div className="rounded-2xl border border-bc-border bg-bc-elevated/80 px-2 py-3">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-bc-muted">
+            {locale === 'de' ? 'Dauer' : 'Time'}
+          </p>
+          <p className="mt-1 text-sm font-bold text-bc-text">{formatDuration(elapsed)}</p>
+        </div>
+        <div className="rounded-2xl border border-bc-border bg-bc-elevated/80 px-2 py-3">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-bc-muted">
+            {locale === 'de' ? 'Ziel' : 'Target'}
+          </p>
+          <p className="mt-1 text-sm font-bold text-bc-text">{Math.round(progress)}%</p>
+        </div>
+      </div>
 
       <div className="mt-auto space-y-3 pt-8">
         <button

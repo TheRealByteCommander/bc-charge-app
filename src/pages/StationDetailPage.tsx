@@ -1,4 +1,4 @@
-import { ArrowLeft, Flag, Heart, Info, Zap } from 'lucide-react';
+import { ArrowLeft, Flag, Heart, Info, MapPinned, MessageCircleHeart, Zap } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ChargeStartConfirmSheet } from '../components/ChargeStartConfirmSheet';
@@ -6,6 +6,8 @@ import { ChargingSetupChecklist } from '../components/ChargingSetupChecklist';
 import { ConnectorLedStatus } from '../components/ConnectorLedStatus';
 import { ConnectorPrice } from '../components/ConnectorPrice';
 import { GuestBanner } from '../components/GuestBanner';
+import { StationCheckInSheet } from '../components/StationCheckInSheet';
+import { StationReliabilityBadge } from '../components/StationReliabilityBadge';
 import { StationInfoSheet } from '../components/sheets/StationInfoSheet';
 import { StationReportSheet } from '../components/sheets/StationReportSheet';
 import { MenuRow, MenuSection } from '../components/ui/MenuList';
@@ -61,6 +63,8 @@ export function StationDetailPage() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
   const [showReport, setShowReport] = useState(false);
+  const [showCheckIn, setShowCheckIn] = useState(false);
+  const [checkInTick, setCheckInTick] = useState(0);
   const [startSoc, setStartSoc] = useState(30);
   const [targetSoc, setTargetSoc] = useState(80);
 
@@ -189,9 +193,37 @@ export function StationDetailPage() {
       <div className="mt-4">
         <h1 className="font-display text-2xl font-bold tracking-tight">{station.name}</h1>
         <p className="mt-1 text-sm text-bc-muted">
+          {station.address}, {station.zip} {station.city}
+        </p>
+        <p className="mt-1 text-sm text-bc-muted">
           {getAvailableCount(station)} frei
           {dist != null ? ` · ${dist} km` : ''}
+          {` · PlugScore ${plugScore}`}
         </p>
+      </div>
+
+      <div className="mt-3" key={checkInTick}>
+        <StationReliabilityBadge stationId={station.id} />
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 gap-2">
+        <a
+          href={`https://www.google.com/maps/dir/?api=1&destination=${station.lat},${station.lng}`}
+          target="_blank"
+          rel="noreferrer"
+          className="btn-secondary flex items-center justify-center gap-2 py-3 text-sm"
+        >
+          <MapPinned className="h-4 w-4" />
+          Navigation
+        </a>
+        <button
+          type="button"
+          onClick={() => setShowCheckIn(true)}
+          className="btn-secondary flex items-center justify-center gap-2 py-3 text-sm"
+        >
+          <MessageCircleHeart className="h-4 w-4" />
+          Check-in
+        </button>
       </div>
 
       {user && setupIncomplete && (
@@ -250,17 +282,30 @@ export function StationDetailPage() {
 
       <MenuSection title="Mehr">
         <MenuRow icon={Info} label="Station & Route" onClick={() => setShowInfo(true)} />
+        <MenuRow icon={MessageCircleHeart} label="Check-in senden" onClick={() => setShowCheckIn(true)} />
         <MenuRow icon={Flag} label="Problem melden" onClick={() => setShowReport(true)} />
       </MenuSection>
 
-      {!user && selectedConnector && (
-        <Link
-          to={buildGuestChargePath(station.id, selectedConnector)}
-          className="btn-primary mt-6 flex w-full items-center justify-center gap-2"
-        >
-          <Zap className="h-4 w-4" />
-          Ad-Hoc laden
-        </Link>
+      {!user && (
+        <div className="mt-6 space-y-3">
+          {selectedConnector ? (
+            <Link
+              to={buildGuestChargePath(station.id, selectedConnector)}
+              className="btn-primary flex w-full items-center justify-center gap-2"
+            >
+              <Zap className="h-4 w-4" />
+              Ad-Hoc laden (ohne Konto)
+            </Link>
+          ) : (
+            <p className="rounded-xl border border-bc-border bg-bc-elevated px-3 py-2 text-center text-sm text-bc-muted">
+              Anschluss wählen, dann Ad-Hoc laden — oder{' '}
+              <Link to="/anmelden" className="font-medium text-bc-accent">
+                anmelden
+              </Link>
+              .
+            </p>
+          )}
+        </div>
       )}
 
       {user && <div className="h-28 shrink-0" aria-hidden="true" />}
@@ -315,6 +360,13 @@ export function StationDetailPage() {
         showAccessibleBadge={showAccessibleBadge}
       />
       <StationReportSheet open={showReport} onClose={() => setShowReport(false)} stationId={station.id} />
+      <StationCheckInSheet
+        open={showCheckIn}
+        onClose={() => setShowCheckIn(false)}
+        stationId={station.id}
+        stationName={station.name}
+        onSubmitted={() => setCheckInTick((n) => n + 1)}
+      />
     </div>
   );
 }

@@ -6,6 +6,8 @@ import { Link } from 'react-router-dom';
 import { getAvailableCount } from '../data/stations';
 import type { Station } from '../types';
 import { isValidStationPosition } from '../utils/geo';
+import { formatCurrency } from '../utils/format';
+import { minKnownPricePerKwh } from '../utils/pricing';
 
 const iconAvailable = L.divIcon({
   className: '',
@@ -95,19 +97,41 @@ export function ChargeMap({
             pathOptions={{ color: '#3b82f6', weight: 4, opacity: 0.85, dashArray: '8 8' }}
           />
         )}
-        {markers.map(({ station, pos, icon }) => (
-          <Marker key={station.id} position={pos} icon={icon}>
-            <Popup>
-              <div className="min-w-[180px] text-sm">
-                <p className="font-semibold text-bc-text">{station.name}</p>
-                <p className="text-bc-muted">{getAvailableCount(station)} Anschlüsse frei</p>
-                <Link to={`/station/${station.id}`} className="mt-2 inline-block font-medium text-bc-accent">
-                  Details öffnen →
-                </Link>
-              </div>
-            </Popup>
-          </Marker>
-        ))}
+        {markers.map(({ station, pos, icon }) => {
+          const available = getAvailableCount(station);
+          const maxKw = Math.max(0, ...station.connectors.map((c) => c.powerKw || 0));
+          const minPrice = minKnownPricePerKwh(station.connectors);
+          return (
+            <Marker key={station.id} position={pos} icon={icon}>
+              <Popup>
+                <div className="min-w-[200px] text-sm">
+                  <p className="font-semibold text-bc-text">{station.name}</p>
+                  <p className="mt-1 text-bc-muted">
+                    {available} frei
+                    {maxKw > 0 ? ` · bis ${maxKw} kW` : ''}
+                    {minPrice != null ? ` · ab ${formatCurrency(minPrice)}/kWh` : ''}
+                  </p>
+                  <div className="mt-2 flex flex-col gap-1.5">
+                    <Link
+                      to={`/station/${station.id}`}
+                      className="inline-block font-medium text-bc-accent"
+                    >
+                      Details & laden →
+                    </Link>
+                    <a
+                      href={`https://www.google.com/maps/dir/?api=1&destination=${station.lat},${station.lng}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-block text-xs font-medium text-bc-muted underline-offset-2 hover:underline"
+                    >
+                      Navigation
+                    </a>
+                  </div>
+                </div>
+              </Popup>
+            </Marker>
+          );
+        })}
       </MapContainer>
     </div>
   );
