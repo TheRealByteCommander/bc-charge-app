@@ -1,4 +1,4 @@
-import type { ZodType } from 'zod';
+import type { z, ZodType, ZodTypeAny } from 'zod';
 import { apiConfig } from '../../config/api';
 import { fetchWithTimeout } from '../../utils/fetchWithTimeout';
 import {
@@ -19,18 +19,30 @@ export class BackendApiError extends Error {
   }
 }
 
-export type BackendApiOptions = RequestInit & {
-  /** Optional Zod schema — preferred over bare generic cast. */
-  schema?: ZodType;
+type BackendRequestInit = RequestInit & {
   /** Allow non-object JSON when no schema (rare). */
   allowNonObject?: boolean;
 };
 
-export async function backendApi<T>(
+/** Schema-backed call — return type is Zod output (post-transform). */
+export async function backendApi<S extends ZodTypeAny>(
   path: string,
-  options: BackendApiOptions = {},
+  options: BackendRequestInit & { schema: S },
+  timeoutMs?: number
+): Promise<z.output<S>>;
+
+/** Untyped / legacy generic call (prefer schema overload). */
+export async function backendApi<T = unknown>(
+  path: string,
+  options?: BackendRequestInit & { schema?: ZodType<T> },
+  timeoutMs?: number
+): Promise<T>;
+
+export async function backendApi(
+  path: string,
+  options: BackendRequestInit & { schema?: ZodTypeAny } = {},
   timeoutMs = 12_000
-): Promise<T> {
+): Promise<unknown> {
   const { schema, allowNonObject, ...init } = options;
   const url = `${apiConfig.baseUrl}${path}`;
   const res = await fetchWithTimeout(
@@ -66,7 +78,7 @@ export async function backendApi<T>(
   }
 
   try {
-    return parseApiData<T>(raw, schema as ZodType<T> | undefined, `backend ${path}`, {
+    return parseApiData(raw, schema, `backend ${path}`, {
       allowNonObject,
     });
   } catch (e) {
@@ -79,7 +91,7 @@ export async function backendApi<T>(
 
 export async function backendHealth(): Promise<boolean> {
   try {
-    const r = await backendApi<{ ok: boolean }>('/api/health', { schema: OkEnvelopeSchema });
+    const r = await backendApi('/api/health', { schema: OkEnvelopeSchema });
     return r.ok;
   } catch {
     return false;

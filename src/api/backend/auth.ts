@@ -1,5 +1,7 @@
 import type { UserProfile } from '../../types';
+import { OkEnvelopeSchema } from '../parse';
 import { backendApi } from './client';
+import { AuthUserEnvelopeSchema, toUserProfile } from './schemas';
 
 export async function registerUser(data: {
   email: string;
@@ -11,36 +13,38 @@ export async function registerUser(data: {
   acceptTerms: boolean;
   marketingOptIn?: boolean;
 }): Promise<UserProfile> {
-  const res = await backendApi<{ user: UserProfile }>('/api/auth/register', {
+  const res = await backendApi('/api/auth/register', {
     method: 'POST',
     body: JSON.stringify(data),
+    schema: AuthUserEnvelopeSchema,
   });
-  return res.user;
+  return toUserProfile(res.user);
 }
 
 export async function loginUser(email: string, password: string): Promise<UserProfile> {
-  const res = await backendApi<{ user: UserProfile }>('/api/auth/login', {
+  const res = await backendApi('/api/auth/login', {
     method: 'POST',
     body: JSON.stringify({ email, password }),
+    schema: AuthUserEnvelopeSchema,
   });
-  return res.user;
+  return toUserProfile(res.user);
 }
 
 export async function logoutUser(): Promise<void> {
-  await backendApi('/api/auth/logout', { method: 'POST' });
+  await backendApi('/api/auth/logout', { method: 'POST', schema: OkEnvelopeSchema });
 }
 
 export async function fetchCurrentUser(): Promise<UserProfile | null> {
   try {
-    const res = await backendApi<{ user: UserProfile }>('/api/auth/me');
-    return res.user;
+    const res = await backendApi('/api/auth/me', { schema: AuthUserEnvelopeSchema });
+    return toUserProfile(res.user);
   } catch {
     return null;
   }
 }
 
 export async function deleteAccountRemote(): Promise<void> {
-  await backendApi('/api/auth/account', { method: 'DELETE' });
+  await backendApi('/api/auth/account', { method: 'DELETE', schema: OkEnvelopeSchema });
 }
 
 export async function downloadExportFromServer(): Promise<void> {
