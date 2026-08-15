@@ -933,6 +933,26 @@ function mergeSessionData(data, patch) {
   return next;
 }
 
+/**
+ * Import register energy must not go backwards within an active session
+ * (stale meter sample / unit glitch / out-of-order deliver without seqNo).
+ * Returns the energy to persist, or null when the sample should be ignored.
+ * @param {unknown} prevEnergy
+ * @param {unknown} nextEnergy
+ * @returns {number | null}
+ */
+export function pickMonotonicEnergyKwh(prevEnergy, nextEnergy) {
+  if (nextEnergy == null || nextEnergy === '') return null;
+  const next = Number(nextEnergy);
+  if (!Number.isFinite(next) || next < 0) return null;
+  if (prevEnergy == null || prevEnergy === '') return next;
+  const prev = Number(prevEnergy);
+  if (!Number.isFinite(prev)) return next;
+  // Allow tiny float noise downward; reject real regressions (e.g. Wh/kWh mix-up).
+  if (next + 1e-6 < prev) return null;
+  return next;
+}
+
 async function listActiveSessionRowsByJsonField(field, value) {
   const strVal = String(value);
   const numVal = Number(value);
@@ -1122,7 +1142,16 @@ export async function applyCitrineosWebhookToSessions(event) {
         continue;
       }
       const patch = {};
-      if (event.totalKwh != null) patch.energyKwh = event.totalKwh;
+      if (event.totalKwh != null) {
+        const energy = pickMonotonicEnergyKwh(data.energyKwh, event.totalKwh);
+        if (energy != null) {
+          patch.energyKwh = energy;
+        } else {
+          actions.push(
+            `energy-regress:tx=${transactionId}:prev=${data.energyKwh}:next=${event.totalKwh}`
+          );
+        }
+      }
       if (event.totalCost != null) patch.costEur = event.totalCost;
       if (nextSeq != null && Number.isFinite(nextSeq)) patch.lastCitrineosEventSeqNo = nextSeq;
       if (event.eventType != null) patch.lastCitrineosEventType = event.eventType;
@@ -1192,7 +1221,17 @@ export async function applyCitrineosWebhookToSessions(event) {
       };
       // Keep final meter/cost on the stop patch so Ended is self-contained even if
       // the metrics branch skipped (e.g. only isActive=false + energy in one event).
-      if (event.totalKwh != null) patch.energyKwh = event.totalKwh;
+      // Still reject clear energy regressions (unit glitch) so final kWh is not understated.
+      if (event.totalKwh != null) {
+        const energy = pickMonotonicEnergyKwh(data.energyKwh, event.totalKwh);
+        if (energy != null) {
+          patch.energyKwh = energy;
+        } else {
+          actions.push(
+            `energy-regress-stop:tx=${transactionId}:prev=${data.energyKwh}:next=${event.totalKwh}`
+          );
+        }
+      }
       if (event.totalCost != null) patch.costEur = event.totalCost;
       if (nextSeq != null && Number.isFinite(nextSeq)) patch.lastCitrineosEventSeqNo = nextSeq;
       if (event.eventType != null) patch.lastCitrineosEventType = event.eventType;

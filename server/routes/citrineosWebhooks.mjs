@@ -121,6 +121,28 @@ function extractEnergyKwhFromMeterValues(meterValue) {
   return energyKwh;
 }
 
+/** OCPP 2.0.1 Transaction.ChargingStateEnumType (+ common casing variants). */
+const OCPP_CHARGING_STATE_BY_KEY = Object.freeze(
+  Object.fromEntries(
+    ['Idle', 'EVConnected', 'Charging', 'SuspendedEV', 'SuspendedEVSE'].map((s) => [
+      s.toLowerCase(),
+      s,
+    ])
+  )
+);
+
+/**
+ * Accept only real OCPP charging states; drop session lifecycle strings / garbage.
+ * @param {unknown} raw
+ * @returns {string | null}
+ */
+function normalizeOcppChargingState(raw) {
+  if (typeof raw !== 'string') return null;
+  const t = raw.trim();
+  if (!t) return null;
+  return OCPP_CHARGING_STATE_BY_KEY[t.toLowerCase()] ?? null;
+}
+
 /**
  * Normalize CitrineOS / custom dispatcher payloads into a stable internal shape.
  * Mirrors server/services/citrineosServer.mjs normalizeTransactionRow field aliases.
@@ -196,17 +218,15 @@ function normalizeCitrineosWebhookPayload(raw) {
 
   // OCPP 2.0.1 transactionInfo.chargingState (Idle/EVConnected/Charging/SuspendedEV/SuspendedEVSE).
   // Useful for LM/UI when triggerReason is ChargingStateChanged or Suspended* without rate change.
+  // Do NOT fall back to body.state — session/lifecycle status ("active"/"completed") is not OCPP chargingState
+  // and would poison idle-fee / UI consumers (see pricing OCPP_IDLE_STATES).
   const chargingStateRaw =
     body.chargingState ??
     body.charging_state ??
     transactionInfo?.chargingState ??
     transactionInfo?.charging_state ??
-    body.state ??
     null;
-  const chargingState =
-    typeof chargingStateRaw === 'string' && chargingStateRaw.trim()
-      ? chargingStateRaw.trim()
-      : null;
+  const chargingState = normalizeOcppChargingState(chargingStateRaw);
 
   // Station id for LM GetCompositeSchedule re-opt (top-level or nested).
   const stationIdRaw =

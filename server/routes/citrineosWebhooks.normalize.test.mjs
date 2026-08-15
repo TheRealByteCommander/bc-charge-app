@@ -193,4 +193,32 @@ describe('normalizeCitrineosWebhookPayload OCPP2 nested', () => {
     });
     assert.equal(kwhExplicit?.totalKwh, 4.2);
   });
+
+  it('ignores body.state lifecycle strings and normalizes chargingState casing', () => {
+    const poisoned = normalizeCitrineosWebhookPayload({
+      transactionId: 'tx-state-poison',
+      state: 'active',
+      totalKwh: 1.1,
+    });
+    assert.equal(poisoned?.chargingState, null);
+
+    const sessionCompleted = normalizeCitrineosWebhookPayload({
+      transactionId: 'tx-state-done',
+      state: 'completed',
+      isActive: false,
+    });
+    assert.equal(sessionCompleted?.chargingState, null);
+
+    const lower = normalizeCitrineosWebhookPayload({
+      transactionId: 'tx-cs-case',
+      transactionInfo: { chargingState: 'suspendedevse' },
+    });
+    assert.equal(lower?.chargingState, 'SuspendedEVSE');
+
+    const garbage = normalizeCitrineosWebhookPayload({
+      transactionId: 'tx-cs-garbage',
+      chargingState: 'NotARealState',
+    });
+    assert.equal(garbage?.chargingState, null);
+  });
 });
