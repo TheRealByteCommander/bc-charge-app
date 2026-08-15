@@ -1,8 +1,11 @@
 import {
+  cancelPreauth,
+  captureSession,
   chargeSession,
   createSetupIntent,
   createStripeCustomer,
   listStripePaymentMethods,
+  preauthSession,
   setDefaultStripePaymentMethod,
   detachStripePaymentMethod,
   stripeHealth,
@@ -78,6 +81,64 @@ export async function chargeChargingSession(
     sessionId,
     sessionCostEur: amountEur,
   });
+}
+
+function resolveStripePmId(user: UserProfile, paymentMethodId: string): string {
+  const pm = user.paymentMethods.find((p) => p.id === paymentMethodId);
+  return pm?.stripePaymentMethodId ?? paymentMethodId;
+}
+
+/** Hold €50 (server default) on the card before RemoteStart / power. */
+export async function preauthChargingSession(
+  user: UserProfile,
+  paymentMethodId: string,
+  sessionId: string,
+  description: string
+): Promise<{
+  paymentIntentId: string;
+  status: string;
+  authorized: boolean;
+  preAuthCents: number;
+  preAuthEur?: number;
+}> {
+  if (!user.stripeCustomerId) {
+    throw new Error('Kein Stripe-Kunde hinterlegt');
+  }
+  return preauthSession({
+    customerId: user.stripeCustomerId,
+    paymentMethodId: resolveStripePmId(user, paymentMethodId),
+    sessionId,
+    currency: 'eur',
+    description,
+  });
+}
+
+/** Capture actual kWh cost against the pre-auth hold. */
+export async function captureChargingSession(
+  paymentIntentId: string,
+  sessionId: string,
+  costEur: number
+): Promise<{
+  paid: boolean;
+  paymentIntentId: string;
+  status: string;
+  paymentStatus?: string;
+  captureCents?: number;
+  cancelled?: boolean;
+}> {
+  return captureSession({
+    paymentIntentId,
+    sessionId,
+    sessionCostEur: costEur,
+  });
+}
+
+/** Release hold if start fails or session is abandoned without charge. */
+export async function cancelChargingPreauth(
+  paymentIntentId: string,
+  sessionId?: string
+): Promise<{ paymentIntentId: string; status: string; cancelled?: boolean }> {
+  return cancelPreauth({ paymentIntentId, sessionId });
 }
 
 export {

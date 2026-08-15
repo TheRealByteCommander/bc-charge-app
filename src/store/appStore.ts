@@ -29,11 +29,14 @@ import {
   syncStationsFromCitrineos,
 } from '../services/citrineosSync';
 import {
+  cancelChargingPreauth,
+  captureChargingSession,
   chargeChargingSession,
   detachStripePaymentMethod,
   ensureStripeCustomer,
   fetchStripePaymentMethods,
   isStripeBackendReady,
+  preauthChargingSession,
   setDefaultStripePaymentMethod,
 } from '../services/stripeService';
 import type {
@@ -996,8 +999,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       rewardLabel = reward?.title;
     }
 
+    const sessionId = generateId('sess');
     let session: ChargingSession = {
-      id: generateId('sess'),
+      id: sessionId,
       stationId,
       stationName: station.name,
       connectorId,
@@ -1019,19 +1023,77 @@ export const useAppStore = create<AppState>((set, get) => ({
       evseNumber: connector.evseNumber,
       appliedFulfillmentId: appliedFulfillmentId ?? undefined,
       rewardLabel,
+      paymentStatus: 'pending',
     };
+
+    // Money first: authorize €50 hold BEFORE RemoteStart / power flow.
+    const { stripeReady } = get();
+    let preauthPaymentIntentId: string | undefined;
+    if (stripeReady && user.stripeCustomerId) {
+      try {
+        const auth = await preauthChargingSession(
+          user,
+          paymentMethodId,
+          sessionId,
+          `BC Charge Pre-Auth – ${station.name}`
+        );
+        if (!auth.authorized) {
+          return {
+            ok: false,
+            error: 'Karte konnte nicht vorautorisiert werden (50 € Hold). Bitte Zahlungsmethode prüfen.',
+          };
+        }
+        preauthPaymentIntentId = auth.paymentIntentId;
+        session = {
+          ...session,
+          stripePaymentIntentId: auth.paymentIntentId,
+          paymentStatus: 'pending',
+        };
+      } catch (e) {
+        return {
+          ok: false,
+          error:
+            e instanceof Error
+              ? e.message
+              : 'Pre-Autorisierung fehlgeschlagen – Laden nicht gestartet.',
+        };
+      }
+    } else if (stripeReady && !user.stripeCustomerId) {
+      return {
+        ok: false,
+        error: 'Stripe-Kunde fehlt. Bitte unter Profil → Zahlung eine Karte hinterlegen.',
+      };
+    }
 
     if (citrineosConnected && getStationDataSource() === 'citrineos') {
       try {
         const cs = await startCitrineosCharge(station, connectorId, user.membershipId);
-        if (!cs.ok) return { ok: false, error: cs.error };
+        if (!cs.ok) {
+          if (preauthPaymentIntentId) {
+            try {
+              await cancelChargingPreauth(preauthPaymentIntentId, sessionId);
+            } catch {
+              /* hold expires if cancel fails */
+            }
+          }
+          return { ok: false, error: cs.error };
+        }
         session = {
           ...session,
           ...cs.sessionPatch,
           citrineosBacked: true,
           citrineosStationDbId: station.citrineosDatabaseId,
+          stripePaymentIntentId: preauthPaymentIntentId ?? session.stripePaymentIntentId,
+          paymentStatus: 'pending',
         };
       } catch (e) {
+        if (preauthPaymentIntentId) {
+          try {
+            await cancelChargingPreauth(preauthPaymentIntentId, sessionId);
+          } catch {
+            /* ignore */
+          }
+        }
         return {
           ok: false,
           error: e instanceof Error ? e.message : 'Ladevorgang konnte nicht gestartet werden',
@@ -1044,6 +1106,13 @@ export const useAppStore = create<AppState>((set, get) => ({
       try {
         await saveSession(session);
       } catch (e) {
+        if (preauthPaymentIntentId) {
+          try {
+            await cancelChargingPreauth(preauthPaymentIntentId, sessionId);
+          } catch {
+            /* ignore */
+          }
+        }
         if (e instanceof BackendApiError && e.status === 409) {
           try {
             const remoteSessions = await fetchSessions();
@@ -1195,22 +1264,45 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     let paymentStatus: ChargingSession['paymentStatus'] = 'skipped';
-    let stripePaymentIntentId: string | undefined;
+    let stripePaymentIntentId: string | undefined = current.stripePaymentIntentId;
 
     const { stripeReady } = get();
-    if (stripeReady && user.stripeCustomerId && current.costEur >= 0.5) {
+    if (stripeReady && user.stripeCustomerId) {
       try {
-        const charge = await chargeChargingSession(
-          user,
-          current.paymentMethodId,
-          current.costEur,
-          current.id,
-          `BC Charge – ${current.stationName}`
-        );
-        stripePaymentIntentId = charge.paymentIntentId;
-        paymentStatus = charge.paid ? 'paid' : charge.status === 'processing' ? 'pending' : 'failed';
-        if (!charge.paid) {
-          set({ toast: 'Zahlung ausstehend – bitte prüfen Sie Ihre Zahlungsmethode.' });
+        if (stripePaymentIntentId) {
+          // Preferred path: capture actual usage against the €50 pre-auth hold.
+          const capture = await captureChargingSession(
+            stripePaymentIntentId,
+            current.id,
+            current.costEur
+          );
+          stripePaymentIntentId = capture.paymentIntentId;
+          if (capture.cancelled) {
+            paymentStatus = 'skipped';
+          } else if (capture.paid) {
+            paymentStatus = 'paid';
+          } else if (capture.paymentStatus === 'pending' || capture.status === 'processing') {
+            paymentStatus = 'pending';
+          } else {
+            paymentStatus = 'failed';
+          }
+          if (paymentStatus === 'failed') {
+            set({ toast: 'Zahlung ausstehend – bitte prüfen Sie Ihre Zahlungsmethode.' });
+          }
+        } else if (current.costEur >= 0.5) {
+          // Legacy fallback: immediate charge if session has no pre-auth (older active sessions).
+          const charge = await chargeChargingSession(
+            user,
+            current.paymentMethodId,
+            current.costEur,
+            current.id,
+            `BC Charge – ${current.stationName}`
+          );
+          stripePaymentIntentId = charge.paymentIntentId;
+          paymentStatus = charge.paid ? 'paid' : charge.status === 'processing' ? 'pending' : 'failed';
+          if (!charge.paid) {
+            set({ toast: 'Zahlung ausstehend – bitte prüfen Sie Ihre Zahlungsmethode.' });
+          }
         }
       } catch (e) {
         paymentStatus = 'failed';

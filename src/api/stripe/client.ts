@@ -10,10 +10,13 @@ import {
   readResponseJson,
 } from '../parse';
 import {
+  StripeCancelPreauthSchema,
+  StripeCaptureSessionSchema,
   StripeChargeSessionSchema,
   StripeCustomerSchema,
   StripeEmptyOkSchema,
   StripePaymentMethodsEnvelopeSchema,
+  StripePreauthSessionSchema,
   StripeSetupIntentSchema,
 } from './schemas';
 
@@ -160,5 +163,59 @@ export async function chargeSession(params: {
     method: 'POST',
     body: JSON.stringify(params),
     schema: StripeChargeSessionSchema,
+  });
+}
+
+/** Authorize €50 (configurable) hold before power starts. */
+export async function preauthSession(params: {
+  customerId: string;
+  paymentMethodId: string;
+  sessionId: string;
+  currency?: string;
+  description?: string;
+}): Promise<{
+  paymentIntentId: string;
+  status: string;
+  authorized: boolean;
+  preAuthCents: number;
+  preAuthEur?: number;
+}> {
+  return stripeApi('/api/stripe/preauth-session', {
+    method: 'POST',
+    body: JSON.stringify(params),
+    schema: StripePreauthSessionSchema,
+  });
+}
+
+/** Capture actual usage against prior hold. */
+export async function captureSession(params: {
+  paymentIntentId: string;
+  sessionId: string;
+  sessionCostEur: number;
+  amountCents?: number;
+}): Promise<{
+  paymentIntentId: string;
+  status: string;
+  paid: boolean;
+  paymentStatus?: string;
+  captureCents?: number;
+  cancelled?: boolean;
+}> {
+  return stripeApi('/api/stripe/capture-session', {
+    method: 'POST',
+    body: JSON.stringify(params),
+    schema: StripeCaptureSessionSchema,
+  });
+}
+
+/** Release unused hold (start failed / abandoned). */
+export async function cancelPreauth(params: {
+  paymentIntentId: string;
+  sessionId?: string;
+}): Promise<{ paymentIntentId: string; status: string; cancelled?: boolean }> {
+  return stripeApi('/api/stripe/cancel-preauth', {
+    method: 'POST',
+    body: JSON.stringify(params),
+    schema: StripeCancelPreauthSchema,
   });
 }

@@ -17,6 +17,11 @@ import {
 } from '../services/citrineosServer.mjs';
 import { isConnectorFinishing, isConnectorStartable } from '../utils/ocppStatus.mjs';
 import { findAdhocSession, insertAdhocSession, updateAdhocSession } from '../db.mjs';
+import {
+  computeCaptureCents,
+  getPreauthCents,
+  isAuthorizedForStart,
+} from '../services/stripePreauth.mjs';
 
 const router = Router();
 const stripeSecret = process.env.STRIPE_SECRET_KEY;
@@ -25,10 +30,7 @@ const stripe = stripeSecret ? new Stripe(stripeSecret) : null;
 const adhocLimiter = createRateLimiter({ windowMs: 60_000, max: 30 });
 const adhocMutateLimiter = createRateLimiter({ windowMs: 60_000, max: 15 });
 
-const PREAUTH_CENTS = Math.min(
-  25_000,
-  Math.max(500, Number(process.env.BC_ADHOC_PREAUTH_CENTS ?? 5000))
-);
+const PREAUTH_CENTS = getPreauthCents();
 const ADHOC_ENABLED = process.env.BC_ADHOC_ENABLED !== 'false';
 
 function requireAdhocEnabled(_req, res, next) {
@@ -212,7 +214,7 @@ router.post('/start', adhocMutateLimiter, async (req, res) => {
     }
 
     const intent = await s.paymentIntents.retrieve(session.paymentIntentId);
-    if (intent.status !== 'requires_capture' && intent.status !== 'succeeded') {
+    if (!isAuthorizedForStart(intent.status)) {
       res.status(402).json({ error: 'Zahlung nicht autorisiert' });
       return;
     }
@@ -361,17 +363,22 @@ router.post('/stop', adhocMutateLimiter, async (req, res) => {
       return;
     }
 
-    const captureCents = Math.min(
-      PREAUTH_CENTS,
-      Math.max(50, Math.round(costEur * 100))
+    const captureCents = computeCaptureCents(
+      costEur,
+      session.preAuthCents ?? PREAUTH_CENTS
     );
 
     let paymentStatus = 'skipped';
     try {
-      const intent = await s.paymentIntents.capture(session.paymentIntentId, {
-        amount_to_capture: captureCents,
-      });
-      paymentStatus = intent.status === 'succeeded' ? 'paid' : 'pending';
+      if (captureCents < 50) {
+        await s.paymentIntents.cancel(session.paymentIntentId);
+        paymentStatus = 'cancelled';
+      } else {
+        const intent = await s.paymentIntents.capture(session.paymentIntentId, {
+          amount_to_capture: captureCents,
+        });
+        paymentStatus = intent.status === 'succeeded' ? 'paid' : 'pending';
+      }
     } catch (captureErr) {
       if (captureCents <= 50) {
         await s.paymentIntents.cancel(session.paymentIntentId);
