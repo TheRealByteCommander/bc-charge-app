@@ -1,10 +1,14 @@
 /** PM2-Produktionskonfiguration – siehe scripts/deploy/setup-server.sh */
+const path = require('path');
+
 module.exports = {
   apps: [
     {
       name: 'bc-charge-api',
       script: 'server/start.mjs',
       cwd: __dirname,
+      // Node 20+: load /opt/bc-charge/.env into process.env (JWT, CitrineOS, Stripe, …)
+      node_args: `--env-file=${path.join(__dirname, '.env')}`,
       env: {
         NODE_ENV: 'production',
         BC_SERVER_PORT: '3001',
