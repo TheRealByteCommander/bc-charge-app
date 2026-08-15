@@ -124,6 +124,7 @@ export async function captureChargingSession(
   status: string;
   paymentStatus?: string;
   captureCents?: number;
+  amountChargedEur?: number;
   cancelled?: boolean;
 }> {
   return captureSession({

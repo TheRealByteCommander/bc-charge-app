@@ -233,9 +233,14 @@ router.post('/:id/complete', requireAuth, async (req, res) => {
     costEur = applied.costEur;
   }
 
+  // Validate usage economics on base/usage cost; billed total may include Stripe €0.50 minimum.
+  const usageCostForValidation =
+    session.baseCostEur != null && Number.isFinite(Number(session.baseCostEur))
+      ? Number(session.baseCostEur)
+      : costEur;
   const costError = validateSessionCost({
     energyKwh: session.energyKwh,
-    costEur,
+    costEur: usageCostForValidation,
     pricePerKwh: session.pricePerKwh,
     sessionFee: session.sessionFee,
     minutes,
@@ -264,13 +269,29 @@ router.post('/:id/complete', requireAuth, async (req, res) => {
     updatedProfile = { ...updatedProfile, gamification: gamificationPatch };
   }
 
+  // If client already aligned costEur to Stripe capture (card minimum), keep it.
+  const captureCents =
+    session.captureCents != null && Number.isFinite(Number(session.captureCents))
+      ? Math.round(Number(session.captureCents))
+      : null;
+  const amountChargedEur =
+    session.amountChargedEur != null && Number.isFinite(Number(session.amountChargedEur))
+      ? Math.round(Number(session.amountChargedEur) * 100) / 100
+      : captureCents != null
+        ? captureCents / 100
+        : null;
+  const billedCostEur =
+    amountChargedEur != null && amountChargedEur > 0 ? amountChargedEur : costEur;
+
   let completed = {
     ...session,
     status: 'completed',
     endedAt: session.endedAt ?? new Date().toISOString(),
-    baseCostEur,
+    baseCostEur: baseCostEur ?? costEur,
     rewardDiscountEur,
-    costEur,
+    costEur: billedCostEur,
+    captureCents: captureCents ?? undefined,
+    amountChargedEur: amountChargedEur ?? undefined,
     rewardLabel: session.rewardLabel,
   };
 

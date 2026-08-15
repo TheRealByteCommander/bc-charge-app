@@ -199,6 +199,7 @@ export async function captureSession(params: {
   paid: boolean;
   paymentStatus?: string;
   captureCents?: number;
+  amountChargedEur?: number;
   cancelled?: boolean;
 }> {
   return stripeApi('/api/stripe/capture-session', {

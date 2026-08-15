@@ -102,7 +102,14 @@ function paymentStatusLabel(status) {
 }
 
 export function buildInvoicePdf({ invoiceNumber, session, customer }) {
-  const grossTotal = Math.round((session.costEur ?? 0) * 100) / 100;
+  // Prefer Stripe-captured total when present so invoice matches the card charge.
+  const charged =
+    session.amountChargedEur != null && Number.isFinite(Number(session.amountChargedEur))
+      ? Number(session.amountChargedEur)
+      : session.captureCents != null && Number.isFinite(Number(session.captureCents))
+        ? Number(session.captureCents) / 100
+        : session.costEur ?? 0;
+  const grossTotal = Math.round(Number(charged) * 100) / 100;
   const amounts = computeInvoiceAmounts(grossTotal);
   const invoiceDate = session.endedAt ?? new Date().toISOString();
   const minutes =
@@ -221,6 +228,26 @@ export function buildInvoicePdf({ invoiceNumber, session, customer }) {
         total: eur(-discount),
       });
     }
+
+    // Line items may sum below Stripe card minimum (€0.50) — bridge so rows == Gesamtbetrag.
+    const lineSum =
+      Math.round(
+        (Math.max(0, energyNet) +
+          Math.max(0, sessionFee) +
+          Math.max(0, timeCost) -
+          Math.max(0, discount)) *
+          100
+      ) / 100;
+    const minTopUp = Math.round((grossTotal - lineSum) * 100) / 100;
+    if (minTopUp > 0.001) {
+      rows.push({
+        label: 'Mindestbetrag Kartenzahlung (Stripe)',
+        qty: '1',
+        unit: eur(minTopUp),
+        total: eur(minTopUp),
+      });
+    }
+
     if (rows.length === 0) {
       rows.push({
         label: 'Ladeleistung',

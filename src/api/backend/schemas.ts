@@ -178,6 +178,8 @@ export const ChargingSessionSchema = z
     chargingState: z.union([z.string(), z.null()]).optional(),
     appliedFulfillmentId: optionalString,
     baseCostEur: optionalFiniteNumber,
+    captureCents: optionalFiniteNumber,
+    amountChargedEur: optionalFiniteNumber,
     rewardDiscountEur: optionalFiniteNumber,
     rewardLabel: optionalString,
     pricePerMin: optionalFiniteNumber,
@@ -423,6 +425,8 @@ export function toChargingSession(raw: ChargingSessionWire): ChargingSession {
     session.appliedFulfillmentId = raw.appliedFulfillmentId;
   }
   if (raw.baseCostEur !== undefined) session.baseCostEur = raw.baseCostEur;
+  if (raw.captureCents !== undefined) session.captureCents = raw.captureCents;
+  if (raw.amountChargedEur !== undefined) session.amountChargedEur = raw.amountChargedEur;
   if (raw.rewardDiscountEur !== undefined) session.rewardDiscountEur = raw.rewardDiscountEur;
   if (raw.rewardLabel !== undefined) session.rewardLabel = raw.rewardLabel;
   if (raw.pricePerMin !== undefined) session.pricePerMin = raw.pricePerMin;

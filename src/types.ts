@@ -161,10 +161,17 @@ export interface ChargingSession {
   endedAt?: string;
   status: 'active' | 'completed' | 'cancelled';
   energyKwh: number;
+  /** Final billable total (must match Stripe capture when paid). */
   costEur: number;
   pricePerKwh: number;
   sessionFee: number;
   pointsEarned: number;
+  /** Usage cost before card minimum / capture alignment. */
+  baseCostEur?: number;
+  /** Stripe amount_to_capture / amount_received in cents. */
+  captureCents?: number;
+  /** Stripe billed euros (= captureCents/100). */
+  amountChargedEur?: number;
   /** CitrineOS/OCPP Transaktions-ID */
   citrineosTransactionId?: string;
   /** CitrineOS ChargingStations.id (Hasura) – für Live-Polling ohne Stations-Cache */
@@ -188,8 +195,6 @@ export interface ChargingSession {
   chargingState?: string | null;
   /** Angewendete Prämie (Fulfillment-ID) */
   appliedFulfillmentId?: string;
-  /** Kosten vor Prämienrabatt */
-  baseCostEur?: number;
   /** Rabatt durch Prämie in EUR */
   rewardDiscountEur?: number;
   /** Anzeige-Label der Prämie */

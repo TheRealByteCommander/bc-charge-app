@@ -55,6 +55,7 @@ export const StripeCaptureSessionSchema = z
     paid: z.boolean(),
     paymentStatus: z.string().optional(),
     captureCents: z.union([z.number(), z.string()]).transform((v) => Number(v)).optional(),
+    amountChargedEur: z.union([z.number(), z.string()]).transform((v) => Number(v)).optional(),
     cancelled: z.boolean().optional(),
   })
   .passthrough();

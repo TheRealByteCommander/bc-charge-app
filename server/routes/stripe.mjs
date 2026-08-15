@@ -10,6 +10,7 @@ import {
 import { requireAuth } from '../middleware/auth.mjs';
 import { validateChargeCents } from '../services/chargeValidation.mjs';
 import {
+  billedEurFromCaptureCents,
   computeCaptureCents,
   getPreauthCents,
   isAuthorizedForStart,
@@ -345,12 +346,14 @@ router.post('/capture-session', requireAuth, chargeSessionGuards, async (req, re
     }
 
     if (intent.status === 'succeeded') {
+      const captureCents = intent.amount_received ?? intent.amount ?? 0;
       res.json({
         paymentIntentId: intent.id,
         status: intent.status,
         paid: true,
         paymentStatus: 'paid',
-        captureCents: intent.amount_received ?? intent.amount,
+        captureCents,
+        amountChargedEur: billedEurFromCaptureCents(captureCents),
       });
       return;
     }
@@ -362,6 +365,7 @@ router.post('/capture-session', requireAuth, chargeSessionGuards, async (req, re
         paid: false,
         paymentStatus: 'skipped',
         captureCents: 0,
+        amountChargedEur: 0,
       });
       return;
     }
@@ -408,6 +412,7 @@ router.post('/capture-session', requireAuth, chargeSessionGuards, async (req, re
         paid: false,
         paymentStatus: 'skipped',
         captureCents: 0,
+        amountChargedEur: 0,
         cancelled: true,
       });
       return;
@@ -416,13 +421,16 @@ router.post('/capture-session', requireAuth, chargeSessionGuards, async (req, re
     const captured = await s.paymentIntents.capture(paymentIntentId, {
       amount_to_capture: captureCents,
     });
+    const received =
+      captured.amount_received != null ? captured.amount_received : captureCents;
 
     res.json({
       paymentIntentId: captured.id,
       status: captured.status,
       paid: captured.status === 'succeeded',
       paymentStatus: mapPaymentStatusFromIntent(captured.status),
-      captureCents,
+      captureCents: received,
+      amountChargedEur: billedEurFromCaptureCents(received),
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Capture fehlgeschlagen';

@@ -1,6 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  applyCaptureToSessionBilling,
+  billedEurFromCaptureCents,
   computeCaptureCents,
   getPreauthCents,
   isAuthorizedForStart,
@@ -44,5 +46,17 @@ describe('stripePreauth', () => {
     assert.equal(mapPaymentStatusFromIntent('requires_capture'), 'pending');
     assert.equal(mapPaymentStatusFromIntent('canceled'), 'skipped');
     assert.equal(mapPaymentStatusFromIntent('requires_action'), 'failed');
+  });
+
+  it('billed total follows capture cents (card minimum), not raw energy only', () => {
+    assert.equal(billedEurFromCaptureCents(50), 0.5);
+    const billed = applyCaptureToSessionBilling(
+      { costEur: 0.03, energyKwh: 0.06, pricePerKwh: 0.45 },
+      50
+    );
+    assert.equal(billed.costEur, 0.5);
+    assert.equal(billed.amountChargedEur, 0.5);
+    assert.equal(billed.captureCents, 50);
+    assert.equal(billed.baseCostEur, 0.03);
   });
 });

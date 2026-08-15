@@ -1286,6 +1286,27 @@ export const useAppStore = create<AppState>((set, get) => ({
           } else {
             paymentStatus = 'failed';
           }
+          // Invoice/total must equal what Stripe actually charged (e.g. €0.50 card minimum).
+          if (capture.captureCents != null && capture.captureCents > 0) {
+            const charged =
+              capture.amountChargedEur != null && Number.isFinite(capture.amountChargedEur)
+                ? capture.amountChargedEur
+                : capture.captureCents / 100;
+            current = {
+              ...current,
+              baseCostEur: current.baseCostEur ?? current.costEur,
+              captureCents: capture.captureCents,
+              amountChargedEur: charged,
+              costEur: charged,
+            };
+          } else if (capture.amountChargedEur != null && Number.isFinite(capture.amountChargedEur)) {
+            current = {
+              ...current,
+              baseCostEur: current.baseCostEur ?? current.costEur,
+              amountChargedEur: capture.amountChargedEur,
+              costEur: capture.amountChargedEur,
+            };
+          }
           if (paymentStatus === 'failed') {
             set({ toast: 'Zahlung ausstehend – bitte prüfen Sie Ihre Zahlungsmethode.' });
           }
