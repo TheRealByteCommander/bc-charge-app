@@ -217,14 +217,30 @@ export function getDbHandles() {
   return { isPostgres: isPostgres(), pgPool, sqliteDb };
 }
 
+function normalizeLoyaltyTier(value, points = 0) {
+  if (value === 'bronze' || value === 'silver' || value === 'gold' || value === 'platinum') {
+    return value;
+  }
+  // Recover from historic bug: un-awaited async computeTier serialized as {}
+  if (typeof points === 'number' && Number.isFinite(points)) {
+    if (points >= 8000) return 'platinum';
+    if (points >= 4000) return 'gold';
+    if (points >= 1500) return 'silver';
+  }
+  return 'bronze';
+}
+
 export function rowToProfile(row) {
-  const profile = parseJson(row.profile_json);
+  const profile = parseJson(row.profile_json) ?? {};
+  const points = Number(profile.loyaltyPoints ?? 0);
   return {
     ...profile,
     id: row.id,
     email: row.email,
     stripeCustomerId: row.stripe_customer_id ?? profile.stripeCustomerId,
     passwordHash: '',
+    loyaltyPoints: Number.isFinite(points) ? points : 0,
+    loyaltyTier: normalizeLoyaltyTier(profile.loyaltyTier, points),
   };
 }
 

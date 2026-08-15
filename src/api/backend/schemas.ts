@@ -121,7 +121,14 @@ export const UserProfileSchema = z
     memberSince: z.string().default(''),
     membershipId: z.string().default(''),
     loyaltyPoints: finiteNumber.default(0),
-    loyaltyTier: LoyaltyTierSchema.or(z.string()).default('bronze'),
+    // Accept corrupt wire values (e.g. `{}` from un-awaited Promise JSON) and coerce.
+    loyaltyTier: z
+      .union([LoyaltyTierSchema, z.string(), z.null(), z.undefined(), z.record(z.unknown()), z.number()])
+      .transform((v) => {
+        if (typeof v === 'string' && v.trim()) return v;
+        return 'bronze';
+      })
+      .default('bronze'),
     totalKwh: finiteNumber.default(0),
     totalSessions: finiteNumber.default(0),
     co2SavedKg: finiteNumber.default(0),

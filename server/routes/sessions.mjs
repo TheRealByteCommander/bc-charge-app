@@ -258,7 +258,8 @@ router.post('/:id/complete', requireAuth, async (req, res) => {
   const fulfillments = await listFulfillments(req.userId);
   const nightPointsMultiplier = getNightPointsMultiplier(fulfillments, session.startedAt);
 
-  let updatedProfile = applySessionStats(profile, session, { nightPointsMultiplier });
+  // applySessionStats is async; without await JSON.stringify stored Promise → loyaltyTier: {}
+  let updatedProfile = await applySessionStats(profile, session, { nightPointsMultiplier });
   if (gamificationPatch && typeof gamificationPatch === 'object') {
     updatedProfile = { ...updatedProfile, gamification: gamificationPatch };
   }

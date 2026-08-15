@@ -26,7 +26,10 @@ router.patch('/', requireAuth, async (req, res) => {
   }
 
   if (typeof safe.loyaltyPoints === 'number') {
-    safe.loyaltyTier = computeTier(safe.loyaltyPoints);
+    // computeTier is async (config-backed); missing await persisted `{}` via JSON.stringify(Promise).
+    safe.loyaltyTier = await computeTier(safe.loyaltyPoints);
+  } else if (safe.loyaltyTier != null && typeof safe.loyaltyTier !== 'string') {
+    delete safe.loyaltyTier;
   }
 
   const stripeCustomerId = patch.stripeCustomerId;
@@ -86,7 +89,7 @@ router.post('/redeem', requireAuth, async (req, res) => {
   const fulfillment = buildFulfillmentRecord({ userId: req.userId, rewardId });
   const profilePatch = {
     loyaltyPoints: newPoints,
-    loyaltyTier: computeTier(newPoints),
+    loyaltyTier: await computeTier(newPoints),
     ...profilePatchFromFulfillment(fulfillment),
   };
   await updateUserProfile(req.userId, profilePatch);
