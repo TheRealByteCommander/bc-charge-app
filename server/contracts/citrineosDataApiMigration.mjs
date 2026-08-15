@@ -1,31 +1,33 @@
 /**
  * CitrineOS PR #849 — drop Data API (`/data/**`) migration matrix.
  *
- * Purpose: single source of truth for every BC call site that still hits the
- * legacy Fastify Data-API prefix on pin 1.8.4. When upstream merges #849 onto
- * the line we cut over to, these paths hard-break unless migrated.
+ * Purpose: single source of truth for every BC call site that hit the legacy
+ * Fastify Data-API prefix on pin 1.8.4. Upstream merge-spec maps survivors to
+ * `/commands/*`. Runtime dual-fetch (legacy → commands) is wired so both
+ * surfaces work; pin stays 1.8.4 until staging soak.
  *
  * Rules:
- * - Do NOT bump CITRINEOS_INTEGRATION_VERSION toward v2 while any route has
- *   blocksPinBump === true.
- * - Prefer Hasura GraphQL for reads already covered; only invent new REST
- *   targets after #849 merge-spec is known (targetHint stays TBD until then).
- * - Matrix is informational + gate input for canary/contract; it does not
- *   change runtime routing by itself.
+ * - Do NOT bump CITRINEOS_INTEGRATION_VERSION toward v2 until staging
+ *   CANARY_FORCE soak + hardware smoke, even when matrix routes are dual-path.
+ * - Prefer Hasura GraphQL for reads already covered; dual REST is the cutover bridge.
+ * - Matrix feeds canary/contract pinBump structural gate.
  *
  * @see https://github.com/citrineos/citrineos-core/pull/849
  * @see ./citrineosContract.mjs CITRINEOS_UPSTREAM_OPEN id 849
+ * @see ../utils/citrineosDataApiPaths.mjs
  */
 
 import { CITRINEOS_INTEGRATION_VERSION } from './citrineosContract.mjs';
+import { CITRINEOS_DATA_API_PATHS } from '../utils/citrineosDataApiPaths.mjs';
 
 export const CITRINEOS_DATA_API_LEGACY_PREFIX = '/data/';
+export const CITRINEOS_COMMANDS_PREFIX = '/commands/';
 
 /**
- * @typedef {'hard_break' | 'fallback_ready' | 'unused_or_low' | 'migrated'} DataApiRouteStatus
+ * @typedef {'hard_break' | 'fallback_ready' | 'unused_or_low' | 'migrated' | 'dual_path'} DataApiRouteStatus
  *
  * @typedef {{
- *   kind: 'hasura' | 'webhook' | 'none' | 'backend_proxy' | 'mixed';
+ *   kind: 'hasura' | 'webhook' | 'none' | 'backend_proxy' | 'mixed' | 'commands_dual';
  *   detail: string;
  *   coversLivePoll?: boolean;
  * }} DataApiFallback
@@ -33,6 +35,7 @@ export const CITRINEOS_DATA_API_LEGACY_PREFIX = '/data/';
  * @typedef {{
  *   id: string;
  *   legacyPath: string;
+ *   commandsPath: string;
  *   method: 'GET' | 'POST' | 'PUT' | 'DELETE';
  *   purpose: string;
  *   callSites: string[];
@@ -48,70 +51,74 @@ export const CITRINEOS_DATA_API_LEGACY_PREFIX = '/data/';
 const ROUTES = [
   {
     id: 'getTransaction',
-    legacyPath: '/data/transactions/transactionType',
+    legacyPath: CITRINEOS_DATA_API_PATHS.getTransaction.legacy,
+    commandsPath: CITRINEOS_DATA_API_PATHS.getTransaction.commands,
     method: 'GET',
     purpose: 'Live kWh/cost during session (REST poll by stationId + transactionId)',
     callSites: [
       'server/services/citrineosServer.mjs#fetchTransactionFromRestApi',
-      'src/api/citrineos/paths.ts#transactions.getTransaction',
+      'server/utils/citrineosDataApiPaths.mjs#getTransaction',
+      'src/api/citrineos/paths.ts#getTransaction',
       'src/api/citrineos/data.ts#getTransaction',
       'server/contracts/citrineosContract.mjs#endpoints.getTransaction',
     ],
     fallback: {
-      kind: 'mixed',
+      kind: 'commands_dual',
       detail:
-        'Hasura Transactions by remoteStartId / isActive (server + client hasura.ts) + inbound webhooks cover most live session state; REST path still used when citrineosTransactionId is known and Hasura miss',
-      coversLivePoll: false,
+        'Runtime dual-fetch: legacy /data/transactions/transactionType (+ alt /transaction) → /commands/transaction; Hasura + webhooks still cover most live session state',
+      coversLivePoll: true,
     },
-    targetHint:
-      'TBD after #849 merge-spec — likely Hasura-only reads and/or new Commands/Api transaction route (no /data prefix)',
-    status: 'hard_break',
-    blocksPinBump: true,
+    targetHint: '/commands/transaction (PR #849 merge-spec)',
+    status: 'dual_path',
+    // Dual-path unblocks structural cutover of REST paths; pin bump still needs soak.
+    blocksPinBump: false,
     notes:
-      'normalizeTransactionRow already dual-accepts REST + Hasura shapes via canary; cutover must remove citrineosDataGet(/data/transactions/...)',
+      'CITRINEOS_REST_SURFACE=auto|legacy|commands. normalizeTransactionRow dual-accepts REST + Hasura shapes.',
   },
   {
     id: 'getTariffs',
-    legacyPath: '/data/transactions/tariff',
+    legacyPath: CITRINEOS_DATA_API_PATHS.getTariffs.legacy,
+    commandsPath: CITRINEOS_DATA_API_PATHS.getTariffs.commands,
     method: 'GET',
     purpose: 'Tariff catalog for pricing UI / station sync',
     callSites: [
       'server/routes/citrineos.mjs#GET /api/citrineos/tariffs',
-      'src/api/citrineos/paths.ts#transactions.getTariffs',
+      'server/utils/citrineosDataApiPaths.mjs#getTariffs',
+      'src/api/citrineos/paths.ts#getTariffs',
       'src/api/citrineos/data.ts#getTariffs',
       'src/services/citrineosSync.ts (getTariffs)',
       'server/contracts/citrineosContract.mjs#endpoints.getTariffs',
     ],
     fallback: {
-      kind: 'hasura',
+      kind: 'commands_dual',
       detail:
-        'Hasura ChargingStations → Evses → Connectors → Tariff embeds pricePerKwh/Min/Session; backend-mode client already uses /api/citrineos/tariffs proxy which still hits legacy REST',
+        'Server proxy dual-fetches legacy /data/transactions/tariff → /commands/tariff; Hasura embedded Tariff remains secondary source',
       coversLivePoll: false,
     },
-    targetHint:
-      'Primary: Hasura embedded Tariff only; optional new REST tariff list once #849 Api module path is known. Drop direct /data/transactions/tariff',
-    status: 'hard_break',
-    blocksPinBump: true,
-    notes:
-      'Backend proxy is not a real fallback — it still forwards to /data/transactions/tariff on 1.8.4',
+    targetHint: '/commands/tariff (PR #849 merge-spec)',
+    status: 'dual_path',
+    blocksPinBump: false,
+    notes: 'Backend-mode client uses /api/citrineos/tariffs which already dual-fetches.',
   },
   {
     id: 'getBootConfig',
-    legacyPath: '/data/configuration/bootConfig',
+    legacyPath: CITRINEOS_DATA_API_PATHS.getBootConfig.legacy,
+    commandsPath: CITRINEOS_DATA_API_PATHS.getBootConfig.commands,
     method: 'GET',
     purpose: 'Boot/configuration read (client path constant; low runtime use)',
     callSites: [
       'src/api/citrineos/paths.ts#configuration.getBoot',
+      'server/utils/citrineosDataApiPaths.mjs#getBootConfig',
     ],
     fallback: {
-      kind: 'none',
-      detail: 'No production hot path identified; path exported for completeness / future admin tools',
+      kind: 'commands_dual',
+      detail: 'Path map includes /commands/bootConfig; no production hot path identified',
       coversLivePoll: false,
     },
-    targetHint: 'Drop or replace with post-#849 configuration Api module path if still needed',
-    status: 'unused_or_low',
+    targetHint: '/commands/bootConfig (PR #849 merge-spec)',
+    status: 'dual_path',
     blocksPinBump: false,
-    notes: 'Still remove from paths.ts on cutover so no accidental direct Data-API use remains',
+    notes: 'Still prefer resolveClientDataApiPaths for any new boot reads.',
   },
 ];
 
@@ -122,8 +129,10 @@ const ROUTES = [
  *   upstreamUrl: string;
  *   pin: string;
  *   legacyPrefix: string;
+ *   commandsPrefix: string;
  *   title: string;
  *   risk: string;
+ *   mergeSpecStatus: string;
  *   routes: DataApiMigrationRoute[];
  *   cutoverChecklist: string[];
  * }}
@@ -133,17 +142,20 @@ export const CITRINEOS_DATA_API_MIGRATION = Object.freeze({
   upstreamUrl: 'https://github.com/citrineos/citrineos-core/pull/849',
   pin: CITRINEOS_INTEGRATION_VERSION,
   legacyPrefix: CITRINEOS_DATA_API_LEGACY_PREFIX,
-  title: 'Drop CitrineOS Data API (/data/**)',
+  commandsPrefix: CITRINEOS_COMMANDS_PREFIX,
+  title: 'Drop CitrineOS Data API (/data/**) — dual-path to /commands/*',
   risk:
-    'Removes /data/** prefix (decorator Data API → explicit Api module). BC REST getTransaction + getTariffs hard-break on v2 cutover without path migration or Hasura-only reads.',
+    'Removes /data/** prefix. BC dual-fetches legacy + /commands/transaction|/tariff|/bootConfig per #849 merge-spec. Pin stays 1.8.4 until staging soak; #849 still open upstream.',
+  mergeSpecStatus:
+    'Mapped 2026-08-15 from PR body: transaction→/commands/transaction, tariff→/commands/tariff, bootConfig→/commands/bootConfig',
   routes: ROUTES,
   cutoverChecklist: Object.freeze([
-    'Wait for #849 merge-spec (replacement Api module paths) OR commit to Hasura-only reads',
-    'Replace fetchTransactionFromRestApi + GET /api/citrineos/tariffs legacy URLs',
-    'Update src/api/citrineos/paths.ts transactions/configuration entries',
-    'Update citrineosContract.mjs endpoints getTransaction/getTariffs paths',
-    'Extend canary schemas if response envelopes change',
-    'Staging CANARY_FORCE=1 soak + hardware smoke (Elinta + go-e)',
+    'DONE: dual-fetch getTransaction + getTariffs (legacy → /commands/*)',
+    'DONE: path map + CITRINEOS_REST_SURFACE override',
+    'DONE: update paths.ts / contract endpoints with commands targets',
+    'Wait for upstream #849 merge + tag (still open on next as of 2026-08-15)',
+    'Staging CANARY_FORCE=1 soak against dual-path (expect commands 404 on pure 1.8.4 — legacy must win)',
+    'When staging runs post-#849 Citrine: CITRINEOS_REST_SURFACE=commands soak + hardware smoke (Elinta + go-e)',
     'Only then allow evaluatePinBumpReadiness / version pin bump off 1.8.4',
   ]),
 });
@@ -162,8 +174,8 @@ export function listDataApiCallSites() {
 }
 
 /**
- * Gate input: ready only when no route blocks pin bump (all migrated or non-blocking).
- * Independent of live canary samples — structural readiness only.
+ * Structural readiness of the #849 path migration (not full pin-bump readiness).
+ * Dual-path routes no longer block; soak/hardware remain separate canary gates.
  */
 export function evaluateDataApiMigrationReadiness() {
   const blocking = CITRINEOS_DATA_API_MIGRATION.routes.filter((r) => r.blocksPinBump);
@@ -182,11 +194,15 @@ export function evaluateDataApiMigrationReadiness() {
     upstreamPr: CITRINEOS_DATA_API_MIGRATION.upstreamPr,
     upstreamUrl: CITRINEOS_DATA_API_MIGRATION.upstreamUrl,
     legacyPrefix: CITRINEOS_DATA_API_LEGACY_PREFIX,
+    commandsPrefix: CITRINEOS_COMMANDS_PREFIX,
     pin: CITRINEOS_DATA_API_MIGRATION.pin,
     blockingRouteIds: blocking.map((r) => r.id),
+    dualPathRouteIds: CITRINEOS_DATA_API_MIGRATION.routes
+      .filter((r) => r.status === 'dual_path' || r.status === 'migrated')
+      .map((r) => r.id),
     guidance:
       blockers.length === 0
-        ? 'Data-API migration matrix clear — still require staging CANARY_FORCE soak before pin bump.'
+        ? 'Data-API dual-path matrix clear — still require staging CANARY_FORCE soak + hardware smoke before pin bump; upstream #849 may still be open.'
         : 'Do not bump CITRINEOS_INTEGRATION_VERSION off 1.8.4 while #849 /data/** routes still block (see CITRINEOS_DATA_API_MIGRATION).',
   };
 }
@@ -207,12 +223,14 @@ export function summarizeDataApiMigration() {
     byStatus,
     upstreamPr: CITRINEOS_DATA_API_MIGRATION.upstreamPr,
     pin: CITRINEOS_DATA_API_MIGRATION.pin,
+    commandsPrefix: CITRINEOS_COMMANDS_PREFIX,
   };
 }
 
 export default {
   CITRINEOS_DATA_API_MIGRATION,
   CITRINEOS_DATA_API_LEGACY_PREFIX,
+  CITRINEOS_COMMANDS_PREFIX,
   getDataApiMigrationEntry,
   listDataApiCallSites,
   evaluateDataApiMigrationReadiness,

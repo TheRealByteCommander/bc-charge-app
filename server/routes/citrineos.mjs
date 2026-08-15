@@ -4,6 +4,10 @@ import { optionalAuth, requireAuth } from '../middleware/auth.mjs';
 import { citrineosIntegrationContract } from '../contracts/citrineosContract.mjs';
 import { ensureCitrineosAuthorization } from '../services/citrineosAuth.mjs';
 import { canaryValidate, getCanaryStats } from '../services/canaryValidator.mjs';
+import {
+  citrineosDualFetchJson,
+  resolveDataApiPathCandidates,
+} from '../utils/citrineosDataApiPaths.mjs';
 
 const router = Router();
 
@@ -131,20 +135,16 @@ router.get('/tariffs', optionalAuth, async (_req, res) => {
   }
   try {
     const tenantId = process.env.CITRINEOS_TENANT_ID ?? '1';
-    // /data/transactions/tariff is the legacy Data API surface. Upstream PR #849 removes /data/**
-    // — migrate before any v2 pin bump (contract CITRINEOS_UPSTREAM_OPEN id 849).
-    const url = `${citrineosApiUrl()}/data/transactions/tariff?tenantId=${tenantId}`;
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8000);
-    const r = await fetch(url, { signal: controller.signal });
-    clearTimeout(timeout);
-    const data = await r.json();
+    // Dual-path #849: legacy /data/transactions/tariff (1.8.4) → /commands/tariff (post-drop).
+    // CITRINEOS_REST_SURFACE=commands|legacy|auto (default auto).
+    const candidates = resolveDataApiPathCandidates('getTariffs');
+    const r = await citrineosDualFetchJson(citrineosApiUrl(), candidates, { tenantId });
     if (!r.ok) {
-      res.status(r.status).json(data);
+      res.status(r.status || 502).json(r.data ?? { error: 'Tarife nicht abrufbar' });
       return;
     }
-    canaryValidate('rest.tariffList', data, { source: 'citrineos.routes.tariffs' });
-    res.json(data);
+    canaryValidate('rest.tariffList', r.data, { source: 'citrineos.routes.tariffs' });
+    res.json(r.data);
   } catch (e) {
     res.status(502).json({ error: e instanceof Error ? e.message : 'Tarife nicht abrufbar' });
   }

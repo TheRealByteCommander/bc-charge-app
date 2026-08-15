@@ -3,6 +3,10 @@
 import { mapConnectorStatus } from '../utils/ocppStatus.mjs';
 import { buildOcpp16RemoteStartBody } from '../utils/ocpp16RemoteStart.mjs';
 import { isOcpp16Station } from '../utils/hardwareProtocol.mjs';
+import {
+  citrineosDualGet,
+  resolveDataApiPathCandidates,
+} from '../utils/citrineosDataApiPaths.mjs';
 import { ensureCitrineosAuthorization } from './citrineosAuth.mjs';
 import { canaryValidate } from './canaryValidator.mjs';
 
@@ -339,14 +343,16 @@ async function citrineosDataGet(path, query, timeoutMs = 8000) {
 }
 
 async function fetchTransactionFromRestApi(stationId, transactionId) {
-  // Path pinned to CitrineOS Data API. Upstream PR #849 (open, base next) drops /data/**
-  // entirely — do not bump CITRINEOS_INTEGRATION_VERSION toward v2 without a replacement
-  // (Hasura Transaction query and/or new Commands/Api routes). See citrineosContract CITRINEOS_UPSTREAM_OPEN.
-  return citrineosDataGet('/data/transactions/transactionType', {
+  // Dual-path for PR #849: pin 1.8.4 still serves /data/**; after drop, /commands/transaction.
+  // Prefer legacy first (auto) so current installs stay on the known surface. Override with
+  // CITRINEOS_REST_SURFACE=commands|legacy. See citrineosDataApiPaths + migration matrix.
+  const candidates = resolveDataApiPathCandidates('getTransaction');
+  const { data } = await citrineosDualGet(citrineosDataGet, candidates, {
     tenantId: tenantId(),
     stationId,
     transactionId,
   });
+  return data;
 }
 
 function normalizeTransactionRow(tx) {

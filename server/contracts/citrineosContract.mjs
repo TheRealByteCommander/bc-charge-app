@@ -6,9 +6,8 @@
  * OCPI tenant decorator (#841), OCPP messages state/message columns (#855), null VariableAttribute
  * guard (#847).
  * Open drift risks (not in beta3 tag; all still open 2026-08-15):
- *   - **#849 drop data API** (open, updated 2026-08-13): removes `/data/**` entirely → breaks BC REST
- *     `getTransaction`/`getTariffs` paths until migrated (Hasura or new Commands/Api surfaces).
- *     Matrix: `citrineosDataApiMigration.mjs` (CITRINEOS_DATA_API_MIGRATION) — structural pin gate.
+ *   - **#849 drop data API** (open): removes `/data/**` → dual-path wired to `/commands/transaction|tariff|bootConfig`
+ *     (merge-spec 2026-08-15). Matrix structural gate clear; pin still 1.8.4 until staging soak.
  *   - **#851 tenant path mapping** (open, updated 2026-08-13): config → tenant DB + cache + path sanitization.
  *   - **#846** OCPPMessages audit insert can kill process (webhook dispatcher resilience).
  *   - **#852** unmapped measurands dropped (not relabeled as energy) — good for meter honesty.
@@ -29,7 +28,7 @@ export const CITRINEOS_UPSTREAM_OPEN = [
     title: 'Feature/drop data api',
     url: 'https://github.com/citrineos/citrineos-core/pull/849',
     risk:
-      'Removes /data/** prefix (decorator Data API → explicit Api module). BC uses /data/transactions/transactionType and /data/transactions/tariff — hard break on v2 cutover without path migration or Hasura-only reads. See CITRINEOS_DATA_API_MIGRATION in citrineosDataApiMigration.mjs',
+      'Removes /data/** prefix. BC dual-fetches legacy + /commands/transaction|/tariff|/bootConfig (PR merge-spec). Structural matrix clear; still open upstream — soak before pin bump. See CITRINEOS_DATA_API_MIGRATION.',
     migrationMatrix: 'server/contracts/citrineosDataApiMigration.mjs',
   },
   {
@@ -113,17 +112,21 @@ export const citrineosIntegrationContract = {
       id: 'getTransaction',
       method: 'GET',
       path: '/data/transactions/transactionType',
+      pathCommands: '/commands/transaction',
+      pathStrategy: 'dual_legacy_then_commands',
       query: ['tenantId', 'stationId', 'transactionId'],
-      purpose: 'Live kWh/Kosten während Session',
-      appUsage: 'pollCitrineosSession',
+      purpose: 'Live kWh/Kosten während Session (dual-path #849)',
+      appUsage: 'pollCitrineosSession / fetchTransactionFromRestApi',
     },
     {
       id: 'getTariffs',
       method: 'GET',
       path: '/data/transactions/tariff',
+      pathCommands: '/commands/tariff',
+      pathStrategy: 'dual_legacy_then_commands',
       query: ['tenantId'],
-      purpose: 'Tarifkatalog für Preisanzeige',
-      appUsage: 'syncStationsFromCitrineos, tariffPricing',
+      purpose: 'Tarifkatalog für Preisanzeige (dual-path #849)',
+      appUsage: 'syncStationsFromCitrineos, tariffPricing, GET /api/citrineos/tariffs',
     },
     {
       id: 'hasuraChargingStation',
