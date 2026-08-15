@@ -194,6 +194,20 @@ function normalizeCitrineosWebhookPayload(raw) {
       ? triggerReasonRaw.trim()
       : null;
 
+  // OCPP 2.0.1 transactionInfo.chargingState (Idle/EVConnected/Charging/SuspendedEV/SuspendedEVSE).
+  // Useful for LM/UI when triggerReason is ChargingStateChanged or Suspended* without rate change.
+  const chargingStateRaw =
+    body.chargingState ??
+    body.charging_state ??
+    transactionInfo?.chargingState ??
+    transactionInfo?.charging_state ??
+    body.state ??
+    null;
+  const chargingState =
+    typeof chargingStateRaw === 'string' && chargingStateRaw.trim()
+      ? chargingStateRaw.trim()
+      : null;
+
   // Station id for LM GetCompositeSchedule re-opt (top-level or nested).
   const stationIdRaw =
     body.stationId ??
@@ -265,6 +279,7 @@ function normalizeCitrineosWebhookPayload(raw) {
     eventType,
     seqNo,
     triggerReason,
+    chargingState,
     stationId,
   };
 }

@@ -24,11 +24,16 @@ export function HomePage() {
   const de = locale === 'de';
   const user = useAppStore((s) => s.user)!;
   const nearby = useNearbyStations(3);
-  const activeSession = useAppStore((s) => s.activeSession);
+  // Field selectors: home live card needs metrics, but avoid full-object identity churn from unrelated session keys.
+  const activeSessionId = useAppStore((s) => s.activeSession?.id ?? null);
+  const activeStationName = useAppStore((s) => s.activeSession?.stationName);
+  const activeEnergyKwh = useAppStore((s) => s.activeSession?.energyKwh);
+  const activeCostEur = useAppStore((s) => s.activeSession?.costEur);
+  const activeStartedAt = useAppStore((s) => s.activeSession?.startedAt);
   const sessions = useAppStore((s) => s.sessions);
   const [moreOpen, setMoreOpen] = useState(false);
   const elapsed =
-    activeSession ? Math.floor((Date.now() - new Date(activeSession.startedAt).getTime()) / 1000) : 0;
+    activeStartedAt ? Math.floor((Date.now() - new Date(activeStartedAt).getTime()) / 1000) : 0;
 
   const favorites = useMemo(
     () => getStations().filter((s) => user.favoriteStationIds.includes(s.id)).slice(0, 2),
@@ -67,7 +72,7 @@ export function HomePage() {
         </div>
       </header>
 
-      {setupNeeded && !activeSession && (
+      {setupNeeded && !activeSessionId && (
         <div className="mt-4 rounded-2xl border border-bc-warn/35 bg-bc-warn/10 p-4 text-sm">
           <p className="font-semibold text-bc-text">
             {de ? 'Fast startklar' : 'Almost ready'}
@@ -92,7 +97,7 @@ export function HomePage() {
         </div>
       )}
 
-      {activeSession ? (
+      {activeSessionId ? (
         <Link
           to="/laden"
           className="mt-6 group relative block overflow-hidden rounded-3xl border border-bc-accent/30 bg-gradient-to-br from-bc-accent/20 via-bc-surface to-bc-surface p-6 transition-all duration-300 hover:border-bc-accent/50 hover:shadow-glow"
@@ -108,16 +113,16 @@ export function HomePage() {
               </p>
             </div>
             <p className="mt-3 font-display text-2xl font-bold leading-tight text-bc-text transition-colors group-hover:text-white">
-              {activeSession.stationName}
+              {activeStationName}
             </p>
             <div className="mt-4 flex items-baseline gap-2">
               <p className="font-display text-5xl font-bold tracking-tighter text-bc-accent">
-                {formatKwh(activeSession.energyKwh)}
+                {formatKwh(activeEnergyKwh ?? 0)}
               </p>
               <span className="text-lg font-medium text-bc-muted">kWh</span>
             </div>
             <p className="mt-2 text-sm font-medium text-bc-muted/70">
-              {formatCurrency(activeSession.costEur)} · {formatDuration(elapsed)}
+              {formatCurrency(activeCostEur ?? 0)} · {formatDuration(elapsed)}
             </p>
             <p className="mt-3 text-xs font-semibold text-bc-accent">
               {de ? 'Tippen für Live-Ansicht →' : 'Tap for live view →'}
@@ -215,7 +220,7 @@ export function HomePage() {
         </>
       )}
 
-      {lastSession && !activeSession && (
+      {lastSession && !activeSessionId && (
         <Link
           to="/historie"
           className="mt-8 block rounded-2xl border border-bc-border bg-bc-surface/40 p-4 transition hover:border-bc-accent/30"
@@ -234,7 +239,7 @@ export function HomePage() {
         open={moreOpen}
         onClose={() => setMoreOpen(false)}
         user={user}
-        showPlanner={!activeSession}
+        showPlanner={!activeSessionId}
       />
     </div>
   );

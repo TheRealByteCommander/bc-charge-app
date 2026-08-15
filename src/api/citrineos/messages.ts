@@ -1,6 +1,8 @@
+import { z } from 'zod';
 import { citrineosConfig } from '../../config/citrineos';
 import type { Station } from '../../types';
 import { buildOcpp16RemoteStartBody, normalizeIdToken } from '../../utils/ocpp16RemoteStart';
+import { isPlainObject } from '../../utils/safeJson';
 import { citrineosFetch } from './client';
 import { parseConnectorRef } from './mappers';
 import { citrineosPaths } from './paths';
@@ -19,19 +21,40 @@ function messageQuery(stationId: string, callbackUrl?: string) {
   };
 }
 
-function normalizeStartConfirmations(result: unknown): CitrineosMessageConfirmation[] {
-  if (Array.isArray(result)) {
-    return result as CitrineosMessageConfirmation[];
+/** Wire shape for OCPP/Citrine remote start|stop confirmations (array or single). */
+const MessageConfirmationSchema = z
+  .object({
+    success: z.boolean().optional(),
+    payload: z.union([z.string(), z.record(z.unknown())]).optional(),
+    status: z.union([z.string(), z.number()]).optional(),
+    Status: z.union([z.string(), z.number()]).optional(),
+  })
+  .passthrough();
+
+function confirmationFromRow(row: z.infer<typeof MessageConfirmationSchema>): CitrineosMessageConfirmation {
+  if (typeof row.success === 'boolean') {
+    return { success: row.success, payload: row.payload };
   }
-  if (result && typeof result === 'object') {
-    const row = result as Record<string, unknown>;
-    if (typeof row.success === 'boolean') {
-      return [{ success: row.success, payload: row.payload as string | Record<string, unknown> | undefined }];
+  const status = String(row.status ?? row.Status ?? '');
+  if (status) {
+    return { success: status.toLowerCase() === 'accepted', payload: status };
+  }
+  return { success: false, payload: 'Unbekannte Antwort vom Ladesystem' };
+}
+
+/** Parse-don't-cast: fold array/single/status envelopes into domain confirmations. */
+export function normalizeStartConfirmations(result: unknown): CitrineosMessageConfirmation[] {
+  if (Array.isArray(result)) {
+    const out: CitrineosMessageConfirmation[] = [];
+    for (const item of result) {
+      const parsed = MessageConfirmationSchema.safeParse(item);
+      out.push(parsed.success ? confirmationFromRow(parsed.data) : { success: false, payload: 'Unbekannte Antwort vom Ladesystem' });
     }
-    const status = String(row.status ?? row.Status ?? '');
-    if (status) {
-      return [{ success: status.toLowerCase() === 'accepted', payload: status }];
-    }
+    return out.length > 0 ? out : [{ success: false, payload: 'Unbekannte Antwort vom Ladesystem' }];
+  }
+  if (isPlainObject(result)) {
+    const parsed = MessageConfirmationSchema.safeParse(result);
+    if (parsed.success) return [confirmationFromRow(parsed.data)];
   }
   return [{ success: false, payload: 'Unbekannte Antwort vom Ladesystem' }];
 }
@@ -109,12 +132,13 @@ export async function requestStopTransaction(
   stationId: string,
   body: CitrineosRequestStopTransactionBody
 ): Promise<CitrineosMessageConfirmation[]> {
-  return citrineosFetch<CitrineosMessageConfirmation[]>(citrineosPaths.evdriver.requestStopTransaction, {
+  const result = await citrineosFetch<unknown>(citrineosPaths.evdriver.requestStopTransaction, {
     method: 'POST',
     query: messageQuery(stationId),
     body,
     timeoutMs: 15_000,
   });
+  return normalizeStartConfirmations(result);
 }
 
 /** OCPP 1.6 RemoteStopTransaction (go-e, H2, …). */

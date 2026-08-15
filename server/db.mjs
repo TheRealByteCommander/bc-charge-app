@@ -279,22 +279,34 @@ export async function updateUserProfile(userId, profile, stripeCustomerId) {
   if (stripeCustomerId !== undefined) {
     merged.stripeCustomerId = stripeCustomerId;
   }
+  const profileJson = JSON.stringify(merged);
   if (isPostgres()) {
+    // Skip no-op profile rewrites (chatty gamification/loyalty paths) — lock still taken if row matches id.
     await pgPool.query(
       `UPDATE users
        SET profile_json = $1::jsonb,
            stripe_customer_id = COALESCE($2, stripe_customer_id),
            updated_at = $3
-       WHERE id = $4`,
-      [JSON.stringify(merged), stripeCustomerId ?? null, now, userId]
+       WHERE id = $4
+         AND (
+           profile_json IS DISTINCT FROM $1::jsonb
+           OR ($2::text IS NOT NULL AND stripe_customer_id IS DISTINCT FROM $2)
+         )`,
+      [profileJson, stripeCustomerId ?? null, now, userId]
     );
+    return true;
+  }
+  const prevProfile = typeof row.profile_json === 'string' ? row.profile_json : JSON.stringify(row.profile_json ?? null);
+  const prevStripe = row.stripe_customer_id ?? null;
+  const nextStripe = stripeCustomerId !== undefined ? stripeCustomerId ?? null : prevStripe;
+  if (prevProfile === profileJson && prevStripe === nextStripe) {
     return true;
   }
   sqliteDb
     .prepare(
       `UPDATE users SET profile_json = ?, stripe_customer_id = COALESCE(?, stripe_customer_id), updated_at = ? WHERE id = ?`
     )
-    .run(JSON.stringify(merged), stripeCustomerId ?? null, now, userId);
+    .run(profileJson, stripeCustomerId ?? null, now, userId);
   return true;
 }
 
@@ -1082,7 +1094,14 @@ export async function applyCitrineosWebhookToSessions(event) {
     }
   }
 
-  if (transactionId && (event.totalKwh != null || event.totalCost != null || event.seqNo != null || event.triggerReason != null)) {
+  if (
+    transactionId &&
+    (event.totalKwh != null ||
+      event.totalCost != null ||
+      event.seqNo != null ||
+      event.triggerReason != null ||
+      event.chargingState != null)
+  ) {
     const rows = await listActiveSessionRowsByJsonField('citrineosTransactionId', transactionId);
     for (const row of rows) {
       const data = parseJson(row.data_json) ?? {};
@@ -1108,6 +1127,12 @@ export async function applyCitrineosWebhookToSessions(event) {
       if (nextSeq != null && Number.isFinite(nextSeq)) patch.lastCitrineosEventSeqNo = nextSeq;
       if (event.eventType != null) patch.lastCitrineosEventType = event.eventType;
       if (event.triggerReason != null) patch.lastCitrineosTriggerReason = event.triggerReason;
+      // OCPP chargingState for LM/UI (SuspendedEVSE vs Charging) — dual keys for consumers.
+      if (event.chargingState != null && String(event.chargingState).trim()) {
+        const cs = String(event.chargingState).trim();
+        patch.chargingState = cs;
+        patch.lastCitrineosChargingState = cs;
+      }
       // Persist station id from webhook so later re-opt / diagnostics have a stable source.
       if (event.stationId != null && String(event.stationId).trim()) {
         patch.citrineosStationId = String(event.stationId).trim();
@@ -1172,6 +1197,11 @@ export async function applyCitrineosWebhookToSessions(event) {
       if (nextSeq != null && Number.isFinite(nextSeq)) patch.lastCitrineosEventSeqNo = nextSeq;
       if (event.eventType != null) patch.lastCitrineosEventType = event.eventType;
       if (event.triggerReason != null) patch.lastCitrineosTriggerReason = event.triggerReason;
+      if (event.chargingState != null && String(event.chargingState).trim()) {
+        const cs = String(event.chargingState).trim();
+        patch.chargingState = cs;
+        patch.lastCitrineosChargingState = cs;
+      }
       if (event.stationId != null && String(event.stationId).trim()) {
         patch.citrineosStationId = String(event.stationId).trim();
       }

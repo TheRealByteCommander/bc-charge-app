@@ -1,19 +1,19 @@
 /** Integrationsvertrag CitrineOS ↔ bc-charge-app (v1.8.4)
- * Upstream watch (2026-08-14): citrineos-core latest pre-release still **v2.0.0-beta3**
- * (tag 2026-08-12; no newer tag since). Still NOT a prod pin — stay on 1.8.4 until staging
- * CANARY_FORCE=1 soak + pinBump.ready.
+ * Upstream watch (2026-08-15): citrineos-core latest pre-release still **v2.0.0-beta3**
+ * (tag 2026-08-12; main tip still beta3 merge; no newer tag). Still NOT a prod pin — stay on
+ * 1.8.4 until staging CANARY_FORCE=1 soak + pinBump.ready.
  * beta3 highlights for BC: OCPP message correlation (#832), tenant-scoped repo deletes (#842),
  * OCPI tenant decorator (#841), OCPP messages state/message columns (#855), null VariableAttribute
  * guard (#847).
- * Open drift risks (not in beta3 tag):
- *   - **#849 drop data API** (base `next`): removes `/data/**` entirely → breaks BC REST
+ * Open drift risks (not in beta3 tag; all still open 2026-08-15):
+ *   - **#849 drop data API** (open, updated 2026-08-13): removes `/data/**` entirely → breaks BC REST
  *     `getTransaction`/`getTariffs` paths until migrated (Hasura or new Commands/Api surfaces).
  *     Matrix: `citrineosDataApiMigration.mjs` (CITRINEOS_DATA_API_MIGRATION) — structural pin gate.
- *   - **#851 tenant path mapping**: config → tenant DB + cache + path sanitization.
+ *   - **#851 tenant path mapping** (open, updated 2026-08-13): config → tenant DB + cache + path sanitization.
  *   - **#846** OCPPMessages audit insert can kill process (webhook dispatcher resilience).
  *   - **#852** unmapped measurands dropped (not relabeled as energy) — good for meter honesty.
- * Webhooks: TransactionEvent seqNo + triggerReason (ChargingRateChanged → LM reopt) +
- * meterValue energy (citrineosWebhooks.mjs / loadManagementReopt.mjs).
+ * Webhooks: TransactionEvent seqNo + triggerReason (ChargingRateChanged/ChargingStateChanged → LM
+ * reopt) + chargingState persist + meterValue energy (citrineosWebhooks.mjs / loadManagementReopt.mjs).
  * Load-Management: /api/load-management proxy + composite/external limits (PR #46 merged).
  */
 

@@ -38,6 +38,7 @@ describe('normalizeCitrineosWebhookPayload OCPP2 nested', () => {
       totalKwh: 3.1,
       totalCost: 1.2,
     });
+    // chargingState is always present (null when absent) for stable consumer shape
     assert.deepEqual(event, {
       transactionId: 'flat-1',
       remoteStartId: null,
@@ -47,6 +48,7 @@ describe('normalizeCitrineosWebhookPayload OCPP2 nested', () => {
       eventType: null,
       seqNo: null,
       triggerReason: null,
+      chargingState: null,
       stationId: null,
     });
   });
@@ -125,6 +127,25 @@ describe('normalizeCitrineosWebhookPayload OCPP2 nested', () => {
     });
     assert.equal(event?.transactionId, 'tx-idle-end');
     assert.equal(event?.isActive, false);
+    assert.equal(event?.chargingState, 'Idle');
+  });
+
+  it('passes through ChargingStateChanged + SuspendedEVSE for LM/UI state', () => {
+    const event = normalizeCitrineosWebhookPayload({
+      eventType: 'Updated',
+      triggerReason: 'ChargingStateChanged',
+      stationId: 'elinta-7',
+      seqNo: 8,
+      transactionInfo: {
+        transactionId: 'tx-suspend',
+        chargingState: 'SuspendedEVSE',
+      },
+    });
+    assert.equal(event?.transactionId, 'tx-suspend');
+    assert.equal(event?.triggerReason, 'ChargingStateChanged');
+    assert.equal(event?.chargingState, 'SuspendedEVSE');
+    assert.equal(event?.stationId, 'elinta-7');
+    assert.equal(event?.isActive, true);
   });
 
   it('defaults missing energy unit to Wh (not kWh) and honors unitOfMeasure.multiplier', () => {

@@ -38,7 +38,9 @@ describe('shouldTriggerLmReopt', () => {
   it('accepts ChargingRateChanged case-insensitively', () => {
     assert.equal(shouldTriggerLmReopt('ChargingRateChanged'), true);
     assert.equal(shouldTriggerLmReopt('chargingratechanged'), true);
+    assert.equal(shouldTriggerLmReopt('ChargingStateChanged'), true);
     assert.equal(shouldTriggerLmReopt('LimitSet'), true);
+    assert.equal(shouldTriggerLmReopt('TxProfile'), true);
     assert.equal(shouldTriggerLmReopt('MeterValuePeriodic'), false);
     assert.equal(shouldTriggerLmReopt(null), false);
     assert.equal(shouldTriggerLmReopt(''), false);
