@@ -48,7 +48,7 @@ export const LoyaltyTierSchema = z.enum(['bronze', 'silver', 'gold', 'platinum']
 
 export const SessionStatusSchema = z.enum(['active', 'completed', 'cancelled']);
 
-export const PaymentStatusSchema = z.enum(['pending', 'paid', 'failed', 'skipped']);
+export const PaymentStatusSchema = z.enum(['pending', 'paid', 'failed', 'skipped', 'deferred']);
 
 export const VehicleSchema = z
   .object({
@@ -178,8 +178,13 @@ export const ChargingSessionSchema = z
     chargingState: z.union([z.string(), z.null()]).optional(),
     appliedFulfillmentId: optionalString,
     baseCostEur: optionalFiniteNumber,
+    usageCostEur: optionalFiniteNumber,
     captureCents: optionalFiniteNumber,
     amountChargedEur: optionalFiniteNumber,
+    billingStatus: z.string().optional(),
+    invoiceKind: z.string().optional(),
+    batchId: optionalString,
+    batchTotalEur: optionalFiniteNumber,
     rewardDiscountEur: optionalFiniteNumber,
     rewardLabel: optionalString,
     pricePerMin: optionalFiniteNumber,
@@ -252,9 +257,24 @@ export const SessionCompleteEnvelopeSchema = z
         emailSent: z.boolean().optional(),
         emailSkipped: z.boolean().optional(),
         error: optionalString,
+        deferred: z.boolean().optional(),
+        openBalanceEur: optionalFiniteNumber,
+        message: optionalString,
+        kind: optionalString,
+        batchId: optionalString,
+        totalEur: optionalFiniteNumber,
       })
       .passthrough()
       .nullable()
+      .optional(),
+    billing: z
+      .object({
+        mode: optionalString,
+        openBalanceEur: optionalFiniteNumber,
+        amountChargedEur: optionalFiniteNumber,
+        batchId: optionalString,
+      })
+      .passthrough()
       .optional(),
   })
   .passthrough();
@@ -294,7 +314,9 @@ function asPaymentStatus(
   v: string | undefined
 ): ChargingSession['paymentStatus'] | undefined {
   if (v == null) return undefined;
-  if (v === 'pending' || v === 'paid' || v === 'failed' || v === 'skipped') return v;
+  if (v === 'pending' || v === 'paid' || v === 'failed' || v === 'skipped' || v === 'deferred') {
+    return v;
+  }
   return undefined;
 }
 
@@ -425,8 +447,17 @@ export function toChargingSession(raw: ChargingSessionWire): ChargingSession {
     session.appliedFulfillmentId = raw.appliedFulfillmentId;
   }
   if (raw.baseCostEur !== undefined) session.baseCostEur = raw.baseCostEur;
+  if (raw.usageCostEur !== undefined) session.usageCostEur = raw.usageCostEur;
   if (raw.captureCents !== undefined) session.captureCents = raw.captureCents;
   if (raw.amountChargedEur !== undefined) session.amountChargedEur = raw.amountChargedEur;
+  if (raw.billingStatus === 'deferred' || raw.billingStatus === 'invoiced' || raw.billingStatus === 'open') {
+    session.billingStatus = raw.billingStatus;
+  }
+  if (raw.invoiceKind === 'single' || raw.invoiceKind === 'collective') {
+    session.invoiceKind = raw.invoiceKind;
+  }
+  if (raw.batchId !== undefined) session.batchId = raw.batchId;
+  if (raw.batchTotalEur !== undefined) session.batchTotalEur = raw.batchTotalEur;
   if (raw.rewardDiscountEur !== undefined) session.rewardDiscountEur = raw.rewardDiscountEur;
   if (raw.rewardLabel !== undefined) session.rewardLabel = raw.rewardLabel;
   if (raw.pricePerMin !== undefined) session.pricePerMin = raw.pricePerMin;

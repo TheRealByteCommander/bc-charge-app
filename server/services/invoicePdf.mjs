@@ -98,7 +98,111 @@ function paymentStatusLabel(status) {
   if (status === 'paid') return 'Bezahlt (Kartenzahlung)';
   if (status === 'failed') return 'Zahlung fehlgeschlagen';
   if (status === 'pending') return 'Ausstehend';
+  if (status === 'deferred') return 'Offen (Sammelabrechnung)';
   return 'Offen';
+}
+
+function buildLineRows(session, grossTotal) {
+  // Sammelrechnung: one row per included charging session
+  if (session.isCollectiveInvoice && Array.isArray(session.lineItems) && session.lineItems.length) {
+    const rows = session.lineItems.map((item) => ({
+      label: item.label || 'Ladevorgang',
+      sub: item.detail || null,
+      qty: item.energyKwh > 0 ? `${Number(item.energyKwh).toFixed(3)} kWh` : '1',
+      unit: item.pricePerKwh > 0 ? eur(item.pricePerKwh) : '—',
+      total: eur(item.usageEur ?? 0),
+    }));
+    const lineSum =
+      Math.round(session.lineItems.reduce((a, i) => a + (Number(i.usageEur) || 0), 0) * 100) / 100;
+    const topUp = Math.round((grossTotal - lineSum) * 100) / 100;
+    if (topUp > 0.001) {
+      rows.push({
+        label: 'Ausgleich / Rundung Kartenzahlung',
+        sub: null,
+        qty: '1',
+        unit: eur(topUp),
+        total: eur(topUp),
+      });
+    }
+    return rows;
+  }
+
+  const minutes =
+    session.endedAt && session.startedAt
+      ? (new Date(session.endedAt) - new Date(session.startedAt)) / 60000
+      : 0;
+  const energyNet = (session.energyKwh ?? 0) * (session.pricePerKwh ?? 0);
+  const timeCost = minutes * (session.pricePerMin ?? 0);
+  const sessionFee = session.sessionFee ?? 0;
+  const discount = session.rewardDiscountEur ?? 0;
+
+  const rows = [];
+  if (session.energyKwh > 0) {
+    rows.push({
+      label: 'Stromlieferung (öffentliches Laden)',
+      sub: null,
+      qty: `${Number(session.energyKwh).toFixed(2)} kWh`,
+      unit: eur(session.pricePerKwh ?? 0),
+      total: eur(energyNet),
+    });
+  }
+  if (sessionFee > 0) {
+    rows.push({
+      label: 'Startgebühr',
+      sub: null,
+      qty: '1',
+      unit: eur(sessionFee),
+      total: eur(sessionFee),
+    });
+  }
+  if (timeCost > 0) {
+    rows.push({
+      label: 'Zeitgebühr',
+      sub: null,
+      qty: `${minutes.toFixed(0)} Min.`,
+      unit: eur(session.pricePerMin ?? 0),
+      total: eur(timeCost),
+    });
+  }
+  if (discount > 0) {
+    rows.push({
+      label: session.rewardLabel ? `Prämienrabatt (${session.rewardLabel})` : 'Prämienrabatt',
+      sub: null,
+      qty: '1',
+      unit: eur(-discount),
+      total: eur(-discount),
+    });
+  }
+
+  const lineSum =
+    Math.round(
+      (Math.max(0, energyNet) +
+        Math.max(0, sessionFee) +
+        Math.max(0, timeCost) -
+        Math.max(0, discount)) *
+        100
+    ) / 100;
+  const minTopUp = Math.round((grossTotal - lineSum) * 100) / 100;
+  if (minTopUp > 0.001) {
+    rows.push({
+      label: 'Mindestbetrag Kartenzahlung (Stripe)',
+      sub: null,
+      qty: '1',
+      unit: eur(minTopUp),
+      total: eur(minTopUp),
+    });
+  }
+
+  if (rows.length === 0) {
+    rows.push({
+      label: 'Ladeleistung',
+      sub: null,
+      qty: `${Number(session.energyKwh ?? 0).toFixed(2)} kWh`,
+      unit: '—',
+      total: eur(grossTotal),
+    });
+  }
+  return rows;
 }
 
 export function buildInvoicePdf({ invoiceNumber, session, customer }) {
@@ -112,14 +216,7 @@ export function buildInvoicePdf({ invoiceNumber, session, customer }) {
   const grossTotal = Math.round(Number(charged) * 100) / 100;
   const amounts = computeInvoiceAmounts(grossTotal);
   const invoiceDate = session.endedAt ?? new Date().toISOString();
-  const minutes =
-    session.endedAt && session.startedAt
-      ? (new Date(session.endedAt) - new Date(session.startedAt)) / 60000
-      : 0;
-  const energyNet = session.energyKwh * (session.pricePerKwh ?? 0);
-  const timeCost = minutes * (session.pricePerMin ?? 0);
-  const sessionFee = session.sessionFee ?? 0;
-  const discount = session.rewardDiscountEur ?? 0;
+  const isCollective = Boolean(session.isCollectiveInvoice || session.invoiceKind === 'collective');
 
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ margin: 50, size: 'A4' });
@@ -132,9 +229,16 @@ export function buildInvoicePdf({ invoiceNumber, session, customer }) {
 
     // Rechnungsmeta rechts
     const metaX = 340;
-    labelValue(doc, 'Rechnung', invoiceNumber, metaX, 116, 205);
+    labelValue(doc, isCollective ? 'Sammelrechnung' : 'Rechnung', invoiceNumber, metaX, 116, 205);
     labelValue(doc, 'Rechnungsdatum', formatDate(invoiceDate), metaX, 152, 205);
-    labelValue(doc, 'Leistungszeitraum', `${formatDateTime(session.startedAt)} – ${formatDateTime(session.endedAt)}`, metaX, 188, 205);
+    labelValue(
+      doc,
+      'Leistungszeitraum',
+      `${formatDateTime(session.startedAt)} – ${formatDateTime(session.endedAt)}`,
+      metaX,
+      188,
+      205
+    );
     labelValue(doc, 'Kundennummer', customer.membershipId ?? '–', metaX, 224, 205);
 
     doc.y = 116;
@@ -174,15 +278,30 @@ export function buildInvoicePdf({ invoiceNumber, session, customer }) {
     );
 
     doc.y = recipientY + 70;
-    doc.fillColor(BRAND.text).font('Helvetica-Bold').fontSize(12).text('Leistungsübersicht');
+    doc.fillColor(BRAND.text).font('Helvetica-Bold').fontSize(12).text(
+      isCollective ? 'Leistungsübersicht (Sammelabrechnung)' : 'Leistungsübersicht'
+    );
     doc.moveDown(0.4);
     doc.fillColor(BRAND.muted).font('Helvetica').fontSize(9);
-    doc.text(
-      `Ladevorgang an ${session.stationName} · ${session.connectorType} · ${session.powerKw} kW` +
-        (session.evseNumber != null ? ` · Ladepunkt ${session.evseNumber}` : '')
-    );
-    doc.text(`Energie: ${session.energyKwh.toFixed(2)} kWh`);
-    if (session.id) doc.text(`Vorgangsreferenz: ${session.id}`);
+    if (isCollective) {
+      const n = Array.isArray(session.batchSessionIds)
+        ? session.batchSessionIds.length
+        : Array.isArray(session.lineItems)
+          ? session.lineItems.length
+          : 0;
+      doc.text(
+        `Zusammengefasste Abrechnung von ${n} Ladevorgang${n === 1 ? '' : 'en'} (Schwelle ab 1,00 €).`
+      );
+      doc.text(`Gesamtenergie: ${Number(session.energyKwh ?? 0).toFixed(3)} kWh`);
+      if (session.id) doc.text(`Sammelreferenz: ${session.id}`);
+    } else {
+      doc.text(
+        `Ladevorgang an ${session.stationName} · ${session.connectorType} · ${session.powerKw} kW` +
+          (session.evseNumber != null ? ` · Ladepunkt ${session.evseNumber}` : '')
+      );
+      doc.text(`Energie: ${Number(session.energyKwh ?? 0).toFixed(2)} kWh`);
+      if (session.id) doc.text(`Vorgangsreferenz: ${session.id}`);
+    }
     if (session.stripePaymentIntentId) doc.text(`Zahlungsreferenz: ${session.stripePaymentIntentId}`);
     doc.moveDown(1);
 
@@ -195,76 +314,20 @@ export function buildInvoicePdf({ invoiceNumber, session, customer }) {
     doc.text('EINZELPREIS', col.unit, tableTop + 7);
     doc.text('BETRAG', col.total, tableTop + 7, { width: 70, align: 'right' });
 
-    const rows = [];
-    if (session.energyKwh > 0) {
-      rows.push({
-        label: 'Stromlieferung (öffentliches Laden)',
-        qty: `${session.energyKwh.toFixed(2)} kWh`,
-        unit: eur(session.pricePerKwh ?? 0),
-        total: eur(energyNet),
-      });
-    }
-    if (sessionFee > 0) {
-      rows.push({
-        label: 'Startgebühr',
-        qty: '1',
-        unit: eur(sessionFee),
-        total: eur(sessionFee),
-      });
-    }
-    if (timeCost > 0) {
-      rows.push({
-        label: 'Zeitgebühr',
-        qty: `${minutes.toFixed(0)} Min.`,
-        unit: eur(session.pricePerMin ?? 0),
-        total: eur(timeCost),
-      });
-    }
-    if (discount > 0) {
-      rows.push({
-        label: session.rewardLabel ? `Prämienrabatt (${session.rewardLabel})` : 'Prämienrabatt',
-        qty: '1',
-        unit: eur(-discount),
-        total: eur(-discount),
-      });
-    }
-
-    // Line items may sum below Stripe card minimum (€0.50) — bridge so rows == Gesamtbetrag.
-    const lineSum =
-      Math.round(
-        (Math.max(0, energyNet) +
-          Math.max(0, sessionFee) +
-          Math.max(0, timeCost) -
-          Math.max(0, discount)) *
-          100
-      ) / 100;
-    const minTopUp = Math.round((grossTotal - lineSum) * 100) / 100;
-    if (minTopUp > 0.001) {
-      rows.push({
-        label: 'Mindestbetrag Kartenzahlung (Stripe)',
-        qty: '1',
-        unit: eur(minTopUp),
-        total: eur(minTopUp),
-      });
-    }
-
-    if (rows.length === 0) {
-      rows.push({
-        label: 'Ladeleistung',
-        qty: `${session.energyKwh.toFixed(2)} kWh`,
-        unit: '—',
-        total: eur(grossTotal),
-      });
-    }
+    const rows = buildLineRows(session, grossTotal);
 
     let rowY = tableTop + 28;
     doc.font('Helvetica').fontSize(9).fillColor(BRAND.text);
     for (const row of rows) {
       doc.text(row.label, col.pos + 8, rowY, { width: 190 });
+      if (row.sub) {
+        doc.fillColor(BRAND.muted).fontSize(7).text(row.sub, col.pos + 8, rowY + 11, { width: 190 });
+        doc.fillColor(BRAND.text).fontSize(9);
+      }
       doc.text(row.qty, col.qty, rowY);
       doc.text(row.unit, col.unit, rowY);
       doc.text(row.total, col.total, rowY, { width: 70, align: 'right' });
-      rowY += 22;
+      rowY += row.sub ? 30 : 22;
       doc.moveTo(50, rowY - 6).lineTo(545, rowY - 6).strokeColor(BRAND.border).stroke();
     }
 
@@ -293,6 +356,12 @@ export function buildInvoicePdf({ invoiceNumber, session, customer }) {
     doc.text(`Zahlungsstatus: ${paymentStatusLabel(session.paymentStatus)}`, { width: 495 });
     if (session.paymentStatus === 'paid') {
       doc.text('Der Rechnungsbetrag wurde bereits per Kartenzahlung (Stripe) beglichen.', { width: 495 });
+    }
+    if (isCollective) {
+      doc.text(
+        'Hinweis: Einzelne Ladevorgänge unter 1,00 € werden je Konto gesammelt und bei Erreichen von mindestens 1,00 € als Sammelrechnung abgerechnet.',
+        { width: 495 }
+      );
     }
     doc.moveDown(0.4);
     doc.text(

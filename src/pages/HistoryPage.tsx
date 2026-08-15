@@ -149,6 +149,12 @@ export function HistoryPage() {
                   <span>{sess.connectorType}</span>
                   <span className="text-bc-accent">+{sess.pointsEarned} Points</span>
                   {sess.paymentStatus === 'paid' && <span className="text-bc-accent">Bezahlt</span>}
+                  {(sess.paymentStatus === 'deferred' || sess.billingStatus === 'deferred') && (
+                    <span className="text-bc-blue">{'Sammelabrechnung (< 1 €)'}</span>
+                  )}
+                  {sess.invoiceKind === 'collective' && sess.invoiceNumber && (
+                    <span className="text-bc-accent">Sammelrechnung</span>
+                  )}
                   {sess.paymentStatus === 'failed' && (
                     <span className="text-bc-danger">Zahlung fehlgeschlagen</span>
                   )}
@@ -159,6 +165,13 @@ export function HistoryPage() {
                     </span>
                   )}
                 </div>
+                {sess.paymentStatus === 'deferred' || sess.billingStatus === 'deferred' || !sess.invoiceNumber ? (
+                  <p className="mt-3 rounded-lg bg-bc-surface px-3 py-2 text-xs text-bc-muted">
+                    {sess.paymentStatus === 'deferred' || sess.billingStatus === 'deferred'
+                      ? 'Noch keine Rechnung — Beträge unter 1 € werden je Konto gesammelt und ab 1 € als Sammelrechnung abgerechnet.'
+                      : 'Keine Rechnung für diesen Vorgang.'}
+                  </p>
+                ) : (
                 <button
                   type="button"
                   onClick={() => void handleDownload(sess.id, invoiceNo)}
@@ -168,10 +181,11 @@ export function HistoryPage() {
                 >
                   <span className="flex items-center gap-2">
                     <FileText className="h-3.5 w-3.5 shrink-0" />
-                    Rechnung {invoiceNo}
+                    {sess.invoiceKind === 'collective' ? 'Sammelrechnung' : 'Rechnung'} {invoiceNo}
                   </span>
                   <Download className="h-3.5 w-3.5 shrink-0 text-bc-accent" />
                 </button>
+                )}
                 <SessionDisputeActions session={sess} />
               </div>
             );

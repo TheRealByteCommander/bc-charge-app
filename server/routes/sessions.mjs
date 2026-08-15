@@ -12,8 +12,8 @@ import {
 } from '../db.mjs';
 import { requireAuth } from '../middleware/auth.mjs';
 import { validateSessionCost } from '../services/chargeValidation.mjs';
-import { issueInvoiceForSession } from '../services/invoices.mjs';
 import { applySessionStats } from '../services/loyalty.mjs';
+import { finalizeAccountSessionBilling } from '../services/settleAccountCharges.mjs';
 import {
   applyChargingFulfillment,
   getNightPointsMultiplier,
@@ -269,29 +269,20 @@ router.post('/:id/complete', requireAuth, async (req, res) => {
     updatedProfile = { ...updatedProfile, gamification: gamificationPatch };
   }
 
-  // If client already aligned costEur to Stripe capture (card minimum), keep it.
-  const captureCents =
-    session.captureCents != null && Number.isFinite(Number(session.captureCents))
-      ? Math.round(Number(session.captureCents))
-      : null;
-  const amountChargedEur =
-    session.amountChargedEur != null && Number.isFinite(Number(session.amountChargedEur))
-      ? Math.round(Number(session.amountChargedEur) * 100) / 100
-      : captureCents != null
-        ? captureCents / 100
-        : null;
-  const billedCostEur =
-    amountChargedEur != null && amountChargedEur > 0 ? amountChargedEur : costEur;
+  // Usage economics only — card capture / Sammelrechnung handled by account billing.
+  const usageEur =
+    baseCostEur != null && Number.isFinite(Number(baseCostEur))
+      ? Number(baseCostEur)
+      : Number(costEur) || 0;
 
   let completed = {
     ...session,
     status: 'completed',
     endedAt: session.endedAt ?? new Date().toISOString(),
-    baseCostEur: baseCostEur ?? costEur,
+    baseCostEur: usageEur,
+    usageCostEur: usageEur,
+    costEur: usageEur,
     rewardDiscountEur,
-    costEur: billedCostEur,
-    captureCents: captureCents ?? undefined,
-    amountChargedEur: amountChargedEur ?? undefined,
     rewardLabel: session.rewardLabel,
   };
 
@@ -302,29 +293,54 @@ router.post('/:id/complete', requireAuth, async (req, res) => {
     }
   }
 
-  await upsertSession(req.userId, completed);
   await updateUserProfile(req.userId, updatedProfile);
 
+  // Micro-billing: < €1 deferred per account; >= €1 settle as Sammelrechnung / single invoice.
   let invoice = null;
+  let billing = null;
   try {
-    const issued = await issueInvoiceForSession(req.userId, completed);
-    if (issued.ok) {
-      completed = issued.session;
+    billing = await finalizeAccountSessionBilling({
+      userId: req.userId,
+      session: completed,
+      paymentMethodId: completed.paymentMethodId,
+      preauthPaymentIntentId: session.stripePaymentIntentId,
+      chargeOnCard: true,
+    });
+    completed = billing.session ?? completed;
+    if (billing.invoice) {
+      invoice = billing.invoice;
+    } else if (billing.mode === 'deferred') {
       invoice = {
-        invoiceNumber: issued.invoiceNumber,
-        emailSent: issued.emailSent,
-        emailSkipped: issued.emailSkipped,
+        deferred: true,
+        openBalanceEur: billing.openBalanceEur,
+        message: `Betrag unter 1 € — gesammelt (offen: ${Number(billing.openBalanceEur).toFixed(2)} €).`,
       };
+    } else if (billing.mode === 'charge_failed') {
+      invoice = { error: billing.error ?? 'Zahlung fehlgeschlagen', deferred: true };
     }
   } catch (e) {
-    console.error('[bc-charge] Rechnungsversand fehlgeschlagen:', e);
-    invoice = { error: 'Rechnung konnte nicht versendet werden.' };
+    console.error('[bc-charge] Account-Abrechnung fehlgeschlagen:', e);
+    // Fallback: persist completed session without charge
+    await upsertSession(req.userId, {
+      ...completed,
+      paymentStatus: 'deferred',
+      billingStatus: 'deferred',
+    });
+    invoice = { error: 'Abrechnung konnte nicht abgeschlossen werden.' };
   }
 
   res.json({
     session: completed,
     user: rowToProfile(await findUserById(req.userId)),
     invoice,
+    billing: billing
+      ? {
+          mode: billing.mode,
+          openBalanceEur: billing.openBalanceEur,
+          amountChargedEur: billing.amountChargedEur,
+          batchId: billing.batchId,
+        }
+      : undefined,
   });
 });
 

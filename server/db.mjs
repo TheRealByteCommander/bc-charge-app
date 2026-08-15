@@ -403,6 +403,33 @@ export async function findSessionById(userId, sessionId) {
   return row ? parseJson(row.data_json) : null;
 }
 
+/** Completed sessions still awaiting batch settlement (under €1 micro-billing). */
+export async function listDeferredSessions(userId) {
+  const sessions = await listSessions(userId);
+  return sessions.filter((s) => {
+    if (!s || s.status !== 'completed') return false;
+    if (s.billingStatus === 'deferred' || s.paymentStatus === 'deferred') return true;
+    // Legacy micro sessions without invoice / card charge
+    const usage =
+      s.usageCostEur != null
+        ? Number(s.usageCostEur)
+        : s.baseCostEur != null
+          ? Number(s.baseCostEur)
+          : Number(s.costEur);
+    if (
+      !s.invoiceNumber &&
+      !s.amountChargedEur &&
+      Number.isFinite(usage) &&
+      usage > 0 &&
+      usage < 1 &&
+      (s.paymentStatus === 'skipped' || s.paymentStatus === 'pending' || !s.paymentStatus)
+    ) {
+      return true;
+    }
+    return false;
+  });
+}
+
 export async function upsertSession(userId, session) {
   await assertCanActivateSession(userId, session);
 

@@ -12,8 +12,55 @@ router.get('/:sessionId/pdf', requireAuth, async (req, res) => {
     return;
   }
 
+  if (session.billingStatus === 'deferred' || session.paymentStatus === 'deferred') {
+    res.status(409).json({
+      error:
+        'Noch keine Rechnung — Beträge unter 1 € werden gesammelt und ab 1 € als Sammelrechnung ausgestellt.',
+    });
+    return;
+  }
+
+  if (!session.invoiceNumber) {
+    res.status(404).json({ error: 'Für diesen Ladevorgang liegt keine Rechnung vor.' });
+    return;
+  }
+
   try {
-    const issued = await issueInvoiceForSession(req.userId, session);
+    // Collective: rebuild multi-session PDF from all sessions sharing invoiceNumber
+    let invoiceSession = session;
+    if (session.invoiceKind === 'collective' || session.batchId) {
+      const { listSessions } = await import('../db.mjs');
+      const { buildCollectiveInvoiceSession, fromCents, sessionUsageCents } = await import(
+        '../services/accountBilling.mjs'
+      );
+      const all = await listSessions(req.userId);
+      const members = all.filter(
+        (s) =>
+          s &&
+          (s.invoiceNumber === session.invoiceNumber ||
+            (session.batchId && s.batchId === session.batchId))
+      );
+      if (members.length > 0) {
+        const totalCents = members.reduce((a, s) => a + sessionUsageCents(s), 0);
+        const totalEur =
+          session.batchTotalEur != null && Number.isFinite(Number(session.batchTotalEur))
+            ? Number(session.batchTotalEur)
+            : fromCents(totalCents);
+        invoiceSession = buildCollectiveInvoiceSession({
+          batchId: session.batchId || session.invoiceNumber,
+          sessions: members,
+          totalEur,
+          paymentStatus: session.paymentStatus || 'paid',
+          stripePaymentIntentId: session.stripePaymentIntentId,
+          paymentMethodId: session.paymentMethodId,
+        });
+        invoiceSession.invoiceNumber = session.invoiceNumber;
+      }
+    }
+
+    const issued = await issueInvoiceForSession(req.userId, invoiceSession, {
+      skipSessionUpsert: true,
+    });
     if (!issued.ok || !issued.pdfBuffer) {
       res.status(500).json({ error: issued.error ?? 'Rechnung konnte nicht erstellt werden.' });
       return;

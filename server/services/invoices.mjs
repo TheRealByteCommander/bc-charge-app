@@ -1,15 +1,28 @@
-import { findUserById, rowToProfile, upsertSession } from '../db.mjs';
+import { findUserById, rowToProfile, upsertSession, allocateInvoiceNumber, findInvoiceNumberBySessionId } from '../db.mjs';
 import { ensureInvoiceNumber } from './invoiceNumber.mjs';
 import { buildInvoicePdf } from './invoicePdf.mjs';
 import { sendInvoiceEmails } from './invoiceEmail.mjs';
 
-export async function buildInvoiceForSession(userId, session, customer) {
-  const invoiceNumber = await ensureInvoiceNumber(userId, session);
-  const pdfBuffer = await buildInvoicePdf({ invoiceNumber, session, customer });
+export async function buildInvoiceForSession(userId, session, customer, { registrySessionId } = {}) {
+  const invoiceNumber = registrySessionId
+    ? (session.invoiceNumber ??
+        (await findInvoiceNumberBySessionId(registrySessionId)) ??
+        (await allocateInvoiceNumber(userId, registrySessionId)))
+    : await ensureInvoiceNumber(userId, session);
+  const pdfBuffer = await buildInvoicePdf({ invoiceNumber, session: { ...session, invoiceNumber } });
   return { invoiceNumber, pdfBuffer };
 }
 
-export async function issueInvoiceForSession(userId, session) {
+/**
+ * @param {string} userId
+ * @param {object} session
+ * @param {{ registrySessionId?: string, skipSessionUpsert?: boolean }} [opts]
+ *   registrySessionId — use batch id as invoice_registry.session_id for Sammelrechnungen
+ *   skipSessionUpsert — caller persists member sessions itself
+ */
+export async function issueInvoiceForSession(userId, session, opts = {}) {
+  const { registrySessionId, skipSessionUpsert = false } = opts;
+
   if (session.status !== 'completed') {
     return { ok: false, error: 'Nur abgeschlossene Sitzungen können abgerechnet werden.' };
   }
@@ -26,9 +39,19 @@ export async function issueInvoiceForSession(userId, session) {
     membershipId: profile.membershipId,
   };
 
-  const invoiceNumber = await ensureInvoiceNumber(userId, session);
+  let invoiceNumber = session.invoiceNumber;
+  if (!invoiceNumber) {
+    if (registrySessionId) {
+      invoiceNumber =
+        (await findInvoiceNumberBySessionId(registrySessionId)) ??
+        (await allocateInvoiceNumber(userId, registrySessionId));
+    } else {
+      invoiceNumber = await ensureInvoiceNumber(userId, session);
+    }
+  }
+
   const sessionWithInvoice = { ...session, invoiceNumber };
-  const { pdfBuffer } = await buildInvoiceForSession(userId, sessionWithInvoice, customer);
+  const pdfBuffer = await buildInvoicePdf({ invoiceNumber, session: sessionWithInvoice, customer });
 
   let emailResult = { sent: false };
   if (!session.invoiceEmailedAt) {
@@ -46,7 +69,10 @@ export async function issueInvoiceForSession(userId, session) {
       ? new Date().toISOString()
       : session.invoiceEmailedAt ?? null,
   };
-  await upsertSession(userId, updatedSession);
+
+  if (!skipSessionUpsert && updatedSession.id && updatedSession.id !== 'batch' && !String(updatedSession.id).startsWith('batch_')) {
+    await upsertSession(userId, updatedSession);
+  }
 
   return {
     ok: true,

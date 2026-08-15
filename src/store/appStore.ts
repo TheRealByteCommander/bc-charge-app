@@ -30,8 +30,6 @@ import {
 } from '../services/citrineosSync';
 import {
   cancelChargingPreauth,
-  captureChargingSession,
-  chargeChargingSession,
   detachStripePaymentMethod,
   ensureStripeCustomer,
   fetchStripePaymentMethods,
@@ -1263,81 +1261,20 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
     }
 
-    let paymentStatus: ChargingSession['paymentStatus'] = 'skipped';
-    let stripePaymentIntentId: string | undefined = current.stripePaymentIntentId;
-
-    const { stripeReady } = get();
-    if (stripeReady && user.stripeCustomerId) {
-      try {
-        if (stripePaymentIntentId) {
-          // Preferred path: capture actual usage against the €50 pre-auth hold.
-          const capture = await captureChargingSession(
-            stripePaymentIntentId,
-            current.id,
-            current.costEur
-          );
-          stripePaymentIntentId = capture.paymentIntentId;
-          if (capture.cancelled) {
-            paymentStatus = 'skipped';
-          } else if (capture.paid) {
-            paymentStatus = 'paid';
-          } else if (capture.paymentStatus === 'pending' || capture.status === 'processing') {
-            paymentStatus = 'pending';
-          } else {
-            paymentStatus = 'failed';
-          }
-          // Invoice/total must equal what Stripe actually charged (e.g. €0.50 card minimum).
-          if (capture.captureCents != null && capture.captureCents > 0) {
-            const charged =
-              capture.amountChargedEur != null && Number.isFinite(capture.amountChargedEur)
-                ? capture.amountChargedEur
-                : capture.captureCents / 100;
-            current = {
-              ...current,
-              baseCostEur: current.baseCostEur ?? current.costEur,
-              captureCents: capture.captureCents,
-              amountChargedEur: charged,
-              costEur: charged,
-            };
-          } else if (capture.amountChargedEur != null && Number.isFinite(capture.amountChargedEur)) {
-            current = {
-              ...current,
-              baseCostEur: current.baseCostEur ?? current.costEur,
-              amountChargedEur: capture.amountChargedEur,
-              costEur: capture.amountChargedEur,
-            };
-          }
-          if (paymentStatus === 'failed') {
-            set({ toast: 'Zahlung ausstehend – bitte prüfen Sie Ihre Zahlungsmethode.' });
-          }
-        } else if (current.costEur >= 0.5) {
-          // Legacy fallback: immediate charge if session has no pre-auth (older active sessions).
-          const charge = await chargeChargingSession(
-            user,
-            current.paymentMethodId,
-            current.costEur,
-            current.id,
-            `BC Charge – ${current.stationName}`
-          );
-          stripePaymentIntentId = charge.paymentIntentId;
-          paymentStatus = charge.paid ? 'paid' : charge.status === 'processing' ? 'pending' : 'failed';
-          if (!charge.paid) {
-            set({ toast: 'Zahlung ausstehend – bitte prüfen Sie Ihre Zahlungsmethode.' });
-          }
-        }
-      } catch (e) {
-        paymentStatus = 'failed';
-        set({
-          toast: e instanceof Error ? e.message : 'Zahlung fehlgeschlagen',
-        });
-      }
-    }
+    // Billing is server-owned: usage < €1 deferred per account; >= €1 Sammelrechnung.
+    // Keep preauth PI id on the session so complete can capture/cancel the hold.
+    const stripePaymentIntentId: string | undefined = current.stripePaymentIntentId;
+    const usageCost = current.baseCostEur ?? current.costEur;
 
     const ended: ChargingSession = {
       ...current,
       endedAt: new Date().toISOString(),
       status: 'completed',
-      paymentStatus,
+      baseCostEur: usageCost,
+      usageCostEur: usageCost,
+      costEur: usageCost,
+      // provisional — server finalize overwrites
+      paymentStatus: current.paymentStatus ?? 'pending',
       stripePaymentIntentId,
     };
     const gam = processSessionGamification(user, ended);
@@ -1361,15 +1298,33 @@ export const useAppStore = create<AppState>((set, get) => ({
           totalSessions: mergedUser.totalSessions,
           co2SavedKg: mergedUser.co2SavedKg,
         });
-        const invoiceHint = result.invoice?.emailSent
-          ? ' · Rechnung per E-Mail versendet'
-          : result.invoice?.error
-            ? ' · Rechnung konnte nicht per E-Mail versendet werden'
-            : '';
+        let invoiceHint = '';
+        if (result.invoice?.deferred || result.billing?.mode === 'deferred') {
+          const open = result.invoice?.openBalanceEur ?? result.billing?.openBalanceEur ?? 0;
+          invoiceHint = ` · unter 1 € gesammelt (offen ${Number(open).toFixed(2)} €)`;
+        } else if (result.invoice?.kind === 'collective' || result.billing?.mode === 'collective') {
+          const total = result.invoice?.totalEur ?? result.billing?.amountChargedEur;
+          invoiceHint = total != null
+            ? ` · Sammelrechnung ${Number(total).toFixed(2)} €`
+            : ' · Sammelrechnung';
+          if (result.invoice?.emailSent) invoiceHint += ' per E-Mail';
+        } else if (result.invoice?.emailSent) {
+          invoiceHint = ' · Rechnung per E-Mail versendet';
+        } else if (result.invoice?.error) {
+          invoiceHint = ' · Rechnung/Zahlung prüfen';
+        }
         clearActiveSessionCache();
+        // Refresh list so sibling batch sessions pick up shared invoiceNumber
+        let nextSessions = sessions.map((s) => (s.id === result.session.id ? result.session : s));
+        try {
+          const remote = await fetchSessions();
+          nextSessions = remote;
+        } catch {
+          /* keep local merge */
+        }
         set({
           user: mergedUser,
-          sessions: sessions.map((s) => (s.id === result.session.id ? result.session : s)),
+          sessions: nextSessions,
           activeSession: null,
           selectedChargingFulfillmentId: null,
           toast: `Laden beendet · ${formatGamificationToast(gam, 'de')}${invoiceHint}`,

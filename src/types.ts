@@ -161,17 +161,24 @@ export interface ChargingSession {
   endedAt?: string;
   status: 'active' | 'completed' | 'cancelled';
   energyKwh: number;
-  /** Final billable total (must match Stripe capture when paid). */
+  /** Final billable total (usage; or charged total when single settle). */
   costEur: number;
   pricePerKwh: number;
   sessionFee: number;
   pointsEarned: number;
-  /** Usage cost before card minimum / capture alignment. */
+  /** Usage cost before batch/card alignment. */
   baseCostEur?: number;
+  /** Explicit usage euros for micro-billing aggregation. */
+  usageCostEur?: number;
   /** Stripe amount_to_capture / amount_received in cents. */
   captureCents?: number;
-  /** Stripe billed euros (= captureCents/100). */
+  /** Stripe billed euros when this session was charged alone. */
   amountChargedEur?: number;
+  /** deferred = under €1 open balance; invoiced after Sammelrechnung. */
+  billingStatus?: 'deferred' | 'invoiced' | 'open';
+  invoiceKind?: 'single' | 'collective';
+  batchId?: string;
+  batchTotalEur?: number;
   /** CitrineOS/OCPP Transaktions-ID */
   citrineosTransactionId?: string;
   /** CitrineOS ChargingStations.id (Hasura) – für Live-Polling ohne Stations-Cache */
@@ -180,7 +187,7 @@ export interface ChargingSession {
   /** true = Live-Daten von CitrineOS, false = lokale Simulation */
   citrineosBacked?: boolean;
   stripePaymentIntentId?: string;
-  paymentStatus?: 'pending' | 'paid' | 'failed' | 'skipped';
+  paymentStatus?: 'pending' | 'paid' | 'failed' | 'skipped' | 'deferred';
   /** Rechnungsnummer (z. B. BC-2026-123456) */
   invoiceNumber?: string;
   /** Zeitpunkt des E-Mail-Versands der Rechnung (ISO) */

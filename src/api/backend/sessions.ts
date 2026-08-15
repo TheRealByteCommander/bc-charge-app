@@ -96,7 +96,19 @@ export interface SessionCompleteResult {
     emailSent?: boolean;
     emailSkipped?: boolean;
     error?: string;
+    deferred?: boolean;
+    openBalanceEur?: number;
+    message?: string;
+    kind?: string;
+    batchId?: string;
+    totalEur?: number;
   } | null;
+  billing?: {
+    mode?: string;
+    openBalanceEur?: number;
+    amountChargedEur?: number;
+    batchId?: string;
+  };
 }
 
 export async function completeSessionRemote(
@@ -118,12 +130,21 @@ export async function completeSessionRemote(
           ? { emailSkipped: res.invoice.emailSkipped }
           : {}),
         ...(res.invoice.error !== undefined ? { error: res.invoice.error } : {}),
+        ...(res.invoice.deferred !== undefined ? { deferred: res.invoice.deferred } : {}),
+        ...(res.invoice.openBalanceEur !== undefined
+          ? { openBalanceEur: res.invoice.openBalanceEur }
+          : {}),
+        ...(res.invoice.message !== undefined ? { message: res.invoice.message } : {}),
+        ...(res.invoice.kind !== undefined ? { kind: res.invoice.kind } : {}),
+        ...(res.invoice.batchId !== undefined ? { batchId: res.invoice.batchId } : {}),
+        ...(res.invoice.totalEur !== undefined ? { totalEur: res.invoice.totalEur } : {}),
       }
     : res.invoice ?? null;
   return {
     session: toChargingSession(res.session),
     user: toUserProfile(res.user),
     invoice,
+    billing: res.billing,
   };
 }
 
