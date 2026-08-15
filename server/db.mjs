@@ -16,9 +16,12 @@ const dbClient = (process.env.BC_DB_CLIENT ?? (process.env.DATABASE_URL ? 'postg
 let sqliteDb;
 let pgPool;
 
-function isPostgres() {
+export function isPostgres() {
   return dbClient === 'postgres';
 }
+
+/** Live bindings — assigned in initDb(); call initDb before using. */
+export { sqliteDb, pgPool };
 
 function parseJson(value) {
   if (value == null) return null;
