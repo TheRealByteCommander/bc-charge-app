@@ -4,6 +4,8 @@ import {
   ACCOUNT_SETTLE_THRESHOLD_CENTS,
   buildCollectiveInvoiceSession,
   buildSessionLineItem,
+  isDeferredSession,
+  markSessionWaived,
   markSessionsDeferred,
   markSessionsSettled,
   sessionUsageCents,
@@ -103,5 +105,68 @@ describe('accountBilling', () => {
     assert.equal(settled[0].invoiceNumber, 'BC-2026-000099');
     assert.equal(settled[0].billingStatus, 'invoiced');
     assert.equal(settled[0].batchTotalEur, 1.2);
+  });
+
+  it('does not treat zero-usage sessions as deferred open balance', () => {
+    const zero = {
+      id: 'z',
+      costEur: 0,
+      usageCostEur: 0,
+      energyKwh: 0,
+      status: 'completed',
+      paymentStatus: 'skipped',
+      billingStatus: 'waived',
+    };
+    assert.equal(sessionUsageCents(zero), 0);
+    assert.equal(isDeferredSession(zero), false);
+
+    const waived = markSessionWaived({
+      id: 'z2',
+      costEur: 0,
+      energyKwh: 0,
+      status: 'completed',
+    });
+    assert.equal(waived.billingStatus, 'waived');
+    assert.equal(waived.paymentStatus, 'skipped');
+    assert.equal(waived.amountChargedEur, 0);
+    assert.equal(isDeferredSession(waived), false);
+
+    const decision = shouldSettleAccountCharges({
+      deferredSessions: [],
+      currentSession: waived,
+    });
+    assert.equal(decision.settle, false);
+    assert.equal(decision.reason, 'zero');
+    assert.equal(decision.totalCents, 0);
+  });
+
+  it('keeps positive micro amounts deferred while ignoring zero companions in settle math', () => {
+    const open = [
+      {
+        id: 'b',
+        costEur: 0.4,
+        baseCostEur: 0.4,
+        status: 'completed',
+        billingStatus: 'deferred',
+        paymentStatus: 'deferred',
+      },
+    ];
+    const zeroCurrent = {
+      id: 'z',
+      costEur: 0,
+      usageCostEur: 0,
+      status: 'completed',
+      billingStatus: 'waived',
+      paymentStatus: 'skipped',
+    };
+    // Callers must exclude waived current from deferred batch; open-only stays below threshold.
+    const openOnly = shouldSettleAccountCharges({
+      deferredSessions: open,
+      currentSession: { id: 'noop', usageCostEur: 0, costEur: 0, status: 'completed' },
+    });
+    assert.equal(openOnly.settle, false);
+    assert.equal(openOnly.totalCents, 40);
+    assert.equal(isDeferredSession(zeroCurrent), false);
+    assert.equal(isDeferredSession(open[0]), true);
   });
 });

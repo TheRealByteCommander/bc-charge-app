@@ -174,8 +174,8 @@ export interface ChargingSession {
   captureCents?: number;
   /** Stripe billed euros when this session was charged alone. */
   amountChargedEur?: number;
-  /** deferred = under €1 open balance; invoiced after Sammelrechnung. */
-  billingStatus?: 'deferred' | 'invoiced' | 'open';
+  /** deferred = under €1 open balance; invoiced after Sammelrechnung; waived = 0€ usage. */
+  billingStatus?: 'deferred' | 'invoiced' | 'open' | 'waived';
   invoiceKind?: 'single' | 'collective';
   batchId?: string;
   batchTotalEur?: number;

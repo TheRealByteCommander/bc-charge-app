@@ -12,11 +12,11 @@ import {
 import {
   buildCollectiveInvoiceSession,
   fromCents,
+  markSessionWaived,
   markSessionsDeferred,
   markSessionsSettled,
   sessionUsageCents,
   shouldSettleAccountCharges,
-  toCents,
 } from './accountBilling.mjs';
 import { issueInvoiceForSession } from './invoices.mjs';
 
@@ -29,75 +29,40 @@ function batchIdFor(sessions) {
   return `batch_${Math.abs(hash).toString(36)}_${Date.now().toString(36)}`;
 }
 
+async function cancelPreauthHold(piId, context) {
+  if (!piId || !stripe) return;
+  try {
+    const intent = await stripe.paymentIntents.retrieve(piId);
+    if (intent.status === 'requires_capture' || intent.status === 'requires_payment_method') {
+      await stripe.paymentIntents.cancel(piId);
+    }
+  } catch (e) {
+    console.warn(`[bc-charge] preauth cancel on ${context} failed:`, e?.message ?? e);
+  }
+}
+
 /**
- * After a session completes with known usage cost, either:
- * - defer (under €1 total open), or
- * - charge open+current and issue collective/single invoice.
- *
+ * Charge + invoice a batch of completed sessions (Sammelrechnung when >1).
  * @param {object} opts
  * @param {string} opts.userId
- * @param {object} opts.session - completed session with usage cost
+ * @param {object[]} opts.batchSessions
+ * @param {number} opts.totalCents
+ * @param {object} opts.current - completing session (may be outside batch when waived)
  * @param {string} [opts.paymentMethodId]
- * @param {string} [opts.preauthPaymentIntentId] - hold to cancel when deferring / not capturing session amount
+ * @param {string|null} [opts.preauthPaymentIntentId]
  * @param {boolean} [opts.chargeOnCard=true]
+ * @param {boolean} [opts.primaryIsCurrent=true] - return current as primary when it is in the batch
  */
-export async function finalizeAccountSessionBilling({
+async function settleBatch({
   userId,
-  session,
+  batchSessions,
+  totalCents,
+  current,
   paymentMethodId,
-  preauthPaymentIntentId,
+  preauthPaymentIntentId = null,
   chargeOnCard = true,
+  primaryIsCurrent = true,
 }) {
-  const usageCents = sessionUsageCents(session);
-  const usageEur = fromCents(usageCents);
-
-  // Normalize usage fields on the completing session first
-  let current = {
-    ...session,
-    status: 'completed',
-    endedAt: session.endedAt ?? new Date().toISOString(),
-    usageCostEur: usageEur,
-    baseCostEur: session.baseCostEur ?? usageEur,
-    costEur: usageEur,
-  };
-
-  const deferred = (await listDeferredSessions(userId)).filter((s) => s.id !== current.id);
-  const decision = shouldSettleAccountCharges({
-    deferredSessions: deferred,
-    currentSession: current,
-  });
-
-  // --- DEFER: cancel preauth hold, no invoice ---
-  if (!decision.settle) {
-    if (preauthPaymentIntentId && stripe) {
-      try {
-        const intent = await stripe.paymentIntents.retrieve(preauthPaymentIntentId);
-        if (intent.status === 'requires_capture' || intent.status === 'requires_payment_method') {
-          await stripe.paymentIntents.cancel(preauthPaymentIntentId);
-        }
-      } catch (e) {
-        console.warn('[bc-charge] preauth cancel on defer failed:', e?.message ?? e);
-      }
-    }
-
-    const openBalanceCents = decision.totalCents;
-    current = markSessionsDeferred(current, { openBalanceCents });
-    current.stripePaymentIntentId = undefined;
-    await upsertSession(userId, current);
-
-    return {
-      mode: 'deferred',
-      session: current,
-      openBalanceEur: fromCents(openBalanceCents),
-      openBalanceCents,
-      invoice: null,
-      settledSessions: [],
-    };
-  }
-
-  // --- SETTLE: charge total, Sammelrechnung ---
-  const batchSessions = [...deferred, current];
-  const totalCents = decision.totalCents;
   const totalEur = fromCents(totalCents);
   const batchId = batchIdFor(batchSessions);
 
@@ -166,7 +131,7 @@ export async function finalizeAccountSessionBilling({
             description:
               batchSessions.length > 1
                 ? `BC Charge Sammelrechnung (${batchSessions.length} Ladevorgänge)`
-                : `BC Charge – ${current.stationName || 'Ladevorgang'}`,
+                : `BC Charge – ${batchSessions[0]?.stationName || current.stationName || 'Ladevorgang'}`,
             metadata: {
               bcUserId: userId,
               source: 'bc-charge-app',
@@ -180,26 +145,30 @@ export async function finalizeAccountSessionBilling({
         stripePaymentIntentId = intent.id;
         captureCents = intent.amount_received ?? intent.amount ?? totalCents;
         amountChargedEur = fromCents(captureCents);
-        paymentStatus = intent.status === 'succeeded' ? 'paid' : intent.status === 'processing' ? 'pending' : 'failed';
+        paymentStatus =
+          intent.status === 'succeeded' ? 'paid' : intent.status === 'processing' ? 'pending' : 'failed';
       }
     } catch (e) {
       console.error('[bc-charge] settle charge failed:', e?.message ?? e);
-      paymentStatus = 'failed';
-      // Still mark deferred-open so we can retry later; keep sessions deferred
-      if (holdPiId && stripe) {
-        try {
-          const intent = await stripe.paymentIntents.retrieve(holdPiId);
-          if (intent.status === 'requires_capture') {
-            await stripe.paymentIntents.cancel(holdPiId);
-          }
-        } catch {
-          /* ignore */
-        }
+      await cancelPreauthHold(holdPiId, 'charge_failed');
+
+      // Keep open micro-balance retryable; if current is in the batch, mark it failed+deferred.
+      if (primaryIsCurrent && batchSessions.some((s) => s.id === current.id)) {
+        let failedCurrent = markSessionsDeferred(current, { openBalanceCents: totalCents });
+        failedCurrent.paymentStatus = 'failed';
+        failedCurrent.billingError = e instanceof Error ? e.message : 'Zahlung fehlgeschlagen';
+        await upsertSession(userId, failedCurrent);
+        return {
+          mode: 'charge_failed',
+          session: failedCurrent,
+          openBalanceEur: fromCents(totalCents),
+          openBalanceCents: totalCents,
+          invoice: null,
+          settledSessions: [],
+          error: e instanceof Error ? e.message : 'Zahlung fehlgeschlagen',
+        };
       }
-      current = markSessionsDeferred(current, { openBalanceCents: totalCents });
-      current.paymentStatus = 'failed';
-      current.billingError = e instanceof Error ? e.message : 'Zahlung fehlgeschlagen';
-      await upsertSession(userId, current);
+
       return {
         mode: 'charge_failed',
         session: current,
@@ -212,22 +181,13 @@ export async function finalizeAccountSessionBilling({
     }
   } else if (holdPiId && stripe) {
     // No card charge path — release hold
-    try {
-      const intent = await stripe.paymentIntents.retrieve(holdPiId);
-      if (intent.status === 'requires_capture') await stripe.paymentIntents.cancel(holdPiId);
-    } catch {
-      /* ignore */
-    }
+    await cancelPreauthHold(holdPiId, 'no_card_charge');
   }
 
   // Build invoice document session (Sammelrechnung when >1)
   const invoiceDoc = buildCollectiveInvoiceSession({
     batchId,
-    sessions: batchSessions.map((s) =>
-      s.id === current.id
-        ? { ...current, usageCostEur: usageEur, baseCostEur: usageEur, costEur: usageEur }
-        : s
-    ),
+    sessions: batchSessions,
     totalEur: amountChargedEur,
     paymentStatus,
     stripePaymentIntentId,
@@ -270,7 +230,7 @@ export async function finalizeAccountSessionBilling({
 
   // Primary session gets full charged amount when single; batch members keep usage
   for (const s of settled) {
-    if (batchSessions.length === 1 && s.id === current.id) {
+    if (batchSessions.length === 1) {
       s.costEur = amountChargedEur;
       s.amountChargedEur = amountChargedEur;
       s.captureCents = captureCents;
@@ -279,11 +239,14 @@ export async function finalizeAccountSessionBilling({
     await upsertSession(userId, s);
   }
 
-  const primary = settled.find((s) => s.id === current.id) ?? settled[settled.length - 1];
+  const primary =
+    (primaryIsCurrent && settled.find((s) => s.id === current.id)) ||
+    settled[settled.length - 1] ||
+    current;
 
   return {
     mode: batchSessions.length > 1 ? 'collective' : 'single',
-    session: primary,
+    session: primaryIsCurrent ? primary : current,
     openBalanceEur: 0,
     openBalanceCents: 0,
     invoice,
@@ -292,6 +255,132 @@ export async function finalizeAccountSessionBilling({
     stripePaymentIntentId,
     batchId,
   };
+}
+
+/**
+ * After a session completes with known usage cost, either:
+ * - waive (0€ usage — no open balance),
+ * - defer (under €1 total open), or
+ * - charge open+current and issue collective/single invoice.
+ *
+ * @param {object} opts
+ * @param {string} opts.userId
+ * @param {object} opts.session - completed session with usage cost
+ * @param {string} [opts.paymentMethodId]
+ * @param {string} [opts.preauthPaymentIntentId] - hold to cancel when deferring / not capturing session amount
+ * @param {boolean} [opts.chargeOnCard=true]
+ */
+export async function finalizeAccountSessionBilling({
+  userId,
+  session,
+  paymentMethodId,
+  preauthPaymentIntentId,
+  chargeOnCard = true,
+}) {
+  const usageCents = sessionUsageCents(session);
+  const usageEur = fromCents(usageCents);
+
+  // Normalize usage fields on the completing session first
+  let current = {
+    ...session,
+    status: 'completed',
+    endedAt: session.endedAt ?? new Date().toISOString(),
+    usageCostEur: usageEur,
+    baseCostEur: session.baseCostEur ?? usageEur,
+    costEur: usageEur,
+  };
+
+  const deferred = (await listDeferredSessions(userId)).filter((s) => s.id !== current.id);
+  const decision = shouldSettleAccountCharges({
+    deferredSessions: deferred,
+    currentSession: current,
+  });
+
+  // --- ZERO USAGE: no charge, no open balance, no invoice (do not pollute deferred queue) ---
+  if (usageCents <= 0 && deferred.length === 0) {
+    await cancelPreauthHold(preauthPaymentIntentId, 'zero_usage');
+    current = markSessionWaived(current);
+    current.stripePaymentIntentId = undefined;
+    await upsertSession(userId, current);
+    return {
+      mode: 'waived',
+      session: current,
+      openBalanceEur: 0,
+      openBalanceCents: 0,
+      invoice: null,
+      settledSessions: [],
+    };
+  }
+
+  // Current is free but older micro-charges remain: waive current, settle open-only if threshold met.
+  if (usageCents <= 0 && deferred.length > 0) {
+    await cancelPreauthHold(preauthPaymentIntentId, 'zero_usage_with_open');
+    current = markSessionWaived(current);
+    current.stripePaymentIntentId = undefined;
+    await upsertSession(userId, current);
+
+    const openOnly = shouldSettleAccountCharges({
+      deferredSessions: deferred,
+      currentSession: {
+        id: `${current.id}_noop`,
+        usageCostEur: 0,
+        costEur: 0,
+        status: 'completed',
+      },
+    });
+    if (!openOnly.settle) {
+      return {
+        mode: 'waived',
+        session: current,
+        openBalanceEur: fromCents(openOnly.totalCents),
+        openBalanceCents: openOnly.totalCents,
+        invoice: null,
+        settledSessions: [],
+      };
+    }
+
+    return settleBatch({
+      userId,
+      batchSessions: deferred,
+      totalCents: openOnly.totalCents,
+      current,
+      paymentMethodId,
+      preauthPaymentIntentId: null,
+      chargeOnCard,
+      primaryIsCurrent: false,
+    });
+  }
+
+  // --- DEFER: cancel preauth hold, no invoice ---
+  if (!decision.settle) {
+    await cancelPreauthHold(preauthPaymentIntentId, 'defer');
+
+    const openBalanceCents = decision.totalCents;
+    current = markSessionsDeferred(current, { openBalanceCents });
+    current.stripePaymentIntentId = undefined;
+    await upsertSession(userId, current);
+
+    return {
+      mode: 'deferred',
+      session: current,
+      openBalanceEur: fromCents(openBalanceCents),
+      openBalanceCents,
+      invoice: null,
+      settledSessions: [],
+    };
+  }
+
+  // --- SETTLE: charge total, Sammelrechnung ---
+  return settleBatch({
+    userId,
+    batchSessions: [...deferred, current],
+    totalCents: decision.totalCents,
+    current,
+    paymentMethodId,
+    preauthPaymentIntentId,
+    chargeOnCard,
+    primaryIsCurrent: true,
+  });
 }
 
 export async function getOpenAccountBalanceEur(userId) {

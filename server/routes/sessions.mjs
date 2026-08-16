@@ -309,6 +309,15 @@ router.post('/:id/complete', requireAuth, async (req, res) => {
     completed = billing.session ?? completed;
     if (billing.invoice) {
       invoice = billing.invoice;
+    } else if (billing.mode === 'waived') {
+      invoice = {
+        waived: true,
+        openBalanceEur: billing.openBalanceEur ?? 0,
+        message:
+          billing.openBalanceCents > 0
+            ? `Kein Verbrauch — offene Sammelbeträge: ${Number(billing.openBalanceEur).toFixed(2)} €.`
+            : 'Kein abrechenbarer Verbrauch — keine Rechnung.',
+      };
     } else if (billing.mode === 'deferred') {
       invoice = {
         deferred: true,

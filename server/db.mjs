@@ -408,7 +408,19 @@ export async function listDeferredSessions(userId) {
   const sessions = await listSessions(userId);
   return sessions.filter((s) => {
     if (!s || s.status !== 'completed') return false;
-    if (s.billingStatus === 'deferred' || s.paymentStatus === 'deferred') return true;
+    // Zero-usage / explicitly waived sessions never belong in the open balance queue.
+    if (s.billingStatus === 'waived' || s.billingStatus === 'invoiced') return false;
+    if (s.billingStatus === 'deferred' || s.paymentStatus === 'deferred') {
+      const usage =
+        s.usageCostEur != null
+          ? Number(s.usageCostEur)
+          : s.baseCostEur != null
+            ? Number(s.baseCostEur)
+            : Number(s.costEur);
+      // Guard: deferred with 0€ usage is data drift — exclude from open balance.
+      if (Number.isFinite(usage) && usage <= 0) return false;
+      return true;
+    }
     // Legacy micro sessions without invoice / card charge
     const usage =
       s.usageCostEur != null

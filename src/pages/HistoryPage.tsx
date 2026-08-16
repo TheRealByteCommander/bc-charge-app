@@ -156,6 +156,10 @@ export function HistoryPage() {
                   {(sess.paymentStatus === 'deferred' || sess.billingStatus === 'deferred') && (
                     <span className="text-bc-blue">{'Sammelabrechnung (< 1 €)'}</span>
                   )}
+                  {(sess.billingStatus === 'waived' ||
+                    (sess.paymentStatus === 'skipped' && !(sess.costEur > 0) && !sess.invoiceNumber)) && (
+                    <span className="text-bc-muted">Kein Verbrauch</span>
+                  )}
                   {sess.invoiceKind === 'collective' && sess.invoiceNumber && (
                     <span className="text-bc-accent">Sammelrechnung</span>
                   )}
@@ -173,7 +177,9 @@ export function HistoryPage() {
                   <p className="mt-3 rounded-lg bg-bc-surface px-3 py-2 text-xs text-bc-muted">
                     {sess.paymentStatus === 'deferred' || sess.billingStatus === 'deferred'
                       ? 'Noch keine Rechnung — Beträge unter 1 € werden je Konto gesammelt und ab 1 € als Sammelrechnung abgerechnet.'
-                      : 'Keine Rechnung für diesen Vorgang.'}
+                      : sess.billingStatus === 'waived' || sess.paymentStatus === 'skipped'
+                        ? 'Kein abrechenbarer Verbrauch — keine Rechnung.'
+                        : 'Keine Rechnung für diesen Vorgang.'}
                   </p>
                 ) : (
                 <button

@@ -32,6 +32,10 @@ export function sessionUsageCents(session) {
 
 export function isDeferredSession(session) {
   if (!session || session.status !== 'completed') return false;
+  // Explicit zero-usage completions are never open balance.
+  if (session.billingStatus === 'waived' || session.paymentStatus === 'skipped') {
+    if (sessionUsageCents(session) <= 0) return false;
+  }
   if (session.billingStatus === 'deferred') return true;
   if (session.paymentStatus === 'deferred') return true;
   // Uninvoiced completed micro amount still open
@@ -45,6 +49,22 @@ export function isDeferredSession(session) {
     return true;
   }
   return false;
+}
+
+/** Zero-usage completed session: release hold, no open balance, no invoice. */
+export function markSessionWaived(session) {
+  return {
+    ...session,
+    status: 'completed',
+    usageCostEur: 0,
+    baseCostEur: session.baseCostEur ?? 0,
+    costEur: 0,
+    amountChargedEur: 0,
+    captureCents: 0,
+    paymentStatus: 'skipped',
+    billingStatus: 'waived',
+    waivedAt: new Date().toISOString(),
+  };
 }
 
 export function sumUsageCents(sessions) {

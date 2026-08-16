@@ -258,6 +258,7 @@ export const SessionCompleteEnvelopeSchema = z
         emailSkipped: z.boolean().optional(),
         error: optionalString,
         deferred: z.boolean().optional(),
+        waived: z.boolean().optional(),
         openBalanceEur: optionalFiniteNumber,
         message: optionalString,
         kind: optionalString,
@@ -450,7 +451,12 @@ export function toChargingSession(raw: ChargingSessionWire): ChargingSession {
   if (raw.usageCostEur !== undefined) session.usageCostEur = raw.usageCostEur;
   if (raw.captureCents !== undefined) session.captureCents = raw.captureCents;
   if (raw.amountChargedEur !== undefined) session.amountChargedEur = raw.amountChargedEur;
-  if (raw.billingStatus === 'deferred' || raw.billingStatus === 'invoiced' || raw.billingStatus === 'open') {
+  if (
+    raw.billingStatus === 'deferred' ||
+    raw.billingStatus === 'invoiced' ||
+    raw.billingStatus === 'open' ||
+    raw.billingStatus === 'waived'
+  ) {
     session.billingStatus = raw.billingStatus;
   }
   if (raw.invoiceKind === 'single' || raw.invoiceKind === 'collective') {
