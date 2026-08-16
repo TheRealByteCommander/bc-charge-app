@@ -121,6 +121,17 @@ export async function listBillingAudit(sessionId, limit = 100) {
   return db().sqliteDb.prepare(sql).all(sessionId, limit).map(mapRow);
 }
 
+function parseMetaJson(value) {
+  if (value == null) return null;
+  if (typeof value !== 'string') return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    // Corrupt audit meta must not break list/verify paths
+    return null;
+  }
+}
+
 function mapRow(r) {
   return {
     id: r.id,
@@ -128,7 +139,7 @@ function mapRow(r) {
     event: r.event,
     amount: r.amount_eur,
     currency: r.currency,
-    meta: typeof r.meta_json === 'string' ? JSON.parse(r.meta_json) : r.meta_json,
+    meta: parseMetaJson(r.meta_json),
     checksum: r.checksum,
     createdAt: r.created_at,
   };

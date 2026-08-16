@@ -196,6 +196,7 @@ describe('pinBump readiness gate', () => {
     assert.ok(stats.upstreamOpen.some((x) => x.id === 851), 'watch #851 tenant path');
     assert.ok(stats.upstreamOpen.some((x) => x.id === 846), 'watch #846 audit-insert crash');
     assert.ok(stats.upstreamOpen.some((x) => x.id === 852), 'watch #852 measurand drop');
+    assert.ok(stats.upstreamOpen.some((x) => x.id === 867), 'watch #867 OCPPMessages partition');
     assert.ok(stats.dataApiMigration);
     assert.equal(stats.dataApiMigration.upstreamPr, 849);
     assert.equal(stats.dataApiMigration.blocking, 0);

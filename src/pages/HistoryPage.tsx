@@ -32,7 +32,11 @@ function SessionDisputeActions({ session }: { session: ChargingSession }) {
 export function HistoryPage() {
   const user = useAppStore((s) => s.user);
   const setToast = useAppStore((s) => s.setToast);
-  const activeSession = useAppStore((s) => s.activeSession);
+  // Per-field selectors: live kWh ticks must not rebuild the whole history tree.
+  const activeSessionId = useAppStore((s) => s.activeSession?.id ?? null);
+  const activeStationName = useAppStore((s) => s.activeSession?.stationName);
+  const activeEnergyKwh = useAppStore((s) => s.activeSession?.energyKwh);
+  const activeStartedAt = useAppStore((s) => s.activeSession?.startedAt);
   const abandonStuckSession = useAppStore((s) => s.abandonStuckSession);
   const sessions = useAppStore((s) => s.sessions).filter((s) => s.status === 'completed');
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
@@ -89,7 +93,7 @@ export function HistoryPage() {
         {sessions.length} abgeschlossene Sessions · Rechnung prüfen oder Support kontaktieren
       </p>
 
-      {activeSession && (
+      {activeSessionId && (
         <div
           className="mt-6 rounded-2xl border border-bc-warn/40 bg-bc-warn/10 p-4 text-sm"
           role="alert"
@@ -99,8 +103,8 @@ export function HistoryPage() {
             <div className="min-w-0 flex-1">
               <p className="font-medium">Noch ein aktiver Ladevorgang</p>
               <p className="mt-1 text-bc-muted">
-                {activeSession.stationName} · {formatKwh(activeSession.energyKwh)} · seit{' '}
-                {formatDate(activeSession.startedAt)}
+                {activeStationName} · {formatKwh(activeEnergyKwh ?? 0)} · seit{' '}
+                {formatDate(activeStartedAt ?? '')}
               </p>
               <p className="mt-2 text-bc-muted">
                 Solange dieser Vorgang offen ist, starten keine neuen Ladungen und Status-Updates können

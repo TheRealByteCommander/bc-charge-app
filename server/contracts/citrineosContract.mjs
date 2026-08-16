@@ -1,16 +1,17 @@
 /** Integrationsvertrag CitrineOS ↔ bc-charge-app (v1.8.4)
- * Upstream watch (2026-08-15): citrineos-core latest pre-release still **v2.0.0-beta3**
- * (tag 2026-08-12; main tip still beta3 merge; no newer tag). Still NOT a prod pin — stay on
- * 1.8.4 until staging CANARY_FORCE=1 soak + pinBump.ready.
+ * Upstream watch (2026-08-16): citrineos-core latest pre-release still **v2.0.0-beta3**
+ * (tag 2026-08-12; no newer tag). Still NOT a prod pin — stay on 1.8.4 until staging
+ * CANARY_FORCE=1 soak + pinBump.ready + hardware smoke (Elinta/go-e).
  * beta3 highlights for BC: OCPP message correlation (#832), tenant-scoped repo deletes (#842),
  * OCPI tenant decorator (#841), OCPP messages state/message columns (#855), null VariableAttribute
  * guard (#847).
- * Open drift risks (not in beta3 tag; all still open 2026-08-15):
+ * Open drift risks (not in beta3 tag; still open 2026-08-16):
  *   - **#849 drop data API** (open): removes `/data/**` → dual-path wired to `/commands/transaction|tariff|bootConfig`
  *     (merge-spec 2026-08-15). Matrix structural gate clear; pin still 1.8.4 until staging soak.
- *   - **#851 tenant path mapping** (open, updated 2026-08-13): config → tenant DB + cache + path sanitization.
+ *   - **#851 tenant path mapping** (open): config → tenant DB + cache + path sanitization.
  *   - **#846** OCPPMessages audit insert can kill process (webhook dispatcher resilience).
  *   - **#852** unmapped measurands dropped (not relabeled as energy) — good for meter honesty.
+ *   - **#867** OCPPMessages weekly partition (open): ops/migration risk on Citrine DB; pairs with #846.
  * Webhooks: TransactionEvent seqNo + triggerReason (ChargingRateChanged/ChargingStateChanged → LM
  * reopt) + chargingState persist + meterValue energy (citrineosWebhooks.mjs / loadManagementReopt.mjs).
  * Load-Management: /api/load-management proxy + composite/external limits (PR #46 merged).
@@ -48,6 +49,13 @@ export const CITRINEOS_UPSTREAM_OPEN = [
     title: 'fix(core): drop unmapped OCPP measurands instead of relabeling them as the energy register',
     url: 'https://github.com/citrineos/citrineos-core/pull/852',
     risk: 'Positive for BC meter extract (Energy.Active.Import.Register only); watch if energy samples go missing on quirky hardware',
+  },
+  {
+    id: 867,
+    title: 'Feature: OCPPMessages Partition',
+    url: 'https://github.com/citrineos/citrineos-core/pull/867',
+    risk:
+      'Weekly partition + OCPPMessages_old on Citrine DB; deploy/entrypoint must provision partitions or inserts fail — compounds #846 audit-path fragility until both land',
   },
 ];
 

@@ -97,8 +97,15 @@ export async function initPricingTables() {
   await initRevenueShareTables();
 }
 
+/** Safe document-column parse — corrupt rows must not crash list/read paths. */
 function parseJson(val) {
-  return typeof val === 'string' ? JSON.parse(val) : val;
+  if (val == null) return null;
+  if (typeof val !== 'string') return val;
+  try {
+    return JSON.parse(val);
+  } catch {
+    return null;
+  }
 }
 
 function rowToVersion(row) {

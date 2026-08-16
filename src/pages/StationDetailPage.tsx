@@ -47,7 +47,9 @@ export function StationDetailPage() {
   const distance = useAppStore((s) => s.distanceKm);
   const toggleFavorite = useAppStore((s) => s.toggleFavorite);
   const startSession = useAppStore((s) => s.startSession);
-  const activeSession = useAppStore((s) => s.activeSession);
+  // Presence + station only — meter ticks must not re-render the whole station detail tree.
+  const activeSessionStationId = useAppStore((s) => s.activeSession?.stationId);
+  const activeSessionStationName = useAppStore((s) => s.activeSession?.stationName);
   const setToast = useAppStore((s) => s.setToast);
   const selectedChargingFulfillmentId = useAppStore((s) => s.selectedChargingFulfillmentId);
   const stationDataSource = useAppStore((s) => s.stationDataSource);
@@ -102,8 +104,10 @@ export function StationDetailPage() {
   const showAccessibleBadge = stationDataSource !== 'citrineos' ? station.accessible : false;
   const selectedConnectorData = station.connectors.find((c) => c.id === selectedConnector);
   const selectedVehicleData = user?.vehicles.find((v) => v.id === selectedVehicle);
-  const chargingHere = activeSession?.stationId === station.id;
-  const chargingElsewhere = Boolean(activeSession && activeSession.stationId !== station.id);
+  const chargingHere = activeSessionStationId === station.id;
+  const chargingElsewhere = Boolean(
+    activeSessionStationId && activeSessionStationId !== station.id
+  );
   const setupIncomplete = Boolean(user && (user.vehicles.length === 0 || user.paymentMethods.length === 0));
 
   const beginCharge = async () => {
@@ -232,9 +236,11 @@ export function StationDetailPage() {
         </div>
       )}
 
-      {chargingElsewhere && activeSession && (
+      {chargingElsewhere && activeSessionStationId && (
         <div className="mt-4 rounded-2xl border border-bc-warn/40 bg-bc-warn/10 p-4 text-sm" role="alert">
-          <p className="font-medium">{formatConcurrentSessionError(activeSession)}</p>
+          <p className="font-medium">
+            {formatConcurrentSessionError({ stationName: activeSessionStationName ?? '' })}
+          </p>
           <Link to="/laden" className="btn-secondary mt-3 inline-flex w-full justify-center">
             Zur laufenden Sitzung
           </Link>
