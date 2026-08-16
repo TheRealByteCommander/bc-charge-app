@@ -223,6 +223,10 @@ export const messages = {
       progress: 'Fortschritt',
       weekly: 'Diese Woche',
       memberCard: 'Mitgliedskarte',
+      memberCardHint:
+        'Ihre persönliche BC-Kundennummer. Sie dient als Ladeberechtigung in der App und zur Identifikation – nicht zum Starten an der Säule scannen.',
+      memberCardScanHint:
+        'Zum Laden: Station in der App öffnen oder den QR-Code an der Ladesäule scannen.',
       tier: 'Status',
       nextTier: 'Nächster Status',
       pointsToNext: 'Points bis zum nächsten Status',
@@ -564,6 +568,10 @@ export const messages = {
       progress: 'Progress',
       weekly: 'This week',
       memberCard: 'Member card',
+      memberCardHint:
+        'Your personal BC customer ID. It is your in-app charging authorization and membership reference — not a station QR to start a session.',
+      memberCardScanHint:
+        'To charge: open the station in the app or scan the QR code on the charger.',
       tier: 'Status',
       nextTier: 'Next status',
       pointsToNext: 'Points to next status',
