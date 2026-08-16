@@ -22,4 +22,4 @@ Disallow: /registrieren
 Disallow: /admin
 Disallow: /api/
 
-Sitemap: https://bc-charge.com/sitemap.xml
+Sitemap: https://main.bc-charge.com/sitemap.xml

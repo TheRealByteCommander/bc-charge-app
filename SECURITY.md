@@ -10,6 +10,7 @@ Die App nutzt einen **Express-API-Server** (`server/app.mjs`) mit **umschaltbare
 |---------|----------|
 | Auth | JWT in httpOnly-Cookie (`bc_session`), PBKDF2-SHA256 (210k), Demo-Seed optional |
 | API | CORS-Allowlist mit Credentials, Rate-Limit, JSON-Limit 256 KB |
+| HTTP Headers | HSTS, CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy via Express (`securityHeadersMiddleware`) + Nginx snippet `bc-charge-security-headers.conf` |
 | Stripe | Session-Auth, Kunden-Ownership, Abbuchung max. 250 €, Betragsabgleich mit Sitzung |
 | Stripe | Webhook-Endpoint mit Signaturprüfung (`STRIPE_WEBHOOK_SECRET`) |
 | Ladesitzungen | Serverseitige Kostenvalidierung (Tarif-Obergrenzen) beim Abschluss |
@@ -27,6 +28,7 @@ Die App nutzt einen **Express-API-Server** (`server/app.mjs`) mit **umschaltbare
 4. **Stripe-Webhooks** in Stripe Dashboard auf `/api/webhooks/stripe` registrieren.
 5. **Datenbank** – für Multi-Instance `BC_DB_CLIENT=postgres` + `DATABASE_URL` verwenden.
 6. Regelmäßig `npm audit`, TLS, WAF, Logging ohne PCI-Daten.
+7. **Security-Header** nach Deploy prüfen: `curl -sI https://main.bc-charge.com/ | grep -iE 'strict-transport|content-security|x-frame|x-content|referrer-policy|permissions-policy'` bzw. [securityheaders.com](https://securityheaders.com). Bei Drift: `sudo ./scripts/deploy/apply-security-headers.sh`.
 
 ## Meldung von Schwachstellen
 

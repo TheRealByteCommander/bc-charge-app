@@ -6,6 +6,7 @@ import { initDb } from './db.mjs';
 import { getBindHost, getCorsOptions, createRateLimiter } from './security.mjs';
 import { attachUserForRateLimit } from './middleware/auth.mjs';
 import { errorHandlerMiddleware } from './middleware/errorHandler.mjs';
+import { securityHeadersMiddleware } from './middleware/securityHeaders.mjs';
 import { seedDemoUser } from './services/seed.mjs';
 import { initConfigTable } from './services/configService.mjs';
 import { logger } from './utils/logger.mjs';
@@ -34,6 +35,9 @@ app.disable('x-powered-by');
 /** Hinter Nginx/Caddy: echte Client-IP für Rate-Limit-Fallback (nicht nur 127.0.0.1). */
 app.set('trust proxy', Number(process.env.BC_TRUST_PROXY_HOPS ?? 1));
 
+// Baseline browser security headers (HSTS only when NODE_ENV=production).
+app.use(securityHeadersMiddleware());
+
 const corsOptions = getCorsOptions();
 app.use(
   cors({
@@ -46,7 +50,7 @@ app.use(cookieParser());
 app.use(express.json({ limit: '256kb' }));
 
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, service: 'bc-charge-api' });
+  res.json({ ok: true, service: 'bc-charge-api', securityHeaders: true });
 });
 
 app.use(attachUserForRateLimit);

@@ -34,22 +34,22 @@
     <meta property="og:title" content="BC Charge – Laden mit Stil" />
     <meta property="og:description" content="Ladestationen finden, laden und Prämien sammeln." />
     <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://bc-charge.com/" />
+    <meta property="og:url" content="https://main.bc-charge.com/" />
     <meta property="og:locale" content="de_DE" />
     <meta property="og:site_name" content="BC Charge" />
-    <meta property="og:image" content="https://bc-charge.com/icons/icon-512.png" />
+    <meta property="og:image" content="https://main.bc-charge.com/icons/icon-512.png" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="BC Charge – Laden mit Stil" />
     <meta name="twitter:description" content="Ladestationen finden, laden und Prämien sammeln." />
-    <link rel="canonical" href="https://bc-charge.com/" />
+    <link rel="canonical" href="https://main.bc-charge.com/" />
     <script type="application/ld+json">
       {
         "@context": "https://schema.org",
         "@type": "Organization",
         "name": "BC Charge",
         "legalName": "Byte Commander GmbH",
-        "url": "https://bc-charge.com/",
-        "logo": "https://bc-charge.com/icons/icon-512.png",
+        "url": "https://main.bc-charge.com/",
+        "logo": "https://main.bc-charge.com/icons/icon-512.png",
         "email": "info@byte-commander.de",
         "telephone": "+49-34292-43340",
         "address": {
@@ -67,8 +67,8 @@
     <meta name="msapplication-TileColor" content="#0f1419" />
     <meta name="msapplication-config" content="/browserconfig.xml" />
     
-    <!-- Permissions Policy -->
-    <meta http-equiv="Permissions-Policy" content="camera=(*), geolocation=(*), microphone=()" />
+    <!-- Permissions Policy (HTTP header is source of truth in prod; meta as progressive enhancement) -->
+    <meta http-equiv="Permissions-Policy" content="camera=(self), geolocation=(self), microphone=(), payment=(self)" />
     
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />

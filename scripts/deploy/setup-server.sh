@@ -198,6 +198,27 @@ set_real_ip_from 2c0f:f248::/32;
 real_ip_header CF-Connecting-IP;
 EOF
 
+# Security-Header-Snippet VOR Site-Config (include muss existieren)
+mkdir -p /etc/nginx/snippets
+SNIPPET_SRC=""
+if [[ -f "${APP_DIR}/scripts/deploy/snippets/bc-charge-security-headers.conf" ]]; then
+  SNIPPET_SRC="${APP_DIR}/scripts/deploy/snippets/bc-charge-security-headers.conf"
+elif [[ -f "$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)/snippets/bc-charge-security-headers.conf" ]]; then
+  SNIPPET_SRC="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)/snippets/bc-charge-security-headers.conf"
+fi
+if [[ -n "$SNIPPET_SRC" ]]; then
+  cp "$SNIPPET_SRC" /etc/nginx/snippets/bc-charge-security-headers.conf
+else
+  warn "Security-Header-Snippet fehlt – Platzhalter wird geschrieben."
+  cat > /etc/nginx/snippets/bc-charge-security-headers.conf << 'SNIP'
+add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+add_header X-Frame-Options "SAMEORIGIN" always;
+add_header X-Content-Type-Options "nosniff" always;
+add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+add_header Permissions-Policy "camera=(self), geolocation=(self), microphone=(), payment=(self), usb=(), interest-cohort=()" always;
+SNIP
+fi
+
 # Site-Konfiguration
 cat > /etc/nginx/sites-available/bc-charge << EOF
 server {
@@ -226,6 +247,8 @@ server {
         proxy_set_header X-Forwarded-Proto \$scheme;
         proxy_cache_bypass \$http_upgrade;
         proxy_read_timeout 90s;
+        # Edge headers even if upstream omits (BFF also sets its own)
+        include /etc/nginx/snippets/bc-charge-security-headers.conf;
     }
 
     # Stripe Webhooks
@@ -236,23 +259,24 @@ server {
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
+        include /etc/nginx/snippets/bc-charge-security-headers.conf;
     }
 
     # SPA Fallback
     location / {
         try_files \$uri \$uri/ /index.html;
+        include /etc/nginx/snippets/bc-charge-security-headers.conf;
     }
 
-    # Cache für statische Assets
-    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2)$ {
+    # Cache für statische Assets (add_header hier ersetzt Server-Level — Security erneut setzen)
+    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|webmanifest|webp|woff2?)$ {
         expires 1y;
-        add_header Cache-Control "public, immutable";
+        add_header Cache-Control "public, immutable" always;
+        include /etc/nginx/snippets/bc-charge-security-headers.conf;
     }
 
-    # Security Headers
-    add_header X-Frame-Options "SAMEORIGIN" always;
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    # Security Headers (server-wide; also re-included in locations that set add_header)
+    include /etc/nginx/snippets/bc-charge-security-headers.conf;
 }
 EOF
 

@@ -119,13 +119,17 @@ else
 fi
 
 #-------------------------------------------------------------------------------
-# 4. Nginx & Healthchecks
+# 4. Nginx security headers + Healthchecks
 #-------------------------------------------------------------------------------
-log "4/4 – Nginx & Verbindungstests…"
+log "4/4 – Nginx Security-Header & Verbindungstests…"
 
 if command -v nginx &>/dev/null; then
-  nginx -t
-  systemctl reload nginx
+  if [[ -x "$APP_DIR/scripts/deploy/apply-security-headers.sh" ]]; then
+    "$APP_DIR/scripts/deploy/apply-security-headers.sh" || warn "apply-security-headers fehlgeschlagen – nginx -t manuell prüfen."
+  else
+    nginx -t
+    systemctl reload nginx
+  fi
 fi
 
 echo ""
