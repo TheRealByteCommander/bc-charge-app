@@ -41,14 +41,16 @@ Session-Ende / Vorschau
 | `energy` | Energiepreis | €/kWh |
 | `time` | Zeitabhängige Gebühr während Laden | €/Minute |
 | `session` | Startgebühr (pauschal) | €/Session |
-| `idle` | Blockiergebühr nach Ladeende | €/Minute |
+| `idle` | Idle/Blockier-Komponente (Engine-Support; **BC-Produktpolitik: nicht erheben**) | €/Minute |
 | `reservation` | Reservierungsgebühr | €/Pauschal |
 
 TOU-Fenster: `validFromLocal`, `validToLocal`, `weekdays` (1=Mo … 7=So), Zeitzone IANA (z. B. `Europe/Berlin`).
 
 ## Idle Fees – OCPP-State-Logik
 
-Blockiergebühren werden **nicht** aus konstanten `MeterValues` abgeleitet.
+**Produktpolitik BC Charge:** Es werden **keine** Blockier-/Standgebühren gegenüber Endkunden erhoben. Live-Tarife dürfen keine billable `idle`-Komponente enthalten; Kunden-Copy darf Idle-Fees nicht andeuten.
+
+Die Engine kann Idle-Intervalle technisch weiterhin aus OCPP-States ableiten (Roaming/Zukunft). Idle wird **nicht** aus konstanten `MeterValues` abgeleitet.
 
 ### Ablauf
 

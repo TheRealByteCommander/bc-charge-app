@@ -92,11 +92,10 @@ export function TariffsPage() {
       </Link>
       <h1 className="mt-4 font-display text-2xl font-bold">Tarife & Abrechnung</h1>
       <p className="mt-2 text-bc-muted leading-relaxed">
-        Versionierte Tarife mit unveränderlichem Snapshot pro Ladesitzung. Blockiergebühren (Idle) starten
-        nur nach OCPP-Ladeende (<code className="text-xs">SuspendedEV</code>,{' '}
-        <code className="text-xs">SuspendedEVSE</code>, <code className="text-xs">Idle</code>) – nicht bei
-        konstanten Zählerständen. Ladeoptimierung nach Strompreis ist ein separates Feature (Price-Driven
-        Charging).
+        Versionierte Tarife mit unveränderlichem Snapshot pro Ladesitzung. BC Charge erhebt keine
+        Blockier- oder Standgebühren nach dem Laden – abgerechnet wird die geladene Energie (ggf. plus
+        ausgewiesene Tarifkomponenten wie Startgebühr, falls im aktiven Tarif enthalten). Ladeoptimierung
+        nach Strompreis ist ein separates Feature (Price-Driven Charging).
       </p>
 
       {backend && tariffs.length > 0 && (
@@ -204,9 +203,8 @@ export function TariffsPage() {
       )}
 
       <p className="mt-6 text-xs text-bc-muted">
-        Eichrecht: signierte MeterValues werden im TariffSnapshot unverändert gespeichert. Blockiergebühren
-        gelten nur bei konfigurierter Idle-Komponente und OCPP-Ladeende (nicht bei konstanten Zählerständen).
-        Die App zertifiziert keine Messung selbst.
+        Eichrecht: signierte MeterValues werden im TariffSnapshot unverändert gespeichert. Es fallen keine
+        Blockiergebühren an. Die App zertifiziert keine Messung selbst.
       </p>
     </div>
   );

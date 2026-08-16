@@ -26,7 +26,7 @@ Tarifkomponenten werden bei Session-Start in einem **TariffSnapshot** eingefrore
 | `energy` | Energiekosten basierend auf MID-`MeterValue` (bevorzugt `midCertified`) |
 | `session` | Optionale Startgebühr |
 | `time` | Zeitabhängige Gebühr während aktiven Ladens |
-| `idle` | Blockiergebühr nach Ladeende (siehe Abschnitt 4) |
+| `idle` | Engine-Support für Idle (siehe Abschnitt 4) – **BC erhebt keine Blockiergebühr** |
 | `reservation` | Reservierungsgebühr (geplant) |
 
 Legacy-Felder in CitrineOS Hasura `Tariff` (`pricePerKwh`, `pricePerMin`) dienen der Anzeige; die verbindliche Abrechnung folgt dem TariffSnapshot der App.
@@ -35,18 +35,21 @@ Dokumentation: [`docs/dynamic-pricing-engine.md`](../../dynamic-pricing-engine.m
 
 ## 4. Idle Fees (Blockiergebühr)
 
-Blockiergebühren werden **ausschließlich** aus OCPP-Ladezuständen abgeleitet, **nicht** aus konstanten MeterValues.
+**Produktpolitik:** BC Charge erhebt **keine** Blockier- oder Standgebühren. Kunden-UI und Hilfe müssen das klar so kommunizieren.
 
-### Start einer Idle-Gebühr
+Technisch kann die Engine Idle-Intervalle **ausschließlich** aus OCPP-Ladezuständen ableiten, **nicht** aus konstanten MeterValues (für Roaming/zukünftige Tarife).
+
+### Wann die Engine Idle messen würde (nicht BC-Billing)
 
 1. Zuvor aktives Laden (`Charging` oder `EVConnected`).
 2. Wechsel zu `SuspendedEV`, `SuspendedEVSE` oder `Idle` (Fahrzeug angesteckt, Laden beendet).
-3. Nach Ablauf der konfigurierten Karenzzeit (`idleGraceSeconds`) wird die Idle-Komponente minutengenau berechnet.
+3. Nach `idleGraceSeconds` würde eine konfigurierte Idle-Komponente greifen – **in BC-Live-Tarifen nicht aktiv / Rate 0**.
 
-### Keine Idle-Gebühr
+### Keine Idle-Gebühr (BC)
 
-- Konstante Energie-MeterValues ohne begleitenden `charging_state`-Wechsel.
-- Standardtarife ohne `idle`-Komponente oder mit Rate `0`.
+- Produktentscheid: keine Blockiergebühr für Endkunden.
+- Live-Tarife ohne `idle`-Komponente oder mit Rate `0`.
+- Konstante Energie-MeterValues ohne `charging_state`-Wechsel erzeugen ohnehin kein Idle.
 
 Implementierung: `deriveIdleIntervals()` in `server/services/pricing/events.mjs`.
 

@@ -19,7 +19,9 @@ The H2 uses **OCPP 1.6 JSON**; the app targets **OCPP 2.0.1** enums. CitrineOS t
 
 ### Idle / blocking fees (billing)
 
-Idle fees are computed on the **App Server** from OCPP state transitions (`SuspendedEV`, `SuspendedEVSE`, `Idle` after `Charging`) — **not** from flat MeterValues. See `docs/dynamic-pricing-engine.md`.
+**Product policy:** BC Charge does **not** charge idle/blocking fees to end customers. Customer-facing copy must say so.
+
+The pricing engine can still derive idle intervals from OCPP state transitions (`SuspendedEV`, `SuspendedEVSE`, `Idle` after `Charging`) — **not** from flat MeterValues — for future/roaming support. Live BC tariffs must not bill idle. See `docs/dynamic-pricing-engine.md`.
 
 ## 2. H2-specific UI
 
@@ -44,4 +46,4 @@ Check `src/api/citrineos/types.ts`:
 
 - H2: explicit “Connector 1 or 2?” in start flow.
 - Use live connector status from Hasura subscriptions (`src/api/citrineos/subscription.ts`).
-- Do not promise “no idle fee” globally — depend on active tariff; standard BC tariffs often have no idle component.
+- Product policy: BC Charge does **not** charge idle/blocking fees. Do not show customer copy that implies idle fees may apply. Engine may still model `idle` components for future/roaming; live BC tariffs must not bill them.
