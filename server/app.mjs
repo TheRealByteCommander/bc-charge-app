@@ -1,6 +1,7 @@
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import express from 'express';
+import http from 'node:http';
 import { initDb } from './db.mjs';
 import { getBindHost, getCorsOptions, createRateLimiter } from './security.mjs';
 import { attachUserForRateLimit } from './middleware/auth.mjs';
@@ -8,6 +9,7 @@ import { errorHandlerMiddleware } from './middleware/errorHandler.mjs';
 import { seedDemoUser } from './services/seed.mjs';
 import { initConfigTable } from './services/configService.mjs';
 import { logger } from './utils/logger.mjs';
+import { attachHasuraWsProxy, HASURA_WS_PATH } from './utils/hasuraWsProxy.mjs';
 import authRouter from './routes/auth.mjs';
 import profileRouter from './routes/profile.mjs';
 import sessionsRouter from './routes/sessions.mjs';
@@ -85,10 +87,15 @@ app.use((err, _req, res, next) => {
 
 app.use(errorHandlerMiddleware);
 
+// http.Server required for WebSocket upgrades (Hasura subscription BFF proxy).
+const server = http.createServer(app);
+attachHasuraWsProxy(server);
+
 const host = getBindHost();
-app.listen(PORT, host, () => {
+server.listen(PORT, host, () => {
   const dbClient = (process.env.BC_DB_CLIENT ?? (process.env.DATABASE_URL ? 'postgres' : 'sqlite')).toLowerCase();
   logger.info(`API http://${host}:${PORT}`);
+  logger.info(`Hasura WS proxy: ws://${host}:${PORT}${HASURA_WS_PATH}`);
   logger.info(`Datenbankmodus: ${dbClient}`);
   if (!process.env.BC_JWT_SECRET && process.env.NODE_ENV === 'production') {
     logger.warn('BC_JWT_SECRET fehlt – setzen Sie einen langen Zufallswert.');
@@ -96,6 +103,10 @@ app.listen(PORT, host, () => {
   if (!process.env.CITRINEOS_API_URL) {
     logger.info('CitrineOS nicht konfiguriert – Stationsdaten bleiben statisch bis Setup.');
   }
+  if (!process.env.CITRINEOS_HASURA_URL) {
+    logger.info('Hasura WS proxy idle – CITRINEOS_HASURA_URL nicht gesetzt.');
+  }
 });
 
+export { server };
 export default app;
