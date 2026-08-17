@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto';
 import { getDbHandles } from '../../db.mjs';
+import { safeParseJson } from '../../utils/safeJson.mjs';
 import { buildTariffVersionPayload, citrineosTariffToComponents } from './tariffModel.mjs';
 import { createTariffSnapshot } from './tariffSnapshot.mjs';
 
@@ -99,13 +100,7 @@ export async function initPricingTables() {
 
 /** Safe document-column parse — corrupt rows must not crash list/read paths. */
 function parseJson(val) {
-  if (val == null) return null;
-  if (typeof val !== 'string') return val;
-  try {
-    return JSON.parse(val);
-  } catch {
-    return null;
-  }
+  return safeParseJson(val, null);
 }
 
 function rowToVersion(row) {

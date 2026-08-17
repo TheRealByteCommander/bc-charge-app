@@ -1,11 +1,11 @@
 /** Integrationsvertrag CitrineOS ↔ bc-charge-app (v1.8.4)
- * Upstream watch (2026-08-16): citrineos-core latest pre-release still **v2.0.0-beta3**
- * (tag 2026-08-12; no newer tag). Still NOT a prod pin — stay on 1.8.4 until staging
+ * Upstream watch (2026-08-17): citrineos-core latest pre-release still **v2.0.0-beta3**
+ * (tag 2026-08-12; no newer tag on releases). Still NOT a prod pin — stay on 1.8.4 until staging
  * CANARY_FORCE=1 soak + pinBump.ready + hardware smoke (Elinta/go-e).
  * beta3 highlights for BC: OCPP message correlation (#832), tenant-scoped repo deletes (#842),
  * OCPI tenant decorator (#841), OCPP messages state/message columns (#855), null VariableAttribute
- * guard (#847).
- * Open drift risks (not in beta3 tag; still open 2026-08-16):
+ * guard (#847). beta1 also: SalesTariffId on ChargingSchedules (#782), OTel WS metrics (#778).
+ * Open drift risks (not in beta3 tag; still open 2026-08-17):
  *   - **#849 drop data API** (open): removes `/data/**` → dual-path wired to `/commands/transaction|tariff|bootConfig`
  *     (merge-spec 2026-08-15). Matrix structural gate clear; pin still 1.8.4 until staging soak.
  *   - **#851 tenant path mapping** (open): config → tenant DB + cache + path sanitization.
@@ -14,6 +14,8 @@
  *   - **#867** OCPPMessages weekly partition (open): ops/migration risk on Citrine DB; pairs with #846.
  * Webhooks: TransactionEvent seqNo + triggerReason (ChargingRateChanged/ChargingStateChanged → LM
  * reopt) + chargingState persist + meterValue energy (citrineosWebhooks.mjs / loadManagementReopt.mjs).
+ * Hasura: station-status live queries only via BFF WS proxy; meter/LM stays on webhooks (live-query
+ * multiplex ~1s is wrong for high-freq telemetry).
  * Load-Management: /api/load-management proxy + composite/external limits (PR #46 merged).
  */
 

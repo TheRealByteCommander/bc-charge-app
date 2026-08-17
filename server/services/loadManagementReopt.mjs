@@ -6,6 +6,7 @@
  */
 
 import logger from '../utils/logger.mjs';
+import { safeParseJson } from '../utils/safeJson.mjs';
 import {
   isLoadManagementEnabled,
   loadManagementFetch,
@@ -87,11 +88,7 @@ export function resolveStationIdsForReopt(input = {}) {
 
       let data = /** @type {any} */ (row).data_json;
       if (typeof data === 'string') {
-        try {
-          data = JSON.parse(data);
-        } catch {
-          data = null;
-        }
+        data = safeParseJson(data, null);
       }
       if (data && typeof data === 'object' && !Array.isArray(data)) {
         push(data.stationId);

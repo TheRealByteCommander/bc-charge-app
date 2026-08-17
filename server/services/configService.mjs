@@ -1,4 +1,5 @@
 import { sqliteDb, pgPool, isPostgres } from '../db.mjs';
+import { safeParseObject } from '../utils/safeJson.mjs';
 
 const DEFAULT_LOYALTY_CONFIG = {
   pointsPerKwh: 1.2,
@@ -63,12 +64,7 @@ export async function getLoyaltyConfig() {
   const row = sqliteDb.prepare('SELECT value_json FROM app_config WHERE key = ?').get('loyalty');
   if (!row) return DEFAULT_LOYALTY_CONFIG;
   // SQLite stores TEXT; corrupt rows must not crash admin/loyalty reads.
-  try {
-    const parsed = typeof row.value_json === 'string' ? JSON.parse(row.value_json) : row.value_json;
-    return parsed && typeof parsed === 'object' ? parsed : DEFAULT_LOYALTY_CONFIG;
-  } catch {
-    return DEFAULT_LOYALTY_CONFIG;
-  }
+  return safeParseObject(row.value_json, DEFAULT_LOYALTY_CONFIG);
 }
 
 export async function setLoyaltyConfig(config) {

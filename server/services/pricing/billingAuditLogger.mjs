@@ -7,6 +7,7 @@
 
 import { createHmac, randomUUID } from 'crypto';
 import { getDbHandles } from '../../db.mjs';
+import { safeParseJson } from '../../utils/safeJson.mjs';
 
 const AUDIT_EVENTS = new Set([
   'SESSION_START',
@@ -122,14 +123,8 @@ export async function listBillingAudit(sessionId, limit = 100) {
 }
 
 function parseMetaJson(value) {
-  if (value == null) return null;
-  if (typeof value !== 'string') return value;
-  try {
-    return JSON.parse(value);
-  } catch {
-    // Corrupt audit meta must not break list/verify paths
-    return null;
-  }
+  // Corrupt audit meta must not break list/verify paths
+  return safeParseJson(value, null);
 }
 
 function mapRow(r) {

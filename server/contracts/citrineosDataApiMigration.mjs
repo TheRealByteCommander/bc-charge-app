@@ -153,7 +153,7 @@ export const CITRINEOS_DATA_API_MIGRATION = Object.freeze({
     'DONE: dual-fetch getTransaction + getTariffs (legacy → /commands/*)',
     'DONE: path map + CITRINEOS_REST_SURFACE override',
     'DONE: update paths.ts / contract endpoints with commands targets',
-    'Wait for upstream #849 merge + tag (still open on next as of 2026-08-15)',
+    'Wait for upstream #849 merge + tag (still open on next as of 2026-08-17)',
     'Staging CANARY_FORCE=1 soak against dual-path (expect commands 404 on pure 1.8.4 — legacy must win)',
     'When staging runs post-#849 Citrine: CITRINEOS_REST_SURFACE=commands soak + hardware smoke (Elinta + go-e)',
     'Only then allow evaluatePinBumpReadiness / version pin bump off 1.8.4',

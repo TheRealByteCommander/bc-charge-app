@@ -115,10 +115,12 @@ export function resetPvSurplusState() {
 
 /**
  * Equal-share surplus budget across N stations (kW per station).
+ * Never over-allocates: sum of per-station targets stays ≤ budget
+ * (min floor is applied only when affordable fleet-wide).
  * @param {number} surplusKw
  * @param {number} stationCount
  * @param {{ allocationFactor?: number, minStationPowerKw?: number, ceilingKw?: number }} [opts]
- * @returns {number} target kW per station (0 when none)
+ * @returns {number} target kW per station (0 when none / no budget)
  */
 export function computePerStationSurplusKw(surplusKw, stationCount, opts = {}) {
   const n = Math.max(0, Math.floor(Number(stationCount) || 0));
@@ -132,8 +134,11 @@ export function computePerStationSurplusKw(surplusKw, stationCount, opts = {}) {
       ? Math.max(0, opts.minStationPowerKw)
       : minStationPowerKw();
   const budget = Math.max(0, Number(surplusKw) || 0) * factor;
+  if (budget <= 0) return 0;
   const share = budget / n;
-  let target = Math.max(minKw, share);
+  // Min floor only when every station can still fit in the surplus budget.
+  // Inflating below-budget shares would pull grid power — wrong for PV surplus.
+  let target = share >= minKw && minKw > 0 ? Math.max(minKw, share) : share;
   if (typeof opts.ceilingKw === 'number' && Number.isFinite(opts.ceilingKw) && opts.ceilingKw > 0) {
     target = Math.min(opts.ceilingKw, target);
   }
@@ -375,18 +380,9 @@ export async function optimizeChargingWithPvSurplus(opts = {}) {
     };
   }
 
-  if (surplus <= 0) {
-    return {
-      success: true,
-      mode: 'no_surplus',
-      message: 'No PV surplus available, leaving charging profiles unchanged',
-      surplus,
-      sessionsAffected: 0,
-      stations: targets.map((t) => t.stationId),
-    };
-  }
-
+  // surplus <= 0 still applies caps (0 kW) so prior PV boosts do not stick after sunset/clouds.
   const perStationKw = computePerStationSurplusKw(surplus, targets.length);
+  const zeroSurplus = !(surplus > 0) || perStationKw <= 0;
 
   /** @type {Array<{ stationId: string, ok: boolean, error?: string|null }>} */
   let results = [];
@@ -395,14 +391,15 @@ export async function optimizeChargingWithPvSurplus(opts = {}) {
 
   if (lmEnabled()) {
     results = await applyLimitsViaLoadManagement(targets, perStationKw);
-    mode = 'load_management_limits';
+    mode = zeroSurplus ? 'no_surplus_limits' : 'load_management_limits';
     const anyOk = results.some((r) => r.ok);
     if (!anyOk) {
       results = await applyLimitsViaCitrineos(targets, perStationKw);
-      mode = 'citrineos_direct';
+      mode = zeroSurplus ? 'no_surplus_citrineos' : 'citrineos_direct';
     }
   } else {
     results = await applyLimitsViaCitrineos(targets, perStationKw);
+    if (zeroSurplus) mode = 'no_surplus_citrineos';
   }
 
   const sessionsAffected = results.filter((r) => r.ok).length;
@@ -410,7 +407,9 @@ export async function optimizeChargingWithPvSurplus(opts = {}) {
   return {
     success: sessionsAffected > 0 || results.length === 0,
     mode,
-    message: `Distributed ${surplus} kW PV surplus across ${targets.length} station(s) (~${perStationKw.toFixed(2)} kW each)`,
+    message: zeroSurplus
+      ? `No PV surplus — applied ${perStationKw.toFixed(2)} kW cap on ${targets.length} station(s)`
+      : `Distributed ${surplus} kW PV surplus across ${targets.length} station(s) (~${perStationKw.toFixed(2)} kW each)`,
     surplus,
     sessionsAffected,
     perStationKw,

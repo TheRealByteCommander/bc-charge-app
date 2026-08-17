@@ -4,6 +4,13 @@ import { apiConfig } from '../../config/api';
 import type { HasuraChargingStationRow } from './types';
 import { logger } from '../../utils/logger';
 
+/**
+ * Hasura live-query subscription for station/EVSE status only.
+ * Do NOT extend this to meter ticks / session kWh: Hasura multiplexed live queries
+ * re-poll (~1s default) and are a poor fit for high-frequency OCPP telemetry.
+ * Live energy/cost/LM reopt stay on Citrine webhooks + BFF session APIs.
+ * Backend mode: WS via `/api/citrineos/hasura-ws` (secret injected server-side).
+ */
 // Subscription query for real-time station updates
 const STATION_SUBSCRIPTION = `
   subscription BcChargeStationUpdates($tenantId: Int!) {

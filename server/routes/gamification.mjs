@@ -3,21 +3,16 @@ import { requireAuth, optionalAuth } from '../middleware/auth.mjs';
 import { findUserById, updateUserProfile, getLeaderboardData } from '../db.mjs';
 import { getLoyaltyConfig } from '../services/configService.mjs';
 import { computeTier } from '../services/loyalty.mjs';
+import { safeParseObject } from '../utils/safeJson.mjs';
 
 const router = Router();
 
 /** Safe profile_json read: pg returns object, sqlite string; never throw on corrupt rows. */
 function readProfile(row) {
   const raw = row?.profile_json ?? row?.profile;
-  if (raw == null) return {};
-  if (typeof raw === 'object') return { ...raw };
-  if (typeof raw !== 'string') return {};
-  try {
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
-  } catch {
-    return {};
-  }
+  const obj = safeParseObject(raw, {});
+  // Shallow copy so callers can mutate without touching pg driver objects.
+  return { ...obj };
 }
 
 function getWeekKey(d = new Date()) {

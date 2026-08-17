@@ -43,9 +43,11 @@ describe('computePerStationSurplusKw', () => {
     assert.equal(computePerStationSurplusKw(20, 0), 0);
   });
 
-  it('splits surplus equally and respects min floor', () => {
+  it('splits surplus equally and respects min floor only when affordable', () => {
     assert.equal(computePerStationSurplusKw(20, 2, { minStationPowerKw: 1.4 }), 10);
-    assert.equal(computePerStationSurplusKw(0.5, 2, { minStationPowerKw: 1.4 }), 1.4);
+    // 0.5 kW / 2 stations = 0.25 each — must NOT inflate to min 1.4 (grid over-draw)
+    assert.equal(computePerStationSurplusKw(0.5, 2, { minStationPowerKw: 1.4 }), 0.25);
+    assert.equal(computePerStationSurplusKw(0, 3, { minStationPowerKw: 1.4 }), 0);
   });
 
   it('applies allocation factor and ceiling', () => {
@@ -113,16 +115,29 @@ describe('optimizeChargingWithPvSurplus + reportPvSurplus', () => {
     assert.equal(result.sessionsAffected, 0);
   });
 
-  it('no_surplus mode leaves profiles when surplus is 0', async () => {
-    setPvSurplusTestDeps({ isLmEnabled: () => false });
+  it('no_surplus still applies 0 kW caps so prior PV boosts do not stick', async () => {
+    /** @type {Array<{ stationId: string, body: any }>} */
+    const citrineCalls = [];
+    setPvSurplusTestDeps({
+      isLmEnabled: () => false,
+      citrineosPost: async (_path, stationId, body) => {
+        citrineCalls.push({ stationId, body });
+        return [{ success: true }];
+      },
+    });
     const result = await optimizeChargingWithPvSurplus({
       surplus: 0,
       targets: [{ stationId: 'CS-1', powerKw: 22 }],
     });
     assert.equal(result.success, true);
-    assert.equal(result.mode, 'no_surplus');
-    assert.equal(result.sessionsAffected, 0);
-    assert.deepEqual(result.stations, ['CS-1']);
+    assert.equal(result.mode, 'no_surplus_citrineos');
+    assert.equal(result.sessionsAffected, 1);
+    assert.equal(result.perStationKw, 0);
+    assert.equal(citrineCalls.length, 1);
+    assert.equal(
+      citrineCalls[0].body?.chargingProfile?.chargingSchedule?.chargingSchedulePeriod?.[0]?.limit,
+      0
+    );
   });
 
   it('falls back to citrineos_direct when LM forward fails', async () => {
