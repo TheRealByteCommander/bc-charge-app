@@ -1,37 +1,29 @@
 /**
- * PV Surplus Charging routes for CitrineOS
+ * PV Surplus Charging routes
+ * Mount: /api/pv-surplus
  */
 
 import { Router } from 'express';
 import { optionalAuth, requireAuth } from '../middleware/auth.mjs';
-import { updatePvSurplus, getCurrentPvSurplus, optimizeChargingWithPvSurplus } from '../services/pvSurplusCharging.mjs';
+import {
+  getCurrentPvSurplus,
+  optimizeChargingWithPvSurplus,
+  reportPvSurplus,
+} from '../services/pvSurplusCharging.mjs';
+import logger from '../utils/logger.mjs';
 
 const router = Router();
 
 /**
  * POST /api/pv-surplus
- * Endpoint for external energy management systems to report current solar surplus
- * 
- * Request body:
- * {
- *   "surplus": 15.5  // Current PV surplus in kW
- * }
- * 
- * Response:
- * {
- *   "success": true,
- *   "message": "PV surplus updated successfully",
- *   "data": {
- *     "surplus": 15.5,
- *     "updateTime": "2023-07-14T10:30:00.000Z"
- *   }
- * }
+ * External EMS reports current solar surplus (kW).
+ * Body: { surplus: number, apply?: boolean }
+ * Default apply=true → forward to LM or local optimize.
  */
 router.post('/', optionalAuth, async (req, res) => {
   try {
-    const { surplus } = req.body;
+    const { surplus, apply } = req.body ?? {};
 
-    // Validate input
     if (surplus === undefined || surplus === null) {
       return res.status(400).json({
         success: false,
@@ -39,101 +31,103 @@ router.post('/', optionalAuth, async (req, res) => {
       });
     }
 
-    if (typeof surplus !== 'number' || surplus < 0) {
+    const n = typeof surplus === 'number' ? surplus : Number(surplus);
+    if (!Number.isFinite(n) || n < 0) {
       return res.status(400).json({
         success: false,
         message: 'Invalid surplus value. Must be a non-negative number.',
       });
     }
 
-    // Update the surplus value
-    updatePvSurplus(surplus);
+    const shouldApply = apply === undefined ? true : Boolean(apply);
+    const result = await reportPvSurplus(n, { apply: shouldApply });
 
-    // Get current surplus data
-    const currentSurplus = getCurrentPvSurplus();
-
-    // Return success response
     res.status(200).json({
       success: true,
-      message: 'PV surplus updated successfully',
+      message: shouldApply
+        ? 'PV surplus updated and applied'
+        : 'PV surplus updated successfully',
       data: {
-        surplus: currentSurplus.surplus,
-        updateTime: currentSurplus.updateTime
+        surplus: result.data.surplus,
+        updateTime: result.data.updateTime,
+        applied: result.applied,
+        mode: result.mode ?? null,
       },
+      optimize: result.optimize ?? null,
     });
   } catch (error) {
-    console.error('Error updating PV surplus:', error);
-    res.status(500).json({
+    const status = error?.status && Number.isFinite(error.status) ? error.status : 500;
+    logger.error('Error updating PV surplus', {
+      message: error instanceof Error ? error.message : String(error),
+    });
+    res.status(status).json({
       success: false,
-      message: `Failed to update PV surplus: ${error.message}`,
+      message: `Failed to update PV surplus: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
     });
   }
 });
 
 /**
  * GET /api/pv-surplus
- * Endpoint to get current PV surplus value
- * 
- * Response:
- * {
- *   "success": true,
- *   "data": {
- *     "surplus": 15.5,
- *     "updateTime": "2023-07-14T10:30:00.000Z"
- *   }
- * }
  */
-router.get('/', optionalAuth, (req, res) => {
+router.get('/', optionalAuth, (_req, res) => {
   try {
     const currentSurplus = getCurrentPvSurplus();
-
     res.status(200).json({
       success: true,
       data: {
         surplus: currentSurplus.surplus,
-        updateTime: currentSurplus.updateTime
+        updateTime: currentSurplus.updateTime,
       },
     });
   } catch (error) {
-    console.error('Error getting PV surplus:', error);
+    logger.error('Error getting PV surplus', {
+      message: error instanceof Error ? error.message : String(error),
+    });
     res.status(500).json({
       success: false,
-      message: `Failed to get PV surplus: ${error.message}`,
+      message: `Failed to get PV surplus: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
     });
   }
 });
 
 /**
  * POST /api/pv-surplus/optimize-charging
- * Optimize charging based on current PV surplus
- * 
- * Response:
- * {
- *   "success": true,
- *   "message": "Distributed 15.5 kW of PV surplus among 2 active sessions",
- *   "surplus": 15.5,
- *   "sessionsAffected": 2
- * }
+ * Admin-only re-apply of current surplus budget.
  */
 router.post('/optimize-charging', requireAuth, async (req, res) => {
   try {
-    // Only admins should be able to trigger optimization manually
     if (req.user?.role !== 'admin') {
-      return res.status(403).json({ 
-        success: false, 
-        message: 'Admin access required' 
+      return res.status(403).json({
+        success: false,
+        message: 'Admin access required',
       });
     }
 
-    // Optimize charging based on current PV surplus
-    const result = await optimizeChargingWithPvSurplus();
+    const bodySurplus = req.body?.surplus;
+    const surplus =
+      bodySurplus !== undefined && bodySurplus !== null
+        ? Number(bodySurplus)
+        : undefined;
+
+    const result = await optimizeChargingWithPvSurplus(
+      Number.isFinite(surplus) && surplus >= 0 ? { surplus } : {}
+    );
 
     res.status(result.success ? 200 : 500).json(result);
   } catch (error) {
-    console.error('Error optimizing charging with PV surplus:', error);
+    logger.error('Error optimizing charging with PV surplus', {
+      message: error instanceof Error ? error.message : String(error),
+    });
     res.status(500).json({
       success: false,
-      message: `Failed to optimize charging with PV surplus: ${error.message}`,
+      message: `Failed to optimize charging with PV surplus: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
     });
   }
 });

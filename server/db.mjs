@@ -8,6 +8,7 @@ import {
   assertSingleActiveInPayload,
   formatConcurrentSessionError,
 } from './services/sessionGuard.mjs';
+import { safeParseJson } from './utils/safeJson.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const dbPath = process.env.BC_DB_PATH ?? resolve(root, 'data', 'bc-charge.sqlite');
@@ -23,15 +24,9 @@ export function isPostgres() {
 /** Live bindings — assigned in initDb(); call initDb before using. */
 export { sqliteDb, pgPool };
 
+/** Document columns (data_json / profile_json / payload_json) — never throw on corrupt rows. */
 function parseJson(value) {
-  if (value == null) return null;
-  if (typeof value !== 'string') return value;
-  try {
-    return JSON.parse(value);
-  } catch {
-    // Corrupt session rows must not crash webhook/apply paths
-    return null;
-  }
+  return safeParseJson(value, null);
 }
 
 export async function initDb() {
@@ -708,6 +703,156 @@ export async function findAdhocSession(id, accessToken) {
     .prepare('SELECT data_json FROM adhoc_sessions WHERE id = ? AND access_token = ?')
     .get(id, accessToken);
   return row ? parseJson(row.data_json) : null;
+}
+
+/**
+ * Normalize a session row / data_json blob into a PV/load target.
+ * Pure helper — used by listActiveChargingTargets and unit tests.
+ * @param {unknown} raw
+ * @param {{ kind?: 'charging'|'adhoc', stationIdFallback?: string|null, connectorIdFallback?: string|number|null }} [meta]
+ * @returns {{ sessionId: string|null, kind: 'charging'|'adhoc', stationId: string, connectorId: string|null, evseId: number, powerKw: number, status: string }|null}
+ */
+export function normalizeChargingTarget(raw, meta = {}) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const data = /** @type {Record<string, unknown>} */ (raw);
+  const stationId = String(
+    data.stationId ??
+      data.station_id ??
+      data.citrineosStationId ??
+      meta.stationIdFallback ??
+      ''
+  ).trim();
+  if (!stationId) return null;
+
+  const status = String(data.status ?? 'active').toLowerCase();
+  const connectorRaw =
+    data.connectorId ?? data.connector_id ?? meta.connectorIdFallback ?? null;
+  const connectorId =
+    connectorRaw == null || connectorRaw === ''
+      ? null
+      : String(connectorRaw);
+
+  const evseCandidate = Number(
+    data.evseId ?? data.evse_id ?? data.evseNumber ?? data.evse_number ?? 1
+  );
+  const evseId = Number.isFinite(evseCandidate) && evseCandidate > 0 ? evseCandidate : 1;
+
+  const powerCandidate = Number(data.powerKw ?? data.power_kw ?? data.maxPowerKw ?? 0);
+  const powerKw = Number.isFinite(powerCandidate) && powerCandidate > 0 ? powerCandidate : 11;
+
+  const sessionId =
+    data.id != null && String(data.id).trim() !== ''
+      ? String(data.id)
+      : null;
+
+  return {
+    sessionId,
+    kind: meta.kind === 'adhoc' ? 'adhoc' : 'charging',
+    stationId,
+    connectorId,
+    evseId,
+    powerKw,
+    status,
+  };
+}
+
+/**
+ * Active account + adhoc sessions as charging targets (for PV surplus / load paths).
+ * Dedupes by stationId (first wins: charging before adhoc).
+ * @returns {Promise<Array<NonNullable<ReturnType<typeof normalizeChargingTarget>>>>}
+ */
+export async function listActiveChargingTargets() {
+  /** @type {Array<NonNullable<ReturnType<typeof normalizeChargingTarget>>>} */
+  const out = [];
+  const seenStations = new Set();
+
+  const push = (raw, meta) => {
+    const target = normalizeChargingTarget(raw, meta);
+    if (!target) return;
+    if (seenStations.has(target.stationId)) return;
+    seenStations.add(target.stationId);
+    out.push(target);
+  };
+
+  if (isPostgres()) {
+    const { rows: chargeRows } = await pgPool.query(
+      `SELECT id, data_json, status
+       FROM charging_sessions
+       WHERE status IN ('active', 'pending')
+       ORDER BY updated_at DESC`
+    );
+    for (const row of chargeRows) {
+      const data = parseJson(row.data_json) ?? {};
+      if (data && typeof data === 'object' && !Array.isArray(data) && data.id == null) {
+        data.id = row.id;
+      }
+      if (data && typeof data === 'object' && !Array.isArray(data) && data.status == null) {
+        data.status = row.status;
+      }
+      push(data, { kind: 'charging' });
+    }
+
+    const { rows: adhocRows } = await pgPool.query(
+      `SELECT id, station_id, connector_id, data_json, status
+       FROM adhoc_sessions
+       WHERE status IN ('active', 'pending', 'charging')
+       ORDER BY updated_at DESC`
+    );
+    for (const row of adhocRows) {
+      const data = parseJson(row.data_json) ?? {};
+      if (data && typeof data === 'object' && !Array.isArray(data)) {
+        if (data.id == null) data.id = row.id;
+        if (data.status == null) data.status = row.status;
+      }
+      push(data, {
+        kind: 'adhoc',
+        stationIdFallback: row.station_id,
+        connectorIdFallback: row.connector_id,
+      });
+    }
+    return out;
+  }
+
+  const chargeRows = sqliteDb
+    .prepare(
+      `SELECT id, data_json, status
+       FROM charging_sessions
+       WHERE status IN ('active', 'pending')
+       ORDER BY updated_at DESC`
+    )
+    .all();
+  for (const row of chargeRows) {
+    const data = parseJson(row.data_json) ?? {};
+    if (data && typeof data === 'object' && !Array.isArray(data) && data.id == null) {
+      data.id = row.id;
+    }
+    if (data && typeof data === 'object' && !Array.isArray(data) && data.status == null) {
+      data.status = row.status;
+    }
+    push(data, { kind: 'charging' });
+  }
+
+  const adhocRows = sqliteDb
+    .prepare(
+      `SELECT id, station_id, connector_id, data_json, status
+       FROM adhoc_sessions
+       WHERE status IN ('active', 'pending', 'charging')
+       ORDER BY updated_at DESC`
+    )
+    .all();
+  for (const row of adhocRows) {
+    const data = parseJson(row.data_json) ?? {};
+    if (data && typeof data === 'object' && !Array.isArray(data)) {
+      if (data.id == null) data.id = row.id;
+      if (data.status == null) data.status = row.status;
+    }
+    push(data, {
+      kind: 'adhoc',
+      stationIdFallback: row.station_id,
+      connectorIdFallback: row.connector_id,
+    });
+  }
+  return out;
 }
 
 export async function getLeaderboardData(limit = 20) {
