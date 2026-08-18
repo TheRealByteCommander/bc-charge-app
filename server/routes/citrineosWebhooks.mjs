@@ -71,6 +71,9 @@ export function assertCitrineosWebhookAuthorized(req, env = process.env) {
   return { ok: true, mode: 'secret' };
 }
 
+/** Canonical OCPP energy import register measurand (case-insensitive match). */
+const ENERGY_IMPORT_REGISTER = 'energy.active.import.register';
+
 /**
  * Pull Energy.Active.Import.Register from OCPP 2.0.1 meterValue arrays (Wh or kWh).
  * OCPP default unit for this measurand is Wh when unit/unitOfMeasure is omitted.
@@ -84,8 +87,10 @@ function extractEnergyKwhFromMeterValues(meterValue) {
     const samples = entry?.sampledValue || entry?.sampled_value;
     if (!samples || !Array.isArray(samples)) continue;
     for (const sample of samples) {
-      const measurand = sample?.measurand || sample?.Measurand;
-      if (measurand !== 'Energy.Active.Import.Register') continue;
+      const measurandRaw = sample?.measurand || sample?.Measurand;
+      if (measurandRaw == null || measurandRaw === '') continue;
+      // Some stacks vary casing; never require exact Pascal/dot spelling.
+      if (String(measurandRaw).trim().toLowerCase() !== ENERGY_IMPORT_REGISTER) continue;
       const raw = Number(sample?.value);
       if (!Number.isFinite(raw)) continue;
 
@@ -119,6 +124,44 @@ function extractEnergyKwhFromMeterValues(meterValue) {
     }
   }
   return energyKwh;
+}
+
+/**
+ * Collect meterValue arrays from common Citrine/OCPP envelope shapes.
+ * Prefer first non-empty array (body → transactionInfo → transaction alias).
+ * @param {Record<string, unknown>} body
+ * @param {Record<string, unknown>|null} transactionInfo
+ * @returns {unknown[]|null}
+ */
+function pickMeterValueArray(body, transactionInfo) {
+  const candidates = [
+    body?.meterValue,
+    body?.meterValues,
+    body?.meter_value,
+    body?.meter_values,
+    transactionInfo?.meterValue,
+    transactionInfo?.meterValues,
+    transactionInfo?.meter_value,
+    transactionInfo?.meter_values,
+  ];
+  // body.transaction is already folded into transactionInfo when object; keep direct
+  // alias for payloads that only nest meters under transaction without other fields.
+  const txAlias =
+    body?.transaction && typeof body.transaction === 'object' && !Array.isArray(body.transaction)
+      ? body.transaction
+      : null;
+  if (txAlias) {
+    candidates.push(
+      txAlias.meterValue,
+      txAlias.meterValues,
+      txAlias.meter_value,
+      txAlias.meter_values
+    );
+  }
+  for (const c of candidates) {
+    if (Array.isArray(c) && c.length > 0) return c;
+  }
+  return null;
 }
 
 /** OCPP 2.0.1 Transaction.ChargingStateEnumType (+ common casing variants). */
@@ -247,9 +290,10 @@ function normalizeCitrineosWebhookPayload(raw) {
 
   // OCPP 2.0.1 TransactionEvent: energy often only in meterValue[].sampledValue
   // (triggerReason e.g. ChargingRateChanged / MeterValuePeriodic) — no flat totalKwh.
+  // Also accept transaction / snake_case aliases used by some Citrine dispatchers.
   if (totalKwhRaw == null || totalKwhRaw === '') {
     const fromMeter = extractEnergyKwhFromMeterValues(
-      body.meterValue ?? body.meterValues ?? body.transactionInfo?.meterValue
+      pickMeterValueArray(body, transactionInfo)
     );
     if (fromMeter != null) totalKwhRaw = fromMeter;
   }

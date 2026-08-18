@@ -1136,6 +1136,54 @@ function mergeSessionData(data, patch) {
   return next;
 }
 
+/** Cap durable OCPP pricing event log per session (idle/billing consumers). */
+const MAX_SESSION_PRICING_EVENTS = 200;
+
+/**
+ * Append a charging_state / session_stop event for idle-fee derivation.
+ * Dedupes identical consecutive chargingState (+ type) so meter ticks without
+ * state change do not bloat data_json. Keeps chronological order, trims head.
+ *
+ * @param {Record<string, unknown>} data current session document
+ * @param {{ type: string, chargingState?: string|null, at?: string|null }} ev
+ * @returns {Array<Record<string, unknown>>|undefined} next pricingEvents or undefined if unchanged
+ */
+export function appendSessionPricingEvent(data, ev) {
+  if (!ev || typeof ev !== 'object') return undefined;
+  const type = typeof ev.type === 'string' ? ev.type.trim() : '';
+  if (!type) return undefined;
+
+  const at =
+    typeof ev.at === 'string' && ev.at.trim()
+      ? ev.at.trim()
+      : new Date().toISOString();
+  const chargingState =
+    ev.chargingState != null && String(ev.chargingState).trim()
+      ? String(ev.chargingState).trim()
+      : undefined;
+
+  const prev = Array.isArray(data?.pricingEvents) ? data.pricingEvents : [];
+  const last = prev.length ? prev[prev.length - 1] : null;
+  if (
+    last &&
+    last.type === type &&
+    (last.chargingState ?? null) === (chargingState ?? null)
+  ) {
+    // Same state already recorded (e.g. repeated SuspendedEV ticks) — no append.
+    return undefined;
+  }
+
+  /** @type {Record<string, unknown>} */
+  const entry = { at, type };
+  if (chargingState) entry.chargingState = chargingState;
+
+  const next = [...prev, entry];
+  if (next.length > MAX_SESSION_PRICING_EVENTS) {
+    return next.slice(next.length - MAX_SESSION_PRICING_EVENTS);
+  }
+  return next;
+}
+
 /**
  * Import register energy must not go backwards within an active session
  * (stale meter sample / unit glitch / out-of-order deliver without seqNo).
@@ -1360,10 +1408,16 @@ export async function applyCitrineosWebhookToSessions(event) {
       if (event.eventType != null) patch.lastCitrineosEventType = event.eventType;
       if (event.triggerReason != null) patch.lastCitrineosTriggerReason = event.triggerReason;
       // OCPP chargingState for LM/UI (SuspendedEVSE vs Charging) — dual keys for consumers.
+      // Also append durable pricingEvents so idle-fee deriveIdleIntervals can run offline.
       if (event.chargingState != null && String(event.chargingState).trim()) {
         const cs = String(event.chargingState).trim();
         patch.chargingState = cs;
         patch.lastCitrineosChargingState = cs;
+        const pricingEvents = appendSessionPricingEvent(data, {
+          type: 'charging_state',
+          chargingState: cs,
+        });
+        if (pricingEvents) patch.pricingEvents = pricingEvents;
       }
       // Persist station id from webhook so later re-opt / diagnostics have a stable source.
       if (event.stationId != null && String(event.stationId).trim()) {
@@ -1417,9 +1471,10 @@ export async function applyCitrineosWebhookToSessions(event) {
         rememberRow(row);
         continue;
       }
+      const endedAt = new Date().toISOString();
       const patch = {
         status: 'completed',
-        endedAt: new Date().toISOString(),
+        endedAt,
         citrineosTxActive: false,
       };
       // Keep final meter/cost on the stop patch so Ended is self-contained even if
@@ -1443,6 +1498,26 @@ export async function applyCitrineosWebhookToSessions(event) {
         const cs = String(event.chargingState).trim();
         patch.chargingState = cs;
         patch.lastCitrineosChargingState = cs;
+        // Seed charging_state before session_stop so open idle intervals close cleanly.
+        const withState = appendSessionPricingEvent(data, {
+          type: 'charging_state',
+          chargingState: cs,
+          at: endedAt,
+        });
+        if (withState) {
+          patch.pricingEvents = withState;
+        }
+      }
+      {
+        const baseForStop = {
+          ...data,
+          ...(patch.pricingEvents ? { pricingEvents: patch.pricingEvents } : {}),
+        };
+        const withStop = appendSessionPricingEvent(baseForStop, {
+          type: 'session_stop',
+          at: endedAt,
+        });
+        if (withStop) patch.pricingEvents = withStop;
       }
       if (event.stationId != null && String(event.stationId).trim()) {
         patch.citrineosStationId = String(event.stationId).trim();
@@ -1458,7 +1533,7 @@ export async function applyCitrineosWebhookToSessions(event) {
           from: prevSeq,
           to: nextSeq,
           missing: nextSeq - prevSeq - 1,
-          at: new Date().toISOString(),
+          at: endedAt,
         };
         actions.push(`seq-gap:tx=${transactionId}:seq=${prevSeq}->${nextSeq}`);
       }

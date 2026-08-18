@@ -4,7 +4,7 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { pickMonotonicEnergyKwh } from './db.mjs';
+import { appendSessionPricingEvent, pickMonotonicEnergyKwh } from './db.mjs';
 
 describe('pickMonotonicEnergyKwh', () => {
   it('accepts first sample and equal/increasing values', () => {
@@ -34,5 +34,72 @@ describe('pickMonotonicEnergyKwh', () => {
 
   it('recovers when previous energy was non-finite', () => {
     assert.equal(pickMonotonicEnergyKwh('nope', 3.2), 3.2);
+  });
+});
+
+describe('appendSessionPricingEvent', () => {
+  it('appends charging_state and session_stop for idle derivation', () => {
+    let data = {};
+    const a = appendSessionPricingEvent(data, {
+      type: 'charging_state',
+      chargingState: 'Charging',
+      at: '2026-08-18T10:00:00.000Z',
+    });
+    assert.ok(Array.isArray(a));
+    assert.equal(a.length, 1);
+    assert.equal(a[0].chargingState, 'Charging');
+
+    data = { pricingEvents: a };
+    const b = appendSessionPricingEvent(data, {
+      type: 'charging_state',
+      chargingState: 'SuspendedEV',
+      at: '2026-08-18T10:30:00.000Z',
+    });
+    assert.equal(b.length, 2);
+    assert.equal(b[1].chargingState, 'SuspendedEV');
+
+    data = { pricingEvents: b };
+    const c = appendSessionPricingEvent(data, {
+      type: 'session_stop',
+      at: '2026-08-18T10:45:00.000Z',
+    });
+    assert.equal(c.length, 3);
+    assert.equal(c[2].type, 'session_stop');
+  });
+
+  it('dedupes identical consecutive charging_state', () => {
+    const first = appendSessionPricingEvent(
+      {},
+      { type: 'charging_state', chargingState: 'SuspendedEV', at: '2026-08-18T11:00:00.000Z' }
+    );
+    const again = appendSessionPricingEvent(
+      { pricingEvents: first },
+      { type: 'charging_state', chargingState: 'SuspendedEV', at: '2026-08-18T11:05:00.000Z' }
+    );
+    assert.equal(again, undefined);
+  });
+
+  it('trims head when exceeding cap', () => {
+    /** @type {Array<Record<string, unknown>>} */
+    const many = [];
+    for (let i = 0; i < 200; i += 1) {
+      many.push({
+        at: `2026-08-18T12:${String(i % 60).padStart(2, '0')}:00.000Z`,
+        type: 'charging_state',
+        chargingState: i % 2 === 0 ? 'Charging' : 'SuspendedEV',
+      });
+    }
+    const next = appendSessionPricingEvent(
+      { pricingEvents: many },
+      {
+        type: 'charging_state',
+        chargingState: 'Idle',
+        at: '2026-08-18T13:00:00.000Z',
+      }
+    );
+    assert.equal(next.length, 200);
+    assert.equal(next[next.length - 1].chargingState, 'Idle');
+    // oldest dropped
+    assert.notEqual(next[0].at, many[0].at);
   });
 });

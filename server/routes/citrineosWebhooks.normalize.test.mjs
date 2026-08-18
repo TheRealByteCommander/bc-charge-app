@@ -221,4 +221,45 @@ describe('normalizeCitrineosWebhookPayload OCPP2 nested', () => {
     });
     assert.equal(garbage?.chargingState, null);
   });
+
+  it('reads energy from transaction.meterValues + case-insensitive measurand', () => {
+    const event = normalizeCitrineosWebhookPayload({
+      eventType: 'Updated',
+      transaction: {
+        transactionId: 'tx-tx-alias',
+        meterValues: [
+          {
+            sampled_value: [
+              {
+                Measurand: 'energy.active.import.register',
+                value: '4800',
+                unit: 'Wh',
+              },
+            ],
+          },
+        ],
+      },
+    });
+    assert.equal(event?.transactionId, 'tx-tx-alias');
+    assert.equal(event?.totalKwh, 4.8);
+    assert.equal(event?.isActive, true);
+  });
+
+  it('reads energy from snake_case meter_values on body', () => {
+    const event = normalizeCitrineosWebhookPayload({
+      transaction_id: 'tx-snake-meter',
+      meter_values: [
+        {
+          sampledValue: [
+            {
+              measurand: 'Energy.Active.Import.Register',
+              value: '1500',
+            },
+          ],
+        },
+      ],
+    });
+    assert.equal(event?.transactionId, 'tx-snake-meter');
+    assert.equal(event?.totalKwh, 1.5);
+  });
 });
