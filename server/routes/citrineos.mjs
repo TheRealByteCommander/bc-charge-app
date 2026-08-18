@@ -8,6 +8,7 @@ import {
   citrineosDualFetchJson,
   resolveDataApiPathCandidates,
 } from '../utils/citrineosDataApiPaths.mjs';
+import { safeParseResponseJsonAllowText } from '../utils/safeJson.mjs';
 
 const router = Router();
 
@@ -180,12 +181,7 @@ router.post('/proxy', optionalAuth, async (req, res) => {
     });
     clearTimeout(timeout);
     const text = await r.text();
-    let parsed;
-    try {
-      parsed = text ? JSON.parse(text) : null;
-    } catch {
-      parsed = text;
-    }
+    const parsed = text ? safeParseResponseJsonAllowText(text, null) : null;
     res.status(r.status).json({ ok: r.ok, status: r.status, data: parsed });
   } catch (e) {
     res.status(502).json({ error: e instanceof Error ? e.message : 'CitrineOS-Proxy fehlgeschlagen' });

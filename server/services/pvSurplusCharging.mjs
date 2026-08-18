@@ -9,6 +9,7 @@
  */
 
 import logger from '../utils/logger.mjs';
+import { safeParseResponseJsonAllowText } from '../utils/safeJson.mjs';
 import { listActiveChargingTargets } from '../db.mjs';
 import {
   isLoadManagementEnabled,
@@ -180,12 +181,7 @@ async function citrineosMessage(path, stationId, body, timeoutMs = 12_000) {
   }
 
   const text = await res.text();
-  let parsed;
-  try {
-    parsed = text ? JSON.parse(text) : null;
-  } catch {
-    parsed = text;
-  }
+  const parsed = safeParseResponseJsonAllowText(text, null);
   if (!res.ok) {
     const msg =
       typeof parsed === 'object' && parsed && 'message' in parsed

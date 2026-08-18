@@ -3,7 +3,12 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { safeParseJson, safeParseObject } from './safeJson.mjs';
+import {
+  safeParseJson,
+  safeParseObject,
+  safeParseResponseJson,
+  safeParseResponseJsonAllowText,
+} from './safeJson.mjs';
 
 describe('safeParseJson', () => {
   it('returns fallback for nullish / empty string', () => {
@@ -47,5 +52,24 @@ describe('safeParseObject', () => {
     assert.deepEqual(safeParseObject('x'), {});
     assert.deepEqual(safeParseObject(null), {});
     assert.deepEqual(safeParseObject(42, { def: true }), { def: true });
+  });
+});
+
+describe('safeParseResponseJson', () => {
+  it('handles empty / whitespace / corrupt', () => {
+    assert.equal(safeParseResponseJson(null), null);
+    assert.equal(safeParseResponseJson(''), null);
+    assert.equal(safeParseResponseJson('   '), null);
+    assert.equal(safeParseResponseJson('{'), null);
+    assert.deepEqual(safeParseResponseJson('{"a":1}'), { a: 1 });
+  });
+});
+
+describe('safeParseResponseJsonAllowText', () => {
+  it('returns parsed JSON or raw text on failure', () => {
+    assert.deepEqual(safeParseResponseJsonAllowText('{"ok":true}'), { ok: true });
+    assert.equal(safeParseResponseJsonAllowText('plain error'), 'plain error');
+    assert.equal(safeParseResponseJsonAllowText(''), null);
+    assert.equal(safeParseResponseJsonAllowText(null, 'x'), 'x');
   });
 });

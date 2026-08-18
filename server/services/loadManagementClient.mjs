@@ -4,6 +4,7 @@
  */
 
 import logger from '../utils/logger.mjs';
+import { safeParseResponseJsonAllowText } from '../utils/safeJson.mjs';
 
 const DEFAULT_API_BASE = 'http://127.0.0.1:3003';
 const DEFAULT_HEALTH_BASE = 'http://127.0.0.1:3001';
@@ -112,14 +113,7 @@ export async function loadManagementFetch(path, opts = {}) {
       signal: controller.signal,
     });
     const text = await r.text();
-    let data = null;
-    if (text) {
-      try {
-        data = JSON.parse(text);
-      } catch {
-        data = text;
-      }
-    }
+    const data = text ? safeParseResponseJsonAllowText(text, null) : null;
     return {
       ok: r.ok,
       status: r.status,

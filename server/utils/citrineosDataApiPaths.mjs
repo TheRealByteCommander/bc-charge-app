@@ -9,6 +9,8 @@
  * @see ../contracts/citrineosDataApiMigration.mjs
  */
 
+import { safeParseResponseJson } from './safeJson.mjs';
+
 /** @typedef {'legacy' | 'commands' | 'auto'} CitrineosRestSurface */
 
 /**
@@ -152,14 +154,11 @@ export async function citrineosDualFetchJson(baseUrl, pathCandidates, query = {}
         headers: { Accept: 'application/json' },
         signal: controller.signal,
       });
-      let data = null;
       const text = await res.text();
+      let data = null;
       if (text) {
-        try {
-          data = JSON.parse(text);
-        } catch {
-          data = { raw: text };
-        }
+        const parsed = safeParseResponseJson(text, null);
+        data = parsed == null ? { raw: text } : parsed;
       }
       last = { ok: res.ok, status: res.status, data, path, tried: [...tried] };
       if (res.ok) return last;

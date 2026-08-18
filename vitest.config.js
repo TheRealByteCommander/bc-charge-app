@@ -9,6 +9,7 @@ export default defineConfig({
       'server/services/priceOptimization/**/*.test.mjs',
       'src/utils/safeJson.test.ts',
       'src/utils/storage.activeSessionCache.test.ts',
+      'src/utils/offlineCache.test.ts',
       'src/services/localStores.guards.test.ts',
       'src/api/citrineos/dto.test.ts',
       'src/api/citrineos/messages.test.ts',

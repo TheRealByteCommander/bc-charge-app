@@ -9,6 +9,10 @@ import {
 } from '../utils/citrineosDataApiPaths.mjs';
 import { ensureCitrineosAuthorization } from './citrineosAuth.mjs';
 import { canaryValidate } from './canaryValidator.mjs';
+import {
+  safeParseResponseJson,
+  safeParseResponseJsonAllowText,
+} from '../utils/safeJson.mjs';
 
 export { isOcpp16Station, detectHardwareProtocol } from '../utils/hardwareProtocol.mjs';
 
@@ -330,11 +334,7 @@ async function citrineosDataGet(path, query, timeoutMs = 8000) {
     if (!res.ok) return null;
     const text = await res.text();
     if (!text) return null;
-    try {
-      return JSON.parse(text);
-    } catch {
-      return null;
-    }
+    return safeParseResponseJson(text, null);
   } catch {
     return null;
   } finally {
@@ -567,12 +567,7 @@ async function citrineosMessage(path, stationId, body, timeoutMs = 12_000) {
   }
 
   const text = await res.text();
-  let parsed;
-  try {
-    parsed = text ? JSON.parse(text) : null;
-  } catch {
-    parsed = text;
-  }
+  const parsed = safeParseResponseJsonAllowText(text, null);
   if (!res.ok) {
     const msg =
       typeof parsed === 'object' && parsed?.message

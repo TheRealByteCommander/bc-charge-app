@@ -8,6 +8,8 @@
  * 4. Resuming charging during low-price periods
  */
 
+import { safeParseResponseJsonAllowText } from '../../utils/safeJson.mjs';
+
 // Default configuration
 const PRICE_OPTIMIZATION_CONFIG = {
   // Price threshold in EUR/kWh above which charging should be paused
@@ -54,12 +56,7 @@ async function citrineosMessage(path, stationId, body, timeoutMs = 12_000) {
   }
 
   const text = await res.text();
-  let parsed;
-  try {
-    parsed = text ? JSON.parse(text) : null;
-  } catch {
-    parsed = text;
-  }
+  const parsed = safeParseResponseJsonAllowText(text, null);
   if (!res.ok) {
     const msg =
       typeof parsed === 'object' && parsed?.message
