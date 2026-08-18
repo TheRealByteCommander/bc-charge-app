@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { AlertTriangle, Download, FileText, LifeBuoy, Scale } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { useShallow } from 'zustand/react/shallow';
 import { downloadInvoicePdf } from '../api/backend/invoices';
 import { useAppStore } from '../store/appStore';
 import { isBackendMode } from '../services/backendMode';
@@ -38,7 +39,10 @@ export function HistoryPage() {
   const activeEnergyKwh = useAppStore((s) => s.activeSession?.energyKwh);
   const activeStartedAt = useAppStore((s) => s.activeSession?.startedAt);
   const abandonStuckSession = useAppStore((s) => s.abandonStuckSession);
-  const sessions = useAppStore((s) => s.sessions).filter((s) => s.status === 'completed');
+  // useShallow: tickSession rewrites `sessions` each meter tick but keeps completed row refs — avoid full history tree rebuild.
+  const sessions = useAppStore(
+    useShallow((s) => s.sessions.filter((row) => row.status === 'completed'))
+  );
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [abandoning, setAbandoning] = useState(false);
   const backend = isBackendMode();

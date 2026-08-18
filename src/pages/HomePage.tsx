@@ -30,7 +30,16 @@ export function HomePage() {
   const activeEnergyKwh = useAppStore((s) => s.activeSession?.energyKwh);
   const activeCostEur = useAppStore((s) => s.activeSession?.costEur);
   const activeStartedAt = useAppStore((s) => s.activeSession?.startedAt);
-  const sessions = useAppStore((s) => s.sessions);
+  // Last-session summary only when idle — do not subscribe to full `sessions` (tickSession rewrites the array every meter tick).
+  const lastStationName = useAppStore((s) =>
+    s.activeSession ? null : (s.sessions[0]?.stationName ?? null)
+  );
+  const lastEnergyKwh = useAppStore((s) =>
+    s.activeSession ? undefined : s.sessions[0]?.energyKwh
+  );
+  const lastCostEur = useAppStore((s) =>
+    s.activeSession ? undefined : s.sessions[0]?.costEur
+  );
   const [moreOpen, setMoreOpen] = useState(false);
   const elapsed =
     activeStartedAt ? Math.floor((Date.now() - new Date(activeStartedAt).getTime()) / 1000) : 0;
@@ -39,7 +48,6 @@ export function HomePage() {
     () => getStations().filter((s) => user.favoriteStationIds.includes(s.id)).slice(0, 2),
     [user.favoriteStationIds]
   );
-  const lastSession = sessions[0];
   const setupNeeded = user.vehicles.length === 0 || user.paymentMethods.length === 0;
 
   return (
@@ -220,7 +228,7 @@ export function HomePage() {
         </>
       )}
 
-      {lastSession && !activeSessionId && (
+      {lastStationName && !activeSessionId && (
         <Link
           to="/historie"
           className="mt-8 block rounded-2xl border border-bc-border bg-bc-surface/40 p-4 transition hover:border-bc-accent/30"
@@ -228,9 +236,9 @@ export function HomePage() {
           <p className="text-[10px] font-bold uppercase tracking-widest text-bc-muted">
             {de ? 'Letzter Ladevorgang' : 'Last session'}
           </p>
-          <p className="mt-1 font-semibold text-bc-text">{lastSession.stationName}</p>
+          <p className="mt-1 font-semibold text-bc-text">{lastStationName}</p>
           <p className="mt-0.5 text-sm text-bc-muted">
-            {formatKwh(lastSession.energyKwh)} kWh · {formatCurrency(lastSession.costEur)}
+            {formatKwh(lastEnergyKwh ?? 0)} kWh · {formatCurrency(lastCostEur ?? 0)}
           </p>
         </Link>
       )}

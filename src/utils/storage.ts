@@ -1,5 +1,9 @@
 import type { ChargingSession, RewardFulfillment, UserProfile } from '../types';
-import { asRecordOfArrays, safeParseJson } from './safeJson';
+import {
+  ChargingSessionSchema,
+  toChargingSession,
+} from '../api/backend/schemas';
+import { asRecordOfArrays, isPlainObject, safeParseJson } from './safeJson';
 
 const KEYS = {
   users: 'bc_users',
@@ -45,31 +49,65 @@ export function saveSessions(userId: string, sessions: ChargingSession[]): void 
 
 const ACTIVE_SESSION_CACHE = 'bc_active_session_cache';
 
+/** Envelope shape for backend-mode active-session resume (sessionStorage). */
+export type ActiveSessionCacheEnvelope = {
+  userId: string;
+  session: ChargingSession;
+  savedAt: string;
+};
+
+/**
+ * Parse-don't-cast for the active-session resume cache.
+ * Corrupt / partial / wrong-user / non-active rows → null (never throw).
+ * Exported for unit tests without touching real sessionStorage.
+ */
+export function parseActiveSessionCache(
+  raw: string | null | undefined,
+  userId: string
+): ChargingSession | null {
+  if (!userId) return null;
+  const parsed = safeParseJson<unknown>(raw, null);
+  if (!isPlainObject(parsed)) return null;
+  if (parsed.userId !== userId) return null;
+  if (!isPlainObject(parsed.session)) return null;
+
+  const sessionParsed = ChargingSessionSchema.safeParse(parsed.session);
+  if (!sessionParsed.success) return null;
+  if (sessionParsed.data.status !== 'active') return null;
+
+  return toChargingSession(sessionParsed.data);
+}
+
 /** Kurzzeit-Cache der aktiven Session (Backend-Modus) – Wiederherstellung bei App-Neustart. */
 export function saveActiveSessionCache(userId: string, session: ChargingSession): void {
+  if (!userId || !session?.id) return;
   try {
-    sessionStorage.setItem(
-      ACTIVE_SESSION_CACHE,
-      JSON.stringify({ userId, session, savedAt: new Date().toISOString() })
-    );
+    const envelope: ActiveSessionCacheEnvelope = {
+      userId,
+      session,
+      savedAt: new Date().toISOString(),
+    };
+    sessionStorage.setItem(ACTIVE_SESSION_CACHE, JSON.stringify(envelope));
   } catch {
     /* Quota / private mode */
   }
 }
 
 export function loadActiveSessionCache(userId: string): ChargingSession | null {
-  const parsed = safeParseJson<{ userId?: string; session?: ChargingSession } | null>(
-    sessionStorage.getItem(ACTIVE_SESSION_CACHE),
-    null
-  );
-  if (!parsed?.session || parsed.userId !== userId || parsed.session.status !== 'active') {
+  try {
+    return parseActiveSessionCache(sessionStorage.getItem(ACTIVE_SESSION_CACHE), userId);
+  } catch {
+    // sessionStorage may throw in locked-down / private contexts
     return null;
   }
-  return parsed.session;
 }
 
 export function clearActiveSessionCache(): void {
-  sessionStorage.removeItem(ACTIVE_SESSION_CACHE);
+  try {
+    sessionStorage.removeItem(ACTIVE_SESSION_CACHE);
+  } catch {
+    /* ignore */
+  }
 }
 
 export function isOnboardingDone(): boolean {

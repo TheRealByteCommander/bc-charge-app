@@ -12,27 +12,23 @@ import {
   type AccessibilityPrefs,
   type FontScale,
 } from '../types/a11y';
+import { isPlainObject, safeParseJson } from '../utils/safeJson';
 
 const STORAGE_KEY = 'bc_a11y_prefs';
 
 function loadPrefs(): AccessibilityPrefs {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return defaultAccessibilityPrefs();
-    const parsed = JSON.parse(raw) as Partial<AccessibilityPrefs>;
-    const base = defaultAccessibilityPrefs();
-    return {
-      fontScale:
-        parsed.fontScale === 'large' || parsed.fontScale === 'xlarge'
-          ? parsed.fontScale
-          : base.fontScale,
-      highContrast: Boolean(parsed.highContrast),
-      simpleMode: Boolean(parsed.simpleMode),
-      reduceMotion: Boolean(parsed.reduceMotion),
-    };
-  } catch {
-    return defaultAccessibilityPrefs();
-  }
+  const base = defaultAccessibilityPrefs();
+  const parsed = safeParseJson<unknown>(localStorage.getItem(STORAGE_KEY), null);
+  if (!isPlainObject(parsed)) return base;
+  return {
+    fontScale:
+      parsed.fontScale === 'large' || parsed.fontScale === 'xlarge'
+        ? parsed.fontScale
+        : base.fontScale,
+    highContrast: Boolean(parsed.highContrast),
+    simpleMode: Boolean(parsed.simpleMode),
+    reduceMotion: Boolean(parsed.reduceMotion),
+  };
 }
 
 function applyToDocument(prefs: AccessibilityPrefs) {
