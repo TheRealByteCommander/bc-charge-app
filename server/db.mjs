@@ -1292,13 +1292,18 @@ async function persistPatchedSessionRow(row, patch) {
         [dataJson, status, now, row.id]
       );
     } else {
+      // SQLite parity with PG IS DISTINCT FROM: skip identical webhook retries (local/dev).
       sqliteDb
         .prepare(
           `UPDATE charging_sessions
            SET data_json = ?, status = ?, updated_at = ?
-           WHERE id = ?`
+           WHERE id = ?
+             AND (
+               data_json IS NOT ?
+               OR status IS NOT ?
+             )`
         )
-        .run(dataJson, status, now, row.id);
+        .run(dataJson, status, now, row.id, dataJson, status);
     }
     return data;
   }
@@ -1319,9 +1324,13 @@ async function persistPatchedSessionRow(row, patch) {
       .prepare(
         `UPDATE adhoc_sessions
          SET data_json = ?, status = ?, updated_at = ?
-         WHERE id = ?`
+         WHERE id = ?
+           AND (
+             data_json IS NOT ?
+             OR status IS NOT ?
+           )`
       )
-      .run(dataJson, status, now, row.id);
+      .run(dataJson, status, now, row.id, dataJson, status);
   }
   return data;
 }

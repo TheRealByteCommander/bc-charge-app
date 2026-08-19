@@ -192,11 +192,14 @@ describe('pinBump readiness gate', () => {
     assert.equal(stats.upstreamWatch, 'v2.0.0-beta3');
     assert.equal(stats.integrationVersion, '1.8.4');
     assert.ok(Array.isArray(stats.upstreamOpen));
-    assert.ok(stats.upstreamOpen.some((x) => x.id === 849), 'watch #849 drop data API');
+    assert.ok(Array.isArray(stats.upstreamMergedNext));
+    assert.ok(stats.upstreamMergedNext.some((x) => x.id === 849), 'merged-next #849 drop data API');
+    assert.ok(stats.upstreamMergedNext.some((x) => x.id === 846), 'merged-next #846 audit-insert crash');
     assert.ok(stats.upstreamOpen.some((x) => x.id === 851), 'watch #851 tenant path');
-    assert.ok(stats.upstreamOpen.some((x) => x.id === 846), 'watch #846 audit-insert crash');
     assert.ok(stats.upstreamOpen.some((x) => x.id === 852), 'watch #852 measurand drop');
     assert.ok(stats.upstreamOpen.some((x) => x.id === 867), 'watch #867 OCPPMessages partition');
+    assert.ok(!stats.upstreamOpen.some((x) => x.id === 849), '#849 no longer open');
+    assert.ok(!stats.upstreamOpen.some((x) => x.id === 846), '#846 no longer open');
     assert.ok(stats.dataApiMigration);
     assert.equal(stats.dataApiMigration.upstreamPr, 849);
     assert.equal(stats.dataApiMigration.blocking, 0);

@@ -1,9 +1,10 @@
 /**
  * CitrineOS REST path dual-map for PR #849 (drop `/data/**`).
  *
- * Pin 1.8.4 still serves the legacy Data API. After #849 lands, the same
- * operations move under `/commands/*`. Call sites should use
- * `resolveDataApiPathCandidates` + try-fallback fetch so both surfaces work.
+ * Pin 1.8.4 still serves the legacy Data API. #849 is merged on upstream `next`
+ * (2026-08-18; not in v2.0.0-beta3 tag) and moves the same operations under
+ * `/commands/*`. Call sites should use `resolveDataApiPathCandidates` +
+ * try-fallback fetch so both surfaces work across pin and next.
  *
  * @see https://github.com/citrineos/citrineos-core/pull/849
  * @see ../contracts/citrineosDataApiMigration.mjs

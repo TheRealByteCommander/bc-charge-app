@@ -13,6 +13,7 @@
 import { canarySchemas } from './citrineosSchemas.mjs';
 import {
   CITRINEOS_INTEGRATION_VERSION,
+  CITRINEOS_UPSTREAM_MERGED_NEXT,
   CITRINEOS_UPSTREAM_OPEN,
   CITRINEOS_UPSTREAM_WATCH,
 } from '../contracts/citrineosContract.mjs';
@@ -242,6 +243,8 @@ export function getCanaryStats() {
     integrationVersion: CITRINEOS_INTEGRATION_VERSION,
     upstreamWatch: CITRINEOS_UPSTREAM_WATCH,
     upstreamOpen: CITRINEOS_UPSTREAM_OPEN,
+    /** Merged to upstream `next` but not yet in CITRINEOS_UPSTREAM_WATCH tag. */
+    upstreamMergedNext: CITRINEOS_UPSTREAM_MERGED_NEXT,
     /** Structural #849 /data/** migration matrix (does not change runtime routing). */
     dataApiMigration: {
       ...summarizeDataApiMigration(),

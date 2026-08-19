@@ -98,6 +98,7 @@ describe('evaluateDataApiMigrationReadiness', () => {
 
   it('guidance still requires soak before pin bump', () => {
     const r = evaluateDataApiMigrationReadiness();
-    assert.match(r.guidance, /soak|pin|bump|1\.8\.4|#849|dual/i);
+    assert.match(r.guidance, /soak|pin|bump|1\.8\.4|#849|dual|commands/i);
+    assert.match(r.guidance, /merged|next|commands/i);
   });
 });

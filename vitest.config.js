@@ -8,6 +8,7 @@ export default defineConfig({
       'server/services/pricing/**/*.test.mjs',
       'server/services/priceOptimization/**/*.test.mjs',
       'src/utils/safeJson.test.ts',
+      'src/utils/sessionLiveEqual.test.ts',
       'src/utils/storage.activeSessionCache.test.ts',
       'src/utils/offlineCache.test.ts',
       'src/services/localStores.guards.test.ts',

@@ -102,6 +102,7 @@ import {
 } from '../services/rewardFulfillment';
 import { findRewardById } from '../data/rewards';
 import { estimateSessionEnergyKwh } from '../utils/chargeEstimate';
+import { liveSessionMetricsEqual } from '../utils/sessionLiveEqual';
 
 interface AppState {
   initialized: boolean;
@@ -1173,6 +1174,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     const updated = applyLiveSessionPricing(liveBase, user, fulfillment, rewardFulfillments);
+
+    // No-op guard (client-side IS DISTINCT FROM): identical meter/pricing polls must not
+    // rewrite sessions array identity, sessionStorage, or notify every Zustand subscriber.
+    if (liveSessionMetricsEqual(activeSession, updated)) return;
+
     const sessions = get().sessions.map((s) => (s.id === updated.id ? updated : s));
 
     if (isBackendMode()) {

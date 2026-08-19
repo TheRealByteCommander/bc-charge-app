@@ -13,7 +13,7 @@
  * - Matrix feeds canary/contract pinBump structural gate.
  *
  * @see https://github.com/citrineos/citrineos-core/pull/849
- * @see ./citrineosContract.mjs CITRINEOS_UPSTREAM_OPEN id 849
+ * @see ./citrineosContract.mjs CITRINEOS_UPSTREAM_MERGED_NEXT id 849
  * @see ../utils/citrineosDataApiPaths.mjs
  */
 
@@ -202,7 +202,7 @@ export function evaluateDataApiMigrationReadiness() {
       .map((r) => r.id),
     guidance:
       blockers.length === 0
-        ? 'Data-API dual-path matrix clear — still require staging CANARY_FORCE soak + hardware smoke before pin bump; upstream #849 may still be open.'
+        ? 'Data-API dual-path matrix clear — still require staging CANARY_FORCE soak + hardware smoke before pin bump; #849 merged to upstream next (2026-08-18) but not in beta3 tag — trial CITRINEOS_REST_SURFACE=commands only after staging Citrine carries #849.'
         : 'Do not bump CITRINEOS_INTEGRATION_VERSION off 1.8.4 while #849 /data/** routes still block (see CITRINEOS_DATA_API_MIGRATION).',
   };
 }

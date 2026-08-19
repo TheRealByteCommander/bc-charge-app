@@ -1,17 +1,22 @@
 /** Integrationsvertrag CitrineOS ↔ bc-charge-app (v1.8.4)
- * Upstream watch (2026-08-17): citrineos-core latest pre-release still **v2.0.0-beta3**
+ * Upstream watch (2026-08-19): citrineos-core latest pre-release tag still **v2.0.0-beta3**
  * (tag 2026-08-12; no newer tag on releases). Still NOT a prod pin — stay on 1.8.4 until staging
  * CANARY_FORCE=1 soak + pinBump.ready + hardware smoke (Elinta/go-e).
  * beta3 highlights for BC: OCPP message correlation (#832), tenant-scoped repo deletes (#842),
  * OCPI tenant decorator (#841), OCPP messages state/message columns (#855), null VariableAttribute
- * guard (#847). beta1 also: SalesTariffId on ChargingSchedules (#782), OTel WS metrics (#778).
- * Open drift risks (not in beta3 tag; still open 2026-08-17):
- *   - **#849 drop data API** (open): removes `/data/**` → dual-path wired to `/commands/transaction|tariff|bootConfig`
- *     (merge-spec 2026-08-15). Matrix structural gate clear; pin still 1.8.4 until staging soak.
+ * guard (#847). beta1 also: SalesTariffId on ChargingSchedules (#782), smart-charging Absolute
+ * TxProfile startSchedule (#785), OTel WS metrics (#778).
+ * Merged on upstream branch `next` (not in beta3 tag yet — deploy only when staging tracks next/post-beta3):
+ *   - **#849 drop data API** (merged 2026-08-18 → next): removes `/data/**`; Commands API at
+ *     `/commands/transaction|tariff|bootConfig`. BC dual-path remains SoT on pin 1.8.4; after Citrine
+ *     staging carries #849 run `CITRINEOS_REST_SURFACE=commands` trial before any pin bump.
+ *   - **#846** audit-insert crash fix (merged 2026-08-17 → next): OCPPMessages insert no longer kills
+ *     process / drops all station WS — prefer this commit on any long webhook soak Citrine.
+ * Open drift risks (still open 2026-08-19):
  *   - **#851 tenant path mapping** (open): config → tenant DB + cache + path sanitization.
- *   - **#846** OCPPMessages audit insert can kill process (webhook dispatcher resilience).
  *   - **#852** unmapped measurands dropped (not relabeled as energy) — good for meter honesty.
- *   - **#867** OCPPMessages weekly partition (open): ops/migration risk on Citrine DB; pairs with #846.
+ *   - **#867** OCPPMessages weekly partition (open): ops/migration risk; entrypoint must provision
+ *     partitions or inserts fail (less fatal once #846 is deployed, still lossy/noisy).
  * Webhooks: TransactionEvent seqNo + triggerReason (ChargingRateChanged/ChargingStateChanged → LM
  * reopt) + chargingState persist + meterValue energy (citrineosWebhooks.mjs / loadManagementReopt.mjs).
  * Hasura: station-status live queries only via BFF WS proxy; meter/LM stays on webhooks (live-query
@@ -24,27 +29,39 @@ export const CITRINEOS_INTEGRATION_VERSION = '1.8.4';
 /** Latest upstream tag observed by intelligence cron (informational, not a hard pin). */
 export const CITRINEOS_UPSTREAM_WATCH = 'v2.0.0-beta3';
 
-/** Open upstream PRs/issues that can break BC routing, REST, or tenancy (informational). */
-export const CITRINEOS_UPSTREAM_OPEN = [
+/**
+ * Upstream PRs merged to `next` but not yet in CITRINEOS_UPSTREAM_WATCH tag (informational).
+ * Keep dual-path / soak gates until a tagged release that includes these lands on staging Citrine.
+ */
+export const CITRINEOS_UPSTREAM_MERGED_NEXT = [
   {
     id: 849,
     title: 'Feature/drop data api',
     url: 'https://github.com/citrineos/citrineos-core/pull/849',
+    mergedAt: '2026-08-18T20:49:12Z',
+    base: 'next',
     risk:
-      'Removes /data/** prefix. BC dual-fetches legacy + /commands/transaction|/tariff|/bootConfig (PR merge-spec). Structural matrix clear; still open upstream — soak before pin bump. See CITRINEOS_DATA_API_MIGRATION.',
+      'Removes /data/**. BC dual-fetches legacy + /commands/transaction|/tariff|/bootConfig. On pin 1.8.4 legacy still primary (auto); after staging Citrine includes #849, trial CITRINEOS_REST_SURFACE=commands then consider pin bump. See CITRINEOS_DATA_API_MIGRATION.',
     migrationMatrix: 'server/contracts/citrineosDataApiMigration.mjs',
-  },
-  {
-    id: 851,
-    title: 'Feature/refactor tenant path mapping',
-    url: 'https://github.com/citrineos/citrineos-core/pull/851',
-    risk: 'Dynamic tenant pathing moves system-config → tenant DB/cache; base URL/scripts may break',
   },
   {
     id: 846,
     title: "fix(core): don't let a failed message-audit insert kill the process",
     url: 'https://github.com/citrineos/citrineos-core/pull/846',
-    risk: 'Unguarded OCPPMessages insert in WebhookDispatcher can crash CSMS on audit DB failure — ops resilience on staging/prod Citrine',
+    mergedAt: '2026-08-17T18:11:59Z',
+    base: 'next',
+    risk:
+      'Guards OCPPMessages audit insert in WebhookDispatcher so FK/DB failures no longer crash CSMS / drop all station websockets. Deploy on staging/prod Citrine before long webhook soaks when tracking next.',
+  },
+];
+
+/** Open upstream PRs/issues that can break BC routing, REST, or tenancy (informational). */
+export const CITRINEOS_UPSTREAM_OPEN = [
+  {
+    id: 851,
+    title: 'Feature/refactor tenant path mapping',
+    url: 'https://github.com/citrineos/citrineos-core/pull/851',
+    risk: 'Dynamic tenant pathing moves system-config → tenant DB/cache; base URL/scripts may break',
   },
   {
     id: 852,
@@ -57,7 +74,7 @@ export const CITRINEOS_UPSTREAM_OPEN = [
     title: 'Feature: OCPPMessages Partition',
     url: 'https://github.com/citrineos/citrineos-core/pull/867',
     risk:
-      'Weekly partition + OCPPMessages_old on Citrine DB; deploy/entrypoint must provision partitions or inserts fail — compounds #846 audit-path fragility until both land',
+      'Weekly partition + OCPPMessages_old on Citrine DB; deploy/entrypoint must run provision-partitions or inserts fail. With #846 on next, failure is lossy not process-fatal — still provision before enabling partitions.',
   },
 ];
 
@@ -75,6 +92,7 @@ export const citrineosIntegrationContract = {
   version: CITRINEOS_INTEGRATION_VERSION,
   upstreamWatch: CITRINEOS_UPSTREAM_WATCH,
   upstreamOpen: CITRINEOS_UPSTREAM_OPEN,
+  upstreamMergedNext: CITRINEOS_UPSTREAM_MERGED_NEXT,
   /** Structural #849 gate — live object attached by canary stats / routes that import the matrix. */
   dataApiMigrationRef: 'server/contracts/citrineosDataApiMigration.mjs',
   operator: {
