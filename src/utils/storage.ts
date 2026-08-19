@@ -1,7 +1,11 @@
 import type { ChargingSession, RewardFulfillment, UserProfile } from '../types';
 import {
   ChargingSessionSchema,
+  RewardFulfillmentSchema,
+  UserProfileSchema,
   toChargingSession,
+  toRewardFulfillment,
+  toUserProfile,
 } from '../api/backend/schemas';
 import { asRecordOfArrays, isPlainObject, safeParseJson } from './safeJson';
 
@@ -14,9 +18,70 @@ const KEYS = {
   rewardFulfillments: 'bc_reward_fulfillments',
 } as const;
 
+/**
+ * Parse-don't-cast for localStorage user list.
+ * Corrupt / partial rows are dropped (never throw); valid rows are mapped to domain.
+ * Exported for unit tests without touching real localStorage.
+ */
+export function parseStoredUsers(raw: string | null | undefined): UserProfile[] {
+  const parsed = safeParseJson<unknown>(raw, []);
+  if (!Array.isArray(parsed)) return [];
+  const out: UserProfile[] = [];
+  for (const item of parsed) {
+    const result = UserProfileSchema.safeParse(item);
+    if (!result.success) continue;
+    out.push(toUserProfile(result.data));
+  }
+  return out;
+}
+
+/**
+ * Parse-don't-cast for one user's session list (local demo / offline store).
+ * Non-array values and invalid rows are dropped.
+ */
+export function parseStoredSessions(raw: unknown): ChargingSession[] {
+  if (!Array.isArray(raw)) return [];
+  const out: ChargingSession[] = [];
+  for (const item of raw) {
+    const result = ChargingSessionSchema.safeParse(item);
+    if (!result.success) continue;
+    out.push(toChargingSession(result.data));
+  }
+  return out;
+}
+
+/**
+ * Parse-don't-cast for one user's reward fulfillments.
+ * Non-array values and invalid rows are dropped.
+ */
+export function parseStoredFulfillments(raw: unknown): RewardFulfillment[] {
+  if (!Array.isArray(raw)) return [];
+  const out: RewardFulfillment[] = [];
+  for (const item of raw) {
+    const result = RewardFulfillmentSchema.safeParse(item);
+    if (!result.success) continue;
+    out.push(toRewardFulfillment(result.data));
+  }
+  return out;
+}
+
+/** Keep only finite string reward ids (drop objects / null / empty). */
+export function parseStoredRedeemedIds(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const out: string[] = [];
+  for (const item of raw) {
+    if (typeof item === 'string' && item.trim()) out.push(item);
+    else if (typeof item === 'number' && Number.isFinite(item)) out.push(String(item));
+  }
+  return out;
+}
+
 export function loadUsers(): UserProfile[] {
-  const parsed = safeParseJson<unknown>(localStorage.getItem(KEYS.users), []);
-  return Array.isArray(parsed) ? (parsed as UserProfile[]) : [];
+  try {
+    return parseStoredUsers(localStorage.getItem(KEYS.users));
+  } catch {
+    return [];
+  }
 }
 
 export function saveUsers(users: UserProfile[]): void {
@@ -33,14 +98,20 @@ export function setCurrentUserId(id: string | null): void {
 }
 
 export function loadSessions(userId: string): ChargingSession[] {
-  const all = asRecordOfArrays<ChargingSession>(
-    safeParseJson(localStorage.getItem(KEYS.sessions), {})
-  );
-  return all[userId] ?? [];
+  if (!userId) return [];
+  try {
+    const all = asRecordOfArrays<unknown>(
+      safeParseJson(localStorage.getItem(KEYS.sessions), {})
+    );
+    return parseStoredSessions(all[userId] ?? []);
+  } catch {
+    return [];
+  }
 }
 
 export function saveSessions(userId: string, sessions: ChargingSession[]): void {
-  const all = asRecordOfArrays<ChargingSession>(
+  if (!userId) return;
+  const all = asRecordOfArrays<unknown>(
     safeParseJson(localStorage.getItem(KEYS.sessions), {})
   );
   all[userId] = sessions;
@@ -119,14 +190,20 @@ export function setOnboardingDone(): void {
 }
 
 export function loadRedeemed(userId: string): string[] {
-  const all = asRecordOfArrays<string>(
-    safeParseJson(localStorage.getItem(KEYS.redeemedRewards), {})
-  );
-  return all[userId] ?? [];
+  if (!userId) return [];
+  try {
+    const all = asRecordOfArrays<unknown>(
+      safeParseJson(localStorage.getItem(KEYS.redeemedRewards), {})
+    );
+    return parseStoredRedeemedIds(all[userId] ?? []);
+  } catch {
+    return [];
+  }
 }
 
 export function saveRedeemed(userId: string, ids: string[]): void {
-  const all = asRecordOfArrays<string>(
+  if (!userId) return;
+  const all = asRecordOfArrays<unknown>(
     safeParseJson(localStorage.getItem(KEYS.redeemedRewards), {})
   );
   all[userId] = ids;
@@ -134,14 +211,20 @@ export function saveRedeemed(userId: string, ids: string[]): void {
 }
 
 export function loadFulfillments(userId: string): RewardFulfillment[] {
-  const all = asRecordOfArrays<RewardFulfillment>(
-    safeParseJson(localStorage.getItem(KEYS.rewardFulfillments), {})
-  );
-  return all[userId] ?? [];
+  if (!userId) return [];
+  try {
+    const all = asRecordOfArrays<unknown>(
+      safeParseJson(localStorage.getItem(KEYS.rewardFulfillments), {})
+    );
+    return parseStoredFulfillments(all[userId] ?? []);
+  } catch {
+    return [];
+  }
 }
 
 export function saveFulfillments(userId: string, fulfillments: RewardFulfillment[]): void {
-  const all = asRecordOfArrays<RewardFulfillment>(
+  if (!userId) return;
+  const all = asRecordOfArrays<unknown>(
     safeParseJson(localStorage.getItem(KEYS.rewardFulfillments), {})
   );
   all[userId] = fulfillments;
