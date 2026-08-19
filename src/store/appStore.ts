@@ -812,12 +812,17 @@ export const useAppStore = create<AppState>((set, get) => ({
     } else {
       purgeUserLocalData(user.id);
     }
+    // Always drop resume cache + local identity so no stale session leaks after delete.
+    clearActiveSessionCache();
     setCurrentUserId(null);
     set({
       user: null,
       sessions: [],
       activeSession: null,
       redeemedRewardIds: [],
+      rewardFulfillments: [],
+      selectedChargingFulfillmentId: null,
+      lastRedeemedFulfillment: null,
       userLocation: null,
     });
     set({

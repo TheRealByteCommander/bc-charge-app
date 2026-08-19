@@ -11,6 +11,7 @@ export default defineConfig({
       'src/utils/sessionLiveEqual.test.ts',
       'src/utils/storage.activeSessionCache.test.ts',
       'src/utils/storage.localStores.test.ts',
+      'src/utils/privacy.test.ts',
       'src/utils/offlineCache.test.ts',
       'src/services/localStores.guards.test.ts',
       'src/api/citrineos/dto.test.ts',
