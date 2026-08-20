@@ -80,9 +80,14 @@ export async function setLoyaltyConfig(config) {
       ['loyalty', valueJson]
     );
   } else {
+    // SQLite parity with PG IS DISTINCT FROM: skip identical admin rewrites (local/dev).
     const now = new Date().toISOString();
     sqliteDb.prepare(
-      'INSERT INTO app_config (key, value_json, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at'
+      `INSERT INTO app_config (key, value_json, updated_at) VALUES (?, ?, ?)
+       ON CONFLICT(key) DO UPDATE SET
+         value_json = excluded.value_json,
+         updated_at = excluded.updated_at
+       WHERE app_config.value_json IS NOT excluded.value_json`
     ).run('loyalty', valueJson, now);
   }
 }

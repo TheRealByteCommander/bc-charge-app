@@ -145,15 +145,16 @@ export const CITRINEOS_DATA_API_MIGRATION = Object.freeze({
   commandsPrefix: CITRINEOS_COMMANDS_PREFIX,
   title: 'Drop CitrineOS Data API (/data/**) — dual-path to /commands/*',
   risk:
-    'Removes /data/** prefix. BC dual-fetches legacy + /commands/transaction|/tariff|/bootConfig per #849 merge-spec. Pin stays 1.8.4 until staging soak; #849 still open upstream.',
+    'Removes /data/** prefix. BC dual-fetches legacy + /commands/transaction|/tariff|/bootConfig per #849 merge-spec. Pin stays 1.8.4 until staging soak; #849 merged→next 2026-08-18 (not in beta3 tag).',
   mergeSpecStatus:
-    'Mapped 2026-08-15 from PR body: transaction→/commands/transaction, tariff→/commands/tariff, bootConfig→/commands/bootConfig',
+    'Mapped 2026-08-15 from PR body: transaction→/commands/transaction, tariff→/commands/tariff, bootConfig→/commands/bootConfig; #849 merged to next 2026-08-18',
   routes: ROUTES,
   cutoverChecklist: Object.freeze([
     'DONE: dual-fetch getTransaction + getTariffs (legacy → /commands/*)',
     'DONE: path map + CITRINEOS_REST_SURFACE override',
     'DONE: update paths.ts / contract endpoints with commands targets',
-    'Wait for upstream #849 merge + tag (still open on next as of 2026-08-17)',
+    'DONE upstream: #849 merged → next 2026-08-18 (still no release tag after beta3)',
+    'Wait for staging/prod Citrine build that actually carries #849 (tag or next pin)',
     'Staging CANARY_FORCE=1 soak against dual-path (expect commands 404 on pure 1.8.4 — legacy must win)',
     'When staging runs post-#849 Citrine: CITRINEOS_REST_SURFACE=commands soak + hardware smoke (Elinta + go-e)',
     'Only then allow evaluatePinBumpReadiness / version pin bump off 1.8.4',

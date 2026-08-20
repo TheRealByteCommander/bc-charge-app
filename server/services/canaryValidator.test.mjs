@@ -198,6 +198,10 @@ describe('pinBump readiness gate', () => {
     assert.ok(stats.upstreamOpen.some((x) => x.id === 851), 'watch #851 tenant path');
     assert.ok(stats.upstreamOpen.some((x) => x.id === 852), 'watch #852 measurand drop');
     assert.ok(stats.upstreamOpen.some((x) => x.id === 867), 'watch #867 OCPPMessages partition');
+    assert.ok(stats.upstreamOpen.some((x) => x.id === 881), 'watch #881 protocol hard-code follow-up');
+    assert.ok(stats.upstreamOpen.some((x) => x.id === 893), 'watch #893 tx SetChargingProfile protocol');
+    assert.ok(stats.upstreamOpen.some((x) => x.id === 869), 'watch #869 MeterValues attach');
+    assert.ok(stats.upstreamOpen.some((x) => x.id === 859), 'watch #859 EVSE-scoped connector status');
     assert.ok(!stats.upstreamOpen.some((x) => x.id === 849), '#849 no longer open');
     assert.ok(!stats.upstreamOpen.some((x) => x.id === 846), '#846 no longer open');
     assert.ok(stats.dataApiMigration);

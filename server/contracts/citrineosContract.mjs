@@ -1,5 +1,5 @@
 /** Integrationsvertrag CitrineOS ↔ bc-charge-app (v1.8.4)
- * Upstream watch (2026-08-19): citrineos-core latest pre-release tag still **v2.0.0-beta3**
+ * Upstream watch (2026-08-20): citrineos-core latest pre-release tag still **v2.0.0-beta3**
  * (tag 2026-08-12; no newer tag on releases). Still NOT a prod pin — stay on 1.8.4 until staging
  * CANARY_FORCE=1 soak + pinBump.ready + hardware smoke (Elinta/go-e).
  * beta3 highlights for BC: OCPP message correlation (#832), tenant-scoped repo deletes (#842),
@@ -12,11 +12,18 @@
  *     staging carries #849 run `CITRINEOS_REST_SURFACE=commands` trial before any pin bump.
  *   - **#846** audit-insert crash fix (merged 2026-08-17 → next): OCPPMessages insert no longer kills
  *     process / drops all station WS — prefer this commit on any long webhook soak Citrine.
- * Open drift risks (still open 2026-08-19):
+ * Open drift risks (still open 2026-08-20):
  *   - **#851 tenant path mapping** (open): config → tenant DB + cache + path sanitization.
  *   - **#852** unmapped measurands dropped (not relabeled as energy) — good for meter honesty.
  *   - **#867** OCPPMessages weekly partition (open): ops/migration risk; entrypoint must provision
  *     partitions or inserts fail (less fatal once #846 is deployed, still lossy/noisy).
+ *   - **#881/#893** (open): OCPP2 handlers hard-code protocol OCPP2.1 on follow-up SetChargingProfile
+ *     / related calls while registered for OCPP_2_VER_LIST (includes 2.0.1) — LM/PV profile sends can
+ *     be metered/routed on the wrong action table for 2.0.1 stations.
+ *   - **#869** (open): OCPP 2.x standalone MeterValues not attached to transaction / CostUpdated never
+ *     fires from that handler — BC meter SoT remains TransactionEvent webhooks + strict energy extract.
+ *   - **#859/#860** (open): multi-EVSE connector status + operator-ui start/stop; BC connector ids already
+ *     `evse-{n}-conn-{m}` / sessionGuard is per-user not per-station.
  * Webhooks: TransactionEvent seqNo + triggerReason (ChargingRateChanged/ChargingStateChanged → LM
  * reopt) + chargingState persist + meterValue energy (citrineosWebhooks.mjs / loadManagementReopt.mjs).
  * Hasura: station-status live queries only via BFF WS proxy; meter/LM stays on webhooks (live-query
@@ -75,6 +82,34 @@ export const CITRINEOS_UPSTREAM_OPEN = [
     url: 'https://github.com/citrineos/citrineos-core/pull/867',
     risk:
       'Weekly partition + OCPPMessages_old on Citrine DB; deploy/entrypoint must run provision-partitions or inserts fail. With #846 on next, failure is lossy not process-fatal — still provision before enabling partitions.',
+  },
+  {
+    id: 881,
+    title: "fix(core): follow up on the station's own protocol, not a hard-coded OCPP 2.1",
+    url: 'https://github.com/citrineos/citrineos-core/pull/881',
+    risk:
+      'OCPP2 handlers registered for 2.0.1+2.1 hard-code OCPP2_1 on follow-up SetChargingProfile/GetChargingProfiles/SendLocalList — wrong action table / audit for 2.0.1 stations (LM/PV profile path).',
+  },
+  {
+    id: 893,
+    title: "fix(core): send the transaction's SetChargingProfile on the station's own protocol",
+    url: 'https://github.com/citrineos/citrineos-core/pull/893',
+    risk:
+      'TransactionEvent OCPP2 handler hard-codes OCPP2_1 when pushing tx charging profiles — same class of bug as #881; prefer both on staging Citrine before Live-LM-PV soak on 2.0.1 hardware.',
+  },
+  {
+    id: 869,
+    title: 'fix(core): attach OCPP 2.x MeterValues to their transaction',
+    url: 'https://github.com/citrineos/citrineos-core/pull/869',
+    risk:
+      'Standalone MeterValuesRequestOcpp2Handler never wires _sendCostUpdatedOnMeterValue; samples may not attach to tx. BC billing/UI meter SoT stays TransactionEvent webhooks + Energy.Active.Import.Register extract — do not depend on Citrine CostUpdated from MeterValues alone.',
+  },
+  {
+    id: 859,
+    title: 'fix(core): resolve OCPP 2.0.1 connector status through its EVSE',
+    url: 'https://github.com/citrineos/citrineos-core/pull/859',
+    risk:
+      'OCPP 2.0.1 connectorId is per-EVSE (duplicate connectorId 1 across EVSEs). Status resolution without EVSE scope can flip wrong connector. BC ids already evse-{evseId}-conn-{connectorId}; re-verify Hasura/status mapping when #859 merges.',
   },
 ];
 
