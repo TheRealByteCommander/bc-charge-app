@@ -1,25 +1,30 @@
 /**
  * IndexedDB-basierter Offline-Cache für Stationen
- * 
+ *
  * Vorteile gegenüber localStorage:
  * - Größere Kapazität (50MB+ vs 5-10MB)
  * - Asynchron (blockiert nicht den Main Thread)
  * - Strukturierte Daten ohne JSON-Serialisierung
+ *
+ * Boundary: every read path normalizes via stationCacheShape (parse-don't-cast).
+ * Corrupt/partial IDB rows never surface as typed Station[].
  */
 
 import type { Station } from '../types';
+import {
+  normalizeCachedStation,
+  normalizeCachedStations,
+  normalizeStationsCacheMeta,
+  type StationsCacheMeta,
+} from './stationCacheShape';
 
 const DB_NAME = 'bc_charge_offline';
 const DB_VERSION = 1;
 const STORE_STATIONS = 'stations';
 const STORE_META = 'meta';
+const META_KEY = 'stations_cache';
 
-interface CacheMeta {
-  key: string;
-  savedAt: string;
-  source: string;
-  count: number;
-}
+export type CacheMeta = StationsCacheMeta;
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
@@ -51,12 +56,13 @@ function openDatabase(): Promise<IDBDatabase> {
 }
 
 /**
- * Speichert Stationen in IndexedDB
+ * Speichert Stationen in IndexedDB (nur normalisierte, valide Rows).
  */
 export async function saveStationsToIndexedDB(
   stations: Station[],
   source: string
 ): Promise<void> {
+  const cleaned = normalizeCachedStations(stations);
   try {
     const db = await openDatabase();
     const tx = db.transaction([STORE_STATIONS, STORE_META], 'readwrite');
@@ -64,16 +70,16 @@ export async function saveStationsToIndexedDB(
     const stationStore = tx.objectStore(STORE_STATIONS);
     stationStore.clear();
 
-    for (const station of stations) {
+    for (const station of cleaned) {
       stationStore.put(station);
     }
 
     const metaStore = tx.objectStore(STORE_META);
     const meta: CacheMeta = {
-      key: 'stations_cache',
+      key: META_KEY,
       savedAt: new Date().toISOString(),
-      source,
-      count: stations.length,
+      source: typeof source === 'string' && source ? source : 'unknown',
+      count: cleaned.length,
     };
     metaStore.put(meta);
 
@@ -88,7 +94,7 @@ export async function saveStationsToIndexedDB(
 }
 
 /**
- * Lädt Stationen aus IndexedDB
+ * Lädt Stationen aus IndexedDB — drops corrupt rows / meta.
  */
 export async function loadStationsFromIndexedDB(): Promise<{
   stations: Station[];
@@ -100,22 +106,34 @@ export async function loadStationsFromIndexedDB(): Promise<{
     const tx = db.transaction([STORE_STATIONS, STORE_META], 'readonly');
 
     const metaStore = tx.objectStore(STORE_META);
-    const metaRequest = metaStore.get('stations_cache');
+    const metaRequest = metaStore.get(META_KEY);
 
-    const meta = await new Promise<CacheMeta | undefined>((resolve, reject) => {
+    const rawMeta = await new Promise<unknown>((resolve, reject) => {
       metaRequest.onsuccess = () => resolve(metaRequest.result);
       metaRequest.onerror = () => reject(metaRequest.error);
     });
 
-    if (!meta) return null;
+    if (rawMeta == null) return null;
 
     const stationStore = tx.objectStore(STORE_STATIONS);
     const stationsRequest = stationStore.getAll();
 
-    const stations = await new Promise<Station[]>((resolve, reject) => {
+    const rawStations = await new Promise<unknown>((resolve, reject) => {
       stationsRequest.onsuccess = () => resolve(stationsRequest.result);
       stationsRequest.onerror = () => reject(stationsRequest.error);
     });
+
+    const stations = normalizeCachedStations(rawStations);
+    if (stations.length === 0) return null;
+
+    const meta =
+      normalizeStationsCacheMeta(rawMeta, stations.length) ??
+      ({
+        key: META_KEY,
+        savedAt: '',
+        source: 'unknown',
+        count: stations.length,
+      } satisfies CacheMeta);
 
     return {
       stations,
@@ -129,28 +147,32 @@ export async function loadStationsFromIndexedDB(): Promise<{
 }
 
 /**
- * Lädt eine einzelne Station nach ID
+ * Lädt eine einzelne Station nach ID (normalized or null).
  */
 export async function getStationFromIndexedDB(id: string): Promise<Station | null> {
+  if (typeof id !== 'string' || !id) return null;
   try {
     const db = await openDatabase();
     const tx = db.transaction(STORE_STATIONS, 'readonly');
     const store = tx.objectStore(STORE_STATIONS);
     const request = store.get(id);
 
-    return new Promise((resolve, reject) => {
-      request.onsuccess = () => resolve(request.result ?? null);
+    const raw = await new Promise<unknown>((resolve, reject) => {
+      request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
     });
+
+    return normalizeCachedStation(raw);
   } catch {
     return null;
   }
 }
 
 /**
- * Sucht Stationen nach Stadt
+ * Sucht Stationen nach Stadt (normalized; corrupt rows dropped).
  */
 export async function searchStationsByCityInIndexedDB(city: string): Promise<Station[]> {
+  if (typeof city !== 'string' || !city) return [];
   try {
     const db = await openDatabase();
     const tx = db.transaction(STORE_STATIONS, 'readonly');
@@ -158,29 +180,33 @@ export async function searchStationsByCityInIndexedDB(city: string): Promise<Sta
     const index = store.index('city');
     const request = index.getAll(city);
 
-    return new Promise((resolve, reject) => {
+    const raw = await new Promise<unknown>((resolve, reject) => {
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
     });
+
+    return normalizeCachedStations(raw);
   } catch {
     return [];
   }
 }
 
 /**
- * Gibt Cache-Metadaten zurück
+ * Gibt Cache-Metadaten zurück (shape-guarded).
  */
 export async function getIndexedDBCacheMeta(): Promise<CacheMeta | null> {
   try {
     const db = await openDatabase();
     const tx = db.transaction(STORE_META, 'readonly');
     const store = tx.objectStore(STORE_META);
-    const request = store.get('stations_cache');
+    const request = store.get(META_KEY);
 
-    return new Promise((resolve, reject) => {
-      request.onsuccess = () => resolve(request.result ?? null);
+    const raw = await new Promise<unknown>((resolve, reject) => {
+      request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
     });
+
+    return normalizeStationsCacheMeta(raw);
   } catch {
     return null;
   }
@@ -214,4 +240,9 @@ export function isIndexedDBAvailable(): boolean {
   } catch {
     return false;
   }
+}
+
+/** Test-only: reset open-handle cache between suites. */
+export function __resetIndexedDbCacheForTests(): void {
+  dbPromise = null;
 }
