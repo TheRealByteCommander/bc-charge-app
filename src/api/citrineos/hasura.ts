@@ -11,7 +11,10 @@ import {
   readResponseJson,
   requirePlainObject,
 } from '../parse';
-import { normalizeHasuraTransactionRow } from './dto';
+import {
+  normalizeHasuraChargingStationRows,
+  normalizeHasuraTransactionRow,
+} from './dto';
 import { resolveCitrineosStationDbId } from './stationId';
 import type { CitrineosTransaction, HasuraChargingStationRow } from './types';
 
@@ -157,10 +160,11 @@ export async function hasuraGraphql<T>(query: string, variables: Record<string, 
 }
 
 export async function fetchChargingStationsFromHasura(): Promise<HasuraChargingStationRow[]> {
-  const data = await hasuraGraphql<{ ChargingStations: HasuraChargingStationRow[] }>(STATIONS_QUERY, {
+  const data = await hasuraGraphql<{ ChargingStations: unknown }>(STATIONS_QUERY, {
     tenantId: citrineosConfig.tenantId,
   });
-  return data.ChargingStations ?? [];
+  // Parse-don't-cast: drop corrupt station rows before mapper/cache (parity with WS path).
+  return normalizeHasuraChargingStationRows(data.ChargingStations);
 }
 
 export async function fetchActiveTransaction(

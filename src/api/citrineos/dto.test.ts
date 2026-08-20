@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  extractHasuraWsStationRows,
   normalizeCitrineosTariffs,
   normalizeCitrineosTransaction,
+  normalizeHasuraChargingStationRow,
+  normalizeHasuraChargingStationRows,
   normalizeHasuraTransactionRow,
+  normalizeHasuraWsMessage,
 } from './dto';
 
 describe('normalizeCitrineosTransaction', () => {
@@ -137,5 +141,143 @@ describe('normalizeCitrineosTariffs', () => {
     expect(normalizeCitrineosTariffs('nope')).toEqual([]);
     expect(normalizeCitrineosTariffs([{ currency: 'EUR' }])).toEqual([]);
     expect(normalizeCitrineosTariffs([{ id: 'x', currency: 'EUR' }])).toEqual([]);
+  });
+});
+
+describe('normalizeHasuraChargingStationRow', () => {
+  it('maps a canonical Hasura station row with nested EVSE/connector/tariff', () => {
+    const row = normalizeHasuraChargingStationRow({
+      id: '42',
+      ocppConnectionName: 'goe-main',
+      isOnline: 'true',
+      chargePointVendor: 'go-e',
+      chargePointModel: 'Gemini',
+      coordinates: { type: 'Point', coordinates: ['13.4', '52.5'] },
+      Location: {
+        id: 7,
+        name: 'Hof',
+        address: 'Weg 1',
+        city: 'Berlin',
+        postalCode: '10115',
+        country: 'DE',
+        coordinates: null,
+      },
+      Evses: [
+        {
+          id: 1,
+          evseId: '1',
+          Connectors: [
+            {
+              id: '10',
+              connectorId: 1,
+              status: 'Available',
+              type: 'cType2',
+              maximumPowerWatts: '22000',
+              tariffId: 3,
+              Tariff: { id: '3', pricePerKwh: '0.49', currency: 'EUR' },
+            },
+            // corrupt connector (missing ids) — dropped
+            { status: 'Faulted' },
+          ],
+        },
+        // corrupt EVSE — dropped
+        { id: 'x', evseId: 'y' },
+      ],
+    });
+
+    expect(row).toMatchObject({
+      id: 42,
+      ocppConnectionName: 'goe-main',
+      isOnline: true,
+      chargePointVendor: 'go-e',
+      chargePointModel: 'Gemini',
+      coordinates: { type: 'Point', coordinates: [13.4, 52.5] },
+      Location: {
+        id: 7,
+        name: 'Hof',
+        address: 'Weg 1',
+        city: 'Berlin',
+        postalCode: '10115',
+        country: 'DE',
+        coordinates: null,
+      },
+    });
+    expect(row?.Evses).toHaveLength(1);
+    expect(row?.Evses?.[0].Connectors).toHaveLength(1);
+    expect(row?.Evses?.[0].Connectors?.[0]).toMatchObject({
+      id: 10,
+      connectorId: 1,
+      status: 'Available',
+      maximumPowerWatts: 22000,
+      tariffId: 3,
+      Tariff: { id: 3, pricePerKwh: 0.49, currency: 'EUR' },
+    });
+  });
+
+  it('defaults missing isOnline to false and ocppConnectionName to id', () => {
+    const row = normalizeHasuraChargingStationRow({
+      id: 9,
+      Evses: [{ id: 1, evseId: 1, Connectors: [{ id: 1, connectorId: 1, status: 'Available' }] }],
+    });
+    expect(row?.isOnline).toBe(false);
+    expect(row?.ocppConnectionName).toBe('9');
+  });
+
+  it('drops rows without usable id and garbage roots', () => {
+    expect(normalizeHasuraChargingStationRow(null)).toBeUndefined();
+    expect(normalizeHasuraChargingStationRow('x')).toBeUndefined();
+    expect(normalizeHasuraChargingStationRow({ ocppConnectionName: 'a' })).toBeUndefined();
+    expect(normalizeHasuraChargingStationRow({ id: 'nope' })).toBeUndefined();
+  });
+
+  it('normalizeHasuraChargingStationRows drops corrupt entries', () => {
+    const rows = normalizeHasuraChargingStationRows([
+      { id: 1, isOnline: true, Evses: [] },
+      null,
+      { id: 'bad' },
+      { id: 2, isOnline: 0, Evses: [{ id: 1, evseId: 1, Connectors: [] }] },
+    ]);
+    expect(rows.map((r) => r.id)).toEqual([1, 2]);
+    expect(rows[1].isOnline).toBe(false);
+  });
+});
+
+describe('normalizeHasuraWsMessage / extractHasuraWsStationRows', () => {
+  it('parses graphql-ws frames from string or object', () => {
+    expect(normalizeHasuraWsMessage('{"type":"ka"}')).toEqual({ type: 'ka' });
+    expect(normalizeHasuraWsMessage({ type: 'connection_ack' })?.type).toBe('connection_ack');
+    expect(normalizeHasuraWsMessage('not-json')).toBeUndefined();
+    expect(normalizeHasuraWsMessage([])).toBeUndefined();
+    expect(normalizeHasuraWsMessage(null)).toBeUndefined();
+  });
+
+  it('extracts and normalizes ChargingStations from data payload', () => {
+    const stations = extractHasuraWsStationRows({
+      data: {
+        ChargingStations: [
+          {
+            id: 5,
+            isOnline: true,
+            Evses: [
+              {
+                id: 1,
+                evseId: 1,
+                Connectors: [{ id: 1, connectorId: 1, status: 'Charging' }],
+              },
+            ],
+          },
+          { id: 'drop-me' },
+        ],
+      },
+    });
+    expect(stations).toHaveLength(1);
+    expect(stations[0].id).toBe(5);
+    expect(stations[0].Evses?.[0].Connectors?.[0].status).toBe('Charging');
+  });
+
+  it('returns [] for missing nesting', () => {
+    expect(extractHasuraWsStationRows(undefined)).toEqual([]);
+    expect(extractHasuraWsStationRows({ data: {} })).toEqual([]);
+    expect(extractHasuraWsStationRows({ data: { ChargingStations: null } })).toEqual([]);
   });
 });

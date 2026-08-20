@@ -1,6 +1,10 @@
 import { citrineosConfig } from '../../config/citrineos';
 import { isBackendMode } from '../../services/backendMode';
 import { apiConfig } from '../../config/api';
+import {
+  extractHasuraWsStationRows,
+  normalizeHasuraWsMessage,
+} from './dto';
 import type { HasuraChargingStationRow } from './types';
 import { logger } from '../../utils/logger';
 
@@ -143,21 +147,11 @@ function handleWsOpen(): void {
  */
 function handleWsMessage(event: MessageEvent): void {
   try {
-    let message: {
-      type?: string;
-      payload?: { data?: { ChargingStations?: HasuraChargingStationRow[] } };
-    };
-    try {
-      const raw = typeof event.data === 'string' ? event.data : String(event.data ?? '');
-      const parsed: unknown = JSON.parse(raw);
-      // Shape-guard before cast — arrays/primitives are never Hasura protocol frames.
-      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-        logger.warn('Ignoring non-object Hasura WS payload');
-        return;
-      }
-      message = parsed as typeof message;
-    } catch (parseErr) {
-      logger.error('Error parsing WebSocket message:', parseErr);
+    const raw = typeof event.data === 'string' ? event.data : String(event.data ?? '');
+    // Zod parse-don't-cast — corrupt / non-object frames are ignored (no throw into WS handler).
+    const message = normalizeHasuraWsMessage(raw);
+    if (!message) {
+      logger.warn('Ignoring non-object or corrupt Hasura WS payload');
       return;
     }
 
@@ -166,28 +160,35 @@ function handleWsMessage(event: MessageEvent): void {
         // Connection acknowledged, now start subscription
         startSubscription();
         break;
-        
-      case 'data':
-        // Subscription data received
-        if (message.payload?.data?.ChargingStations && stationUpdateCallback) {
-          logger.info('Received station updates via subscription');
-          stationUpdateCallback(message.payload.data.ChargingStations);
+
+      case 'data': {
+        // Subscription data — normalize each station row before mapper/cache.
+        if (!stationUpdateCallback) break;
+        const stations = extractHasuraWsStationRows(message.payload);
+        if (stations.length === 0) {
+          // Empty can be legit (tenant with zero stations) or total drop of corrupt batch.
+          logger.info('Received station subscription data (0 usable rows)');
+          stationUpdateCallback(stations);
+          break;
         }
+        logger.info('Received station updates via subscription', { count: stations.length });
+        stationUpdateCallback(stations);
         break;
-        
+      }
+
       case 'ka':
         // Keep alive message, ignore
         break;
-        
+
       case 'error':
         console.error('[BC Charge] Hasura subscription error:', message.payload);
         break;
-        
+
       default:
         logger.debug('Unknown WebSocket message type:', message.type);
     }
   } catch (error) {
-    logger.error('Error parsing WebSocket message:', error);
+    logger.error('Error handling WebSocket message:', error);
   }
 }
 

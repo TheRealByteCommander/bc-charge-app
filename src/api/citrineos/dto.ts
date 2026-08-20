@@ -228,6 +228,261 @@ export function normalizeHasuraTransactionRow(raw: unknown): CitrineosTransactio
   return normalizeCitrineosTransaction(raw);
 }
 
+// --- Hasura live-query / GraphQL station rows + WS protocol frames ------------
+
+const GeoPointSchema = z
+  .object({
+    type: z.string().optional(),
+    coordinates: z.array(z.union([z.number(), z.string()])).min(2).optional(),
+  })
+  .passthrough()
+  .nullable()
+  .optional();
+
+const HasuraTariffSchema = z
+  .object({
+    id: z.union([z.string(), z.number()]).optional().nullable(),
+    pricePerKwh: optionalFiniteNumber.optional(),
+    pricePerMin: optionalFiniteNumber.optional(),
+    pricePerSession: optionalFiniteNumber.optional(),
+    currency: z.string().optional().nullable(),
+    taxRate: optionalFiniteNumber.optional(),
+  })
+  .passthrough()
+  .nullable()
+  .optional();
+
+// Nested connector/EVSE: keep wire-tolerant (optional ids). normalize*() drops
+// entries without usable numeric ids so one corrupt child does not kill the station.
+const HasuraConnectorSchema = z
+  .object({
+    id: z.union([z.string(), z.number()]).optional().nullable(),
+    connectorId: z.union([z.string(), z.number()]).optional().nullable(),
+    status: z.union([z.string(), z.null()]).optional(),
+    type: z.string().optional().nullable(),
+    maximumPowerWatts: optionalFiniteNumber.optional(),
+    tariffId: optionalFiniteNumber.optional(),
+    Tariff: HasuraTariffSchema,
+  })
+  .passthrough();
+
+const HasuraEvseSchema = z
+  .object({
+    id: z.union([z.string(), z.number()]).optional().nullable(),
+    evseId: z.union([z.string(), z.number()]).optional().nullable(),
+    Connectors: z.array(HasuraConnectorSchema).nullable().optional(),
+  })
+  .passthrough();
+
+const HasuraLocationSchema = z
+  .object({
+    id: z.union([z.string(), z.number()]).optional().nullable(),
+    name: z.string().optional().nullable(),
+    address: z.string().optional().nullable(),
+    city: z.string().optional().nullable(),
+    postalCode: z.string().optional().nullable(),
+    country: z.string().optional().nullable(),
+    coordinates: GeoPointSchema,
+  })
+  .passthrough()
+  .nullable()
+  .optional();
+
+/** Raw Hasura ChargingStations row — tolerant aliases, drop corrupt rows. */
+export const HasuraChargingStationRowSchema = z
+  .object({
+    id: z.union([z.string(), z.number()]),
+    ocppConnectionName: z.union([z.string(), z.number(), z.null()]).optional(),
+    isOnline: z
+      .union([z.boolean(), z.number(), z.string(), z.null()])
+      .optional(),
+    chargePointVendor: z.string().optional().nullable(),
+    chargePointModel: z.string().optional().nullable(),
+    coordinates: GeoPointSchema,
+    Location: HasuraLocationSchema,
+    Evses: z.array(HasuraEvseSchema).nullable().optional(),
+  })
+  .passthrough();
+
+function toFiniteNumber(v: unknown): number | null {
+  if (v == null || v === '') return null;
+  const n = typeof v === 'number' ? v : Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+function normalizeGeoPoint(
+  raw: z.infer<typeof GeoPointSchema>
+): { type: 'Point'; coordinates: [number, number] } | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const coords = raw.coordinates;
+  if (!Array.isArray(coords) || coords.length < 2) return null;
+  const lng = toFiniteNumber(coords[0]);
+  const lat = toFiniteNumber(coords[1]);
+  if (lng == null || lat == null) return null;
+  return { type: 'Point', coordinates: [lng, lat] };
+}
+
+function normalizeHasuraTariff(
+  raw: z.infer<typeof HasuraTariffSchema>
+): CitrineosTariff | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const tariff: CitrineosTariff = {};
+  const id = toFiniteNumber(raw.id);
+  if (id != null) tariff.id = id;
+  if (typeof raw.currency === 'string' && raw.currency) tariff.currency = raw.currency;
+  if (raw.pricePerKwh != null) tariff.pricePerKwh = raw.pricePerKwh;
+  if (raw.pricePerMin != null) tariff.pricePerMin = raw.pricePerMin;
+  if (raw.pricePerSession != null) tariff.pricePerSession = raw.pricePerSession;
+  if (raw.taxRate != null) tariff.taxRate = raw.taxRate;
+  if (
+    tariff.id == null &&
+    tariff.pricePerKwh == null &&
+    tariff.pricePerMin == null &&
+    tariff.pricePerSession == null
+  ) {
+    return null;
+  }
+  return tariff;
+}
+
+/**
+ * Parse-don't-cast a single Hasura ChargingStations row.
+ * Drops rows without a usable numeric id (mapper needs citrineosDatabaseId).
+ */
+export function normalizeHasuraChargingStationRow(
+  raw: unknown
+): import('./types').HasuraChargingStationRow | undefined {
+  const parsed = HasuraChargingStationRowSchema.safeParse(raw);
+  if (!parsed.success) return undefined;
+  const row = parsed.data;
+
+  const id = toFiniteNumber(row.id);
+  if (id == null) return undefined;
+
+  const isOnline =
+    coerceOptionalBool(row.isOnline) ??
+    // Missing isOnline → treat as offline (safer UI: show offline amenities).
+    false;
+
+  const ocppConnectionName =
+    row.ocppConnectionName == null || row.ocppConnectionName === ''
+      ? String(id)
+      : String(row.ocppConnectionName);
+
+  const locationRaw = row.Location ?? null;
+  const Location =
+    locationRaw && typeof locationRaw === 'object'
+      ? {
+          id: toFiniteNumber(locationRaw.id) ?? undefined,
+          name: locationRaw.name ?? null,
+          address: locationRaw.address ?? null,
+          city: locationRaw.city ?? null,
+          postalCode: locationRaw.postalCode ?? null,
+          country: locationRaw.country ?? null,
+          coordinates: normalizeGeoPoint(locationRaw.coordinates),
+        }
+      : null;
+
+  const Evses = (row.Evses ?? [])
+    .map((evse) => {
+      const evsePk = toFiniteNumber(evse.id);
+      const evseId = toFiniteNumber(evse.evseId);
+      if (evsePk == null || evseId == null) return null;
+      const Connectors = (evse.Connectors ?? [])
+        .map((conn) => {
+          const connPk = toFiniteNumber(conn.id);
+          const connectorId = toFiniteNumber(conn.connectorId);
+          if (connPk == null || connectorId == null) return null;
+          const tariff = normalizeHasuraTariff(conn.Tariff ?? null);
+          const maximumPowerWatts =
+            conn.maximumPowerWatts == null ? null : conn.maximumPowerWatts;
+          const tariffId = conn.tariffId == null ? null : conn.tariffId;
+          return {
+            id: connPk,
+            connectorId,
+            status: typeof conn.status === 'string' && conn.status ? conn.status : 'Unknown',
+            type: conn.type ?? null,
+            maximumPowerWatts,
+            tariffId,
+            Tariff: tariff,
+          };
+        })
+        .filter((c): c is NonNullable<typeof c> => c != null);
+      return {
+        id: evsePk,
+        evseId,
+        Connectors,
+      };
+    })
+    .filter((e): e is NonNullable<typeof e> => e != null);
+
+  return {
+    id,
+    ocppConnectionName,
+    isOnline,
+    chargePointVendor: row.chargePointVendor ?? null,
+    chargePointModel: row.chargePointModel ?? null,
+    coordinates: normalizeGeoPoint(row.coordinates),
+    Location,
+    Evses,
+  };
+}
+
+/** Drop corrupt rows from a ChargingStations[] payload (HTTP or WS). */
+export function normalizeHasuraChargingStationRows(
+  raw: unknown
+): import('./types').HasuraChargingStationRow[] {
+  if (!Array.isArray(raw)) return [];
+  const out: import('./types').HasuraChargingStationRow[] = [];
+  for (const item of raw) {
+    const row = normalizeHasuraChargingStationRow(item);
+    if (row) out.push(row);
+  }
+  return out;
+}
+
+/** graphql-ws (legacy) protocol frame from Hasura WS BFF / direct. */
+export const HasuraWsMessageSchema = z
+  .object({
+    type: z.string().optional(),
+    id: z.union([z.string(), z.number()]).optional(),
+    payload: z.unknown().optional(),
+  })
+  .passthrough();
+
+export type HasuraWsMessage = z.infer<typeof HasuraWsMessageSchema>;
+
+/**
+ * Parse a raw WS text frame. Non-object / corrupt JSON → undefined (caller ignores).
+ */
+export function normalizeHasuraWsMessage(raw: unknown): HasuraWsMessage | undefined {
+  let value = raw;
+  if (typeof raw === 'string') {
+    const t = raw.trim();
+    if (!t) return undefined;
+    try {
+      value = JSON.parse(t);
+    } catch {
+      return undefined;
+    }
+  }
+  const parsed = HasuraWsMessageSchema.safeParse(value);
+  if (!parsed.success) return undefined;
+  return parsed.data;
+}
+
+/**
+ * Extract ChargingStations[] from a graphql-ws `data` payload.
+ * Tolerates missing nesting; never throws.
+ */
+export function extractHasuraWsStationRows(payload: unknown): import('./types').HasuraChargingStationRow[] {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return [];
+  const data = (payload as { data?: unknown }).data;
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return [];
+  const stations = (data as { ChargingStations?: unknown }).ChargingStations;
+  return normalizeHasuraChargingStationRows(stations);
+}
+
 export {
   RawTransactionSchema,
   TransactionWireSchema,
