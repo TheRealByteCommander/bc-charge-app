@@ -20,6 +20,7 @@ export default defineConfig({
       'src/api/citrineos/paths.test.ts',
       'src/api/parse.test.ts',
       'src/api/backend/schemas.test.ts',
+      'src/api/backend/pricing.test.ts',
       'src/services/stationCheckIn.test.ts',
       'src/services/favoriteAvailability.test.ts',
     ],

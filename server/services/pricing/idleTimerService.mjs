@@ -6,7 +6,7 @@
  * nicht bei konstanten MeterValues. Siehe docs/dynamic-pricing-engine.md.
  */
 
-import { deriveIdleIntervals, durationSeconds } from './events.mjs';
+import { deriveIdleIntervals, durationSeconds, isValidEventAt, normalizePricingEvents } from './events.mjs';
 import { calculateSession } from './pricingEngine.mjs';
 import { logBillingEvent } from './billingAuditLogger.mjs';
 
@@ -29,10 +29,13 @@ const lastLoggedBillableMin = new Map();
  */
 export function updateSessionState(state) {
   if (!state?.sessionId) throw new Error('sessionId erforderlich');
+  // Drop corrupt / incomplete OCPP pricing events at the track boundary so
+  // evaluateIdleSessions never sorts nullish `at` or NaN timestamps.
+  const events = normalizePricingEvents(state.events);
   activeSessions.set(state.sessionId, {
     sessionId: state.sessionId,
     chargerId: state.chargerId,
-    events: Array.isArray(state.events) ? state.events : [],
+    events,
     tariff: state.tariff,
   });
 }
@@ -55,6 +58,7 @@ export function getTrackedSessionIds() {
 export async function evaluateIdleSessions(defaultTariff, asOf = new Date().toISOString()) {
   /** @type {object[]} */
   const results = [];
+  const asOfIso = isValidEventAt(asOf) ? String(asOf).trim() : new Date().toISOString();
 
   for (const [sessionId, state] of activeSessions) {
     const tariff = state.tariff ?? defaultTariff;
@@ -66,7 +70,7 @@ export async function evaluateIdleSessions(defaultTariff, asOf = new Date().toIS
     const graceSeconds = Math.round((Number(tariff.gracePeriodMinutes) || 0) * 60);
     let idleSeconds = 0;
     for (const iv of intervals) {
-      const end = iv.end ?? asOf;
+      const end = iv.end ?? asOfIso;
       idleSeconds += Math.max(0, durationSeconds(iv.start, end) - graceSeconds);
     }
     if (idleSeconds <= 0) continue;

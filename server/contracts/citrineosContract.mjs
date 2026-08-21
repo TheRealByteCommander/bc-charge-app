@@ -1,5 +1,5 @@
 /** Integrationsvertrag CitrineOS ↔ bc-charge-app (v1.8.4)
- * Upstream watch (2026-08-20): citrineos-core latest pre-release tag still **v2.0.0-beta3**
+ * Upstream watch (2026-08-21): citrineos-core latest pre-release tag still **v2.0.0-beta3**
  * (tag 2026-08-12; no newer tag on releases). Still NOT a prod pin — stay on 1.8.4 until staging
  * CANARY_FORCE=1 soak + pinBump.ready + hardware smoke (Elinta/go-e).
  * beta3 highlights for BC: OCPP message correlation (#832), tenant-scoped repo deletes (#842),
@@ -12,23 +12,25 @@
  *     staging carries #849 run `CITRINEOS_REST_SURFACE=commands` trial before any pin bump.
  *   - **#846** audit-insert crash fix (merged 2026-08-17 → next): OCPPMessages insert no longer kills
  *     process / drops all station WS — prefer this commit on any long webhook soak Citrine.
- * Open drift risks (still open 2026-08-20):
+ *   - **#852** unmapped measurands dropped (merged 2026-08-20 → next): no longer relabel unknown
+ *     samples as Energy.Active.Import.Register — aligns with BC webhook strict energy extract.
+ *   - **#859** EVSE-scoped connector status (merged 2026-08-20 → next): OCPP 2.0.1 multi-EVSE
+ *     connectorId collision fixed upstream; BC ids already `evse-{n}-conn-{m}`.
+ * Open drift risks (still open 2026-08-21):
  *   - **#851 tenant path mapping** (open): config → tenant DB + cache + path sanitization.
- *   - **#852** unmapped measurands dropped (not relabeled as energy) — good for meter honesty.
  *   - **#867** OCPPMessages weekly partition (open): ops/migration risk; entrypoint must provision
  *     partitions or inserts fail (less fatal once #846 is deployed, still lossy/noisy).
  *   - **#881/#893** (open): OCPP2 handlers hard-code protocol OCPP2.1 on follow-up SetChargingProfile
  *     / related calls while registered for OCPP_2_VER_LIST (includes 2.0.1) — LM/PV profile sends can
- *     be metered/routed on the wrong action table for 2.0.1 stations.
+ *     be audited/routed on the wrong action table for 2.0.1 stations (frame still reaches charger).
  *   - **#869** (open): OCPP 2.x standalone MeterValues not attached to transaction / CostUpdated never
  *     fires from that handler — BC meter SoT remains TransactionEvent webhooks + strict energy extract.
- *   - **#859/#860** (open): multi-EVSE connector status + operator-ui start/stop; BC connector ids already
- *     `evse-{n}-conn-{m}` / sessionGuard is per-user not per-station.
  * Webhooks: TransactionEvent seqNo + triggerReason (ChargingRateChanged/ChargingStateChanged → LM
  * reopt) + chargingState persist + meterValue energy (citrineosWebhooks.mjs / loadManagementReopt.mjs).
  * Hasura: station-status live queries only via BFF WS proxy; meter/LM stays on webhooks (live-query
  * multiplex ~1s is wrong for high-freq telemetry).
- * Load-Management: /api/load-management proxy + composite/external limits (PR #46 merged).
+ * Load-Management: /api/load-management proxy + composite/external limits (PR #46 merged);
+ * inbound Citrine WS frames parse-don't-cast via citrineWsEnvelope.ts.
  */
 
 export const CITRINEOS_INTEGRATION_VERSION = '1.8.4';
@@ -60,6 +62,24 @@ export const CITRINEOS_UPSTREAM_MERGED_NEXT = [
     risk:
       'Guards OCPPMessages audit insert in WebhookDispatcher so FK/DB failures no longer crash CSMS / drop all station websockets. Deploy on staging/prod Citrine before long webhook soaks when tracking next.',
   },
+  {
+    id: 852,
+    title: 'fix(core): drop unmapped OCPP measurands instead of relabeling them as the energy register',
+    url: 'https://github.com/citrineos/citrineos-core/pull/852',
+    mergedAt: '2026-08-20T20:23:48Z',
+    base: 'next',
+    risk:
+      'Upstream no longer relabels unknown measurands as Energy.Active.Import.Register. Positive for meter honesty; BC webhooks already strict-match that measurand — watch for missing energy samples on quirky hardware after staging tracks next.',
+  },
+  {
+    id: 859,
+    title: 'fix(core): resolve OCPP 2.0.1 connector status through its EVSE',
+    url: 'https://github.com/citrineos/citrineos-core/pull/859',
+    mergedAt: '2026-08-20T20:30:51Z',
+    base: 'next',
+    risk:
+      'Fixes multi-EVSE connectorId collision in OCPP 2.0.1 status resolution. BC connector ids already evse-{evseId}-conn-{connectorId}; re-verify Hasura/status mapping when staging Citrine carries #859.',
+  },
 ];
 
 /** Open upstream PRs/issues that can break BC routing, REST, or tenancy (informational). */
@@ -69,12 +89,6 @@ export const CITRINEOS_UPSTREAM_OPEN = [
     title: 'Feature/refactor tenant path mapping',
     url: 'https://github.com/citrineos/citrineos-core/pull/851',
     risk: 'Dynamic tenant pathing moves system-config → tenant DB/cache; base URL/scripts may break',
-  },
-  {
-    id: 852,
-    title: 'fix(core): drop unmapped OCPP measurands instead of relabeling them as the energy register',
-    url: 'https://github.com/citrineos/citrineos-core/pull/852',
-    risk: 'Positive for BC meter extract (Energy.Active.Import.Register only); watch if energy samples go missing on quirky hardware',
   },
   {
     id: 867,
@@ -88,7 +102,7 @@ export const CITRINEOS_UPSTREAM_OPEN = [
     title: "fix(core): follow up on the station's own protocol, not a hard-coded OCPP 2.1",
     url: 'https://github.com/citrineos/citrineos-core/pull/881',
     risk:
-      'OCPP2 handlers registered for 2.0.1+2.1 hard-code OCPP2_1 on follow-up SetChargingProfile/GetChargingProfiles/SendLocalList — wrong action table / audit for 2.0.1 stations (LM/PV profile path).',
+      'OCPP2 handlers registered for 2.0.1+2.1 hard-code OCPP2_1 on follow-up SetChargingProfile/GetChargingProfiles/SendLocalList — wrong action table / audit for 2.0.1 stations (LM/PV profile path). Frame still reaches charger; audit/protocol metadata wrong.',
   },
   {
     id: 893,
@@ -103,13 +117,6 @@ export const CITRINEOS_UPSTREAM_OPEN = [
     url: 'https://github.com/citrineos/citrineos-core/pull/869',
     risk:
       'Standalone MeterValuesRequestOcpp2Handler never wires _sendCostUpdatedOnMeterValue; samples may not attach to tx. BC billing/UI meter SoT stays TransactionEvent webhooks + Energy.Active.Import.Register extract — do not depend on Citrine CostUpdated from MeterValues alone.',
-  },
-  {
-    id: 859,
-    title: 'fix(core): resolve OCPP 2.0.1 connector status through its EVSE',
-    url: 'https://github.com/citrineos/citrineos-core/pull/859',
-    risk:
-      'OCPP 2.0.1 connectorId is per-EVSE (duplicate connectorId 1 across EVSEs). Status resolution without EVSE scope can flip wrong connector. BC ids already evse-{evseId}-conn-{connectorId}; re-verify Hasura/status mapping when #859 merges.',
   },
 ];
 

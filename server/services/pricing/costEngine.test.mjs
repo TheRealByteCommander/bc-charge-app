@@ -55,6 +55,32 @@ describe('idle events', () => {
     ]);
     expect(intervals).toHaveLength(0);
   });
+
+  it('dropt Events ohne/mit ungültigem at und crasht nicht beim Sort', () => {
+    const intervals = deriveIdleIntervals([
+      { type: 'session_start' },
+      null,
+      { at: 'not-a-date', type: 'charging_state', chargingState: 'Charging' },
+      { at: '2026-01-01T10:00:00Z', type: 'session_start' },
+      { at: '2026-01-01T10:05:00Z', type: 'charging_state', chargingState: 'Charging' },
+      { at: '', type: 'charging_state', chargingState: 'SuspendedEV' },
+      { at: '2026-01-01T10:15:00Z', type: 'charging_state', chargingState: 'SuspendedEV' },
+      { at: '2026-01-01T10:30:00Z', type: 'session_stop' },
+    ]);
+    expect(intervals).toHaveLength(1);
+    expect(intervals[0].start).toBe('2026-01-01T10:15:00Z');
+    expect(intervals[0].end).toBe('2026-01-01T10:30:00Z');
+  });
+});
+
+describe('durationSeconds', () => {
+  it('returns 0 for invalid / inverted timestamps instead of NaN', async () => {
+    const { durationSeconds } = await import('./events.mjs');
+    expect(durationSeconds(null, '2026-01-01T00:00:10Z')).toBe(0);
+    expect(durationSeconds('bad', '2026-01-01T00:00:10Z')).toBe(0);
+    expect(durationSeconds('2026-01-01T00:00:10Z', '2026-01-01T00:00:00Z')).toBe(0);
+    expect(durationSeconds('2026-01-01T00:00:00Z', '2026-01-01T00:00:10Z')).toBe(10);
+  });
 });
 
 describe('golden master cost cases', () => {

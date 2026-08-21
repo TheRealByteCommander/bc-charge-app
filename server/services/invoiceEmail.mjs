@@ -1,6 +1,6 @@
 import nodemailer from 'nodemailer';
 import logger from '../utils/logger.mjs';
-
+import { companyInfo } from './company.mjs';
 
 let transporter;
 

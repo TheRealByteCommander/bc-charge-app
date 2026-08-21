@@ -124,4 +124,28 @@ describe('idleTimer + billingAudit (OCPP-States)', () => {
     const results = await evaluateIdleSessions(standardTariff, '2026-07-01T12:50:00.000Z');
     expect(results.length).toBe(0);
   });
+
+  it('dropt corrupt track events (missing/invalid at) without throwing', async () => {
+    const sessionId = 'sess-idle-corrupt';
+    clearSession(sessionId);
+    expect(() =>
+      updateSessionState({
+        sessionId,
+        tariff: standardTariff,
+        events: [
+          { type: 'session_start' },
+          null,
+          { at: 'nope', type: 'charging_state', chargingState: 'Charging' },
+          { at: '2026-07-01T12:00:00.000Z', type: 'session_start' },
+          { at: '2026-07-01T12:05:00.000Z', type: 'charging_state', chargingState: 'Charging' },
+          { at: '2026-07-01T12:20:00.000Z', type: 'charging_state', chargingState: 'SuspendedEV' },
+        ],
+      })
+    ).not.toThrow();
+
+    const results = await evaluateIdleSessions(standardTariff, 'not-a-timestamp');
+    expect(results.length).toBe(1);
+    expect(results[0].sessionId).toBe(sessionId);
+    expect(Number.isFinite(results[0].idleBillableMinutes)).toBe(true);
+  });
 });

@@ -8,6 +8,7 @@ import {
   toUserProfile,
 } from '../api/backend/schemas';
 import { asRecordOfArrays, isPlainObject, safeParseJson } from './safeJson';
+import { liveSessionMetricsEqual } from './sessionLiveEqual';
 
 const KEYS = {
   users: 'bc_users',
@@ -153,6 +154,12 @@ export function parseActiveSessionCache(
 export function saveActiveSessionCache(userId: string, session: ChargingSession): void {
   if (!userId || !session?.id) return;
   try {
+    // Skip rewrite when live meter/pricing fields are unchanged (ignore savedAt churn).
+    // Complements tickSession's liveSessionMetricsEqual guard for other call sites
+    // (refreshActiveSession / start paths) that still touch sessionStorage.
+    const existing = parseActiveSessionCache(sessionStorage.getItem(ACTIVE_SESSION_CACHE), userId);
+    if (existing && liveSessionMetricsEqual(existing, session)) return;
+
     const envelope: ActiveSessionCacheEnvelope = {
       userId,
       session,

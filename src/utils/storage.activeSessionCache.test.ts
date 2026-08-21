@@ -1,5 +1,10 @@
-import { describe, expect, it } from 'vitest';
-import { parseActiveSessionCache } from './storage';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  clearActiveSessionCache,
+  parseActiveSessionCache,
+  saveActiveSessionCache,
+} from './storage';
+import type { ChargingSession } from '../types';
 
 const userId = 'user_1';
 
@@ -99,5 +104,72 @@ describe('parseActiveSessionCache', () => {
         userId
       )
     ).toBeNull();
+  });
+});
+
+const domainActiveSession = {
+  id: 'sess_1',
+  stationId: 'st-1',
+  stationName: 'Hof',
+  connectorId: 'c1',
+  connectorType: 'CCS',
+  powerKw: 22,
+  vehicleId: 'v1',
+  paymentMethodId: 'pm1',
+  startedAt: '2026-08-18T06:00:00.000Z',
+  status: 'active' as const,
+  energyKwh: 3.5,
+  costEur: 1.2,
+  pricePerKwh: 0.39,
+  sessionFee: 0,
+  pointsEarned: 0,
+  chargingState: 'Charging' as const,
+  citrineosTransactionId: 'tx-99',
+} satisfies ChargingSession;
+
+describe('saveActiveSessionCache', () => {
+  const store = new Map<string, string>();
+
+  beforeEach(() => {
+    store.clear();
+    vi.stubGlobal('sessionStorage', {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => {
+        store.set(k, String(v));
+      },
+      removeItem: (k: string) => {
+        store.delete(k);
+      },
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('writes envelope on first save and skips rewrite when live metrics are equal', () => {
+    saveActiveSessionCache(userId, domainActiveSession);
+    expect(store.size).toBe(1);
+    const firstRaw = [...store.values()][0];
+    const first = JSON.parse(firstRaw) as { savedAt: string; session: { energyKwh: number } };
+    expect(first.session.energyKwh).toBe(3.5);
+
+    // Identical metrics must not touch sessionStorage (savedAt would otherwise churn).
+    saveActiveSessionCache(userId, { ...domainActiveSession });
+    expect([...store.values()][0]).toBe(firstRaw);
+
+    // Meter change must rewrite.
+    saveActiveSessionCache(userId, { ...domainActiveSession, energyKwh: 4.1 });
+    const secondRaw = [...store.values()][0];
+    expect(secondRaw).not.toBe(firstRaw);
+    const second = JSON.parse(secondRaw) as { session: { energyKwh: number } };
+    expect(second.session.energyKwh).toBe(4.1);
+  });
+
+  it('clearActiveSessionCache removes the resume key', () => {
+    saveActiveSessionCache(userId, domainActiveSession);
+    expect(store.size).toBe(1);
+    clearActiveSessionCache();
+    expect(store.size).toBe(0);
   });
 });
