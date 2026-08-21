@@ -140,7 +140,7 @@ export function ChargingPage() {
           />
           <defs>
             <linearGradient id="grad-charge" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stopColor="#2ee59d" />
+              <stop offset="0%" stopColor="#a0e040" />
               <stop offset="100%" stopColor="#5dffb8" />
             </linearGradient>
           </defs>

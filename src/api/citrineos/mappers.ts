@@ -16,7 +16,7 @@ import { mapTariffToConnectorPricing, type TariffCatalog } from './tariffPricing
 import type { HasuraChargingStationRow } from './types';
 
 const GRADIENTS = [
-  'from-emerald-900/80 to-bc-surface',
+  'from-bc-blue/30 to-bc-surface',
   'from-sky-900/70 to-bc-surface',
   'from-violet-900/60 to-bc-surface',
   'from-teal-900/60 to-bc-surface',

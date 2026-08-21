@@ -8,8 +8,8 @@ interface ConnectorLedStatusProps {
 }
 
 const LED_COLORS: Record<ConnectorStatus, { base: string; glow: string }> = {
-  available: { base: 'bg-bc-accent', glow: 'shadow-[0_0_8px_2px_rgba(46,229,157,0.6)]' },
-  occupied: { base: 'bg-bc-blue', glow: 'shadow-[0_0_8px_2px_rgba(59,130,246,0.6)]' },
+  available: { base: 'bg-bc-accent', glow: 'shadow-[0_0_8px_2px_rgba(160,224,64,0.65)]' },
+  occupied: { base: 'bg-bc-blue', glow: 'shadow-[0_0_8px_2px_rgba(0,200,216,0.65)]' },
   offline: { base: 'bg-bc-muted', glow: '' },
   reserved: { base: 'bg-bc-warn', glow: 'shadow-[0_0_8px_2px_rgba(251,191,36,0.6)]' },
 };

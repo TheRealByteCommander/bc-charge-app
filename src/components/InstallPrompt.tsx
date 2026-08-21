@@ -1,5 +1,6 @@
-import { Download, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { Logo } from './Logo';
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -51,8 +52,8 @@ export function InstallPrompt() {
   return (
     <div className="fixed bottom-24 left-4 right-4 z-[55] mx-auto max-w-lg safe-bottom">
       <div className="flex items-start gap-3 rounded-2xl border border-bc-accent/40 bg-bc-elevated p-4 shadow-glow">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-bc-accent/20 text-bc-accent">
-          <Download className="h-5 w-5" />
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-bc-surface">
+          <Logo size="sm" variant="mark" className="h-9 w-9" />
         </div>
         <div className="min-w-0 flex-1">
           <p className="font-display font-semibold">BC Charge installieren</p>

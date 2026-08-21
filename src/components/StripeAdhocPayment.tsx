@@ -93,7 +93,7 @@ export function StripeAdhocPayment({
         appearance: {
           theme: 'stripe',
           variables: {
-            colorPrimary: '#10b981',
+            colorPrimary: '#a0e040',
             colorBackground: '#ffffff',
             colorText: '#1e293b',
             colorDanger: '#ef4444',

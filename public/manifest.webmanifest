@@ -7,15 +7,15 @@
   "id": "/",
   "display": "standalone",
   "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
-  "background_color": "#0f1419",
-  "theme_color": "#10b981",
+  "background_color": "#0b1620",
+  "theme_color": "#00c8d8",
   "orientation": "portrait-primary",
   "lang": "de",
   "dir": "ltr",
   "categories": ["lifestyle", "navigation", "utilities"],
   "icons": [
     {
-      "src": "/bc-icon.svg",
+      "src": "/bc-icon.png",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any"

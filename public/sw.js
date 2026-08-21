@@ -7,7 +7,8 @@ const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/manifest.webmanifest',
-  '/bc-icon.svg',
+  '/bc-icon.png',
+  '/brand/bc-charge-mark.png',
   '/offline.html',
 ];
 

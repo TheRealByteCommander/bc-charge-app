@@ -32,7 +32,7 @@ const goodStation = {
   network: 'BC Charge',
   rating: 4.8,
   reviewCount: 0,
-  imageGradient: 'from-emerald-900/80 to-bc-surface',
+  imageGradient: 'from-bc-blue/30 to-bc-surface',
   connectors: [goodConnector],
   greenEnergy: true,
   accessible: true,

@@ -1,7 +1,7 @@
 import type { ChargingSession, Station } from '../types';
 import { formatCurrency, formatKwh } from '../utils/format';
 
-const ICON = '/bc-icon.svg';
+const ICON = '/bc-icon.png';
 
 function showNotification(title: string, body: string, tag: string, path?: string): void {
   if (!canSendBrowserNotifications()) return;

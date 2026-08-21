@@ -11,7 +11,7 @@ import { minKnownPricePerKwh } from '../utils/pricing';
 
 const iconAvailable = L.divIcon({
   className: '',
-  html: `<div style="width:32px;height:32px;border-radius:50%;background:#10b981;border:3px solid #ffffff;box-shadow:0 2px 8px rgba(0,0,0,0.2)"></div>`,
+  html: `<div style="width:32px;height:32px;border-radius:50%;background:#a0e040;border:3px solid #ffffff;box-shadow:0 2px 8px rgba(0,0,0,0.2)"></div>`,
   iconSize: [32, 32],
   iconAnchor: [16, 16],
 });
@@ -25,7 +25,7 @@ const iconBusy = L.divIcon({
 
 const iconHighlight = L.divIcon({
   className: '',
-  html: `<div style="width:36px;height:36px;border-radius:50%;background:#10b981;border:4px solid #34d399;box-shadow:0 2px 12px rgba(16,185,129,0.5)"></div>`,
+  html: `<div style="width:36px;height:36px;border-radius:50%;background:#a0e040;border:4px solid #00c8d8;box-shadow:0 2px 12px rgba(160,224,64,0.55)"></div>`,
   iconSize: [36, 36],
   iconAnchor: [18, 18],
 });

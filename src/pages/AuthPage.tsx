@@ -39,8 +39,8 @@ export function LoginPage() {
   };
 
   return (
-    <div className="flex min-h-dvh flex-col px-6 py-10">
-      <Logo />
+    <div className="flex min-h-dvh flex-col bg-hero-mesh px-6 py-10">
+      <Logo size="lg" variant="full" />
       <h1 className="mt-10 font-display text-2xl font-bold">{t.auth.login}</h1>
       <p className="mt-2 text-bc-muted">{t.auth.loginSubtitle}</p>
       <form onSubmit={submit} className="mt-8 space-y-4">
@@ -131,8 +131,8 @@ export function RegisterPage() {
   };
 
   return (
-    <div className="flex min-h-dvh flex-col px-6 py-10 pb-12">
-      <Logo />
+    <div className="flex min-h-dvh flex-col bg-hero-mesh px-6 py-10 pb-12">
+      <Logo size="lg" variant="full" />
       <h1 className="mt-10 font-display text-2xl font-bold">{t.auth.createAccount}</h1>
       <p className="mt-2 text-bc-muted">{t.auth.welcomePoints}</p>
       <form onSubmit={submit} className="mt-6 space-y-3">

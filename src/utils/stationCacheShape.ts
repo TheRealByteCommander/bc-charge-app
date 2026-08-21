@@ -128,7 +128,7 @@ export function normalizeCachedStation(value: unknown): Station | null {
     rating,
     reviewCount,
     imageGradient:
-      typeof value.imageGradient === 'string' ? value.imageGradient : 'from-emerald-900/80 to-bc-surface',
+      typeof value.imageGradient === 'string' ? value.imageGradient : 'from-bc-blue/30 to-bc-surface',
     connectors,
     greenEnergy: value.greenEnergy !== false,
     accessible: value.accessible !== false,

@@ -41,8 +41,8 @@ export function OnboardingPage() {
   };
 
   return (
-    <div className="flex min-h-dvh flex-col px-6 pb-10 pt-12">
-      <Logo size="lg" />
+    <div className="flex min-h-dvh flex-col bg-hero-mesh px-6 pb-10 pt-12">
+      <Logo size="lg" variant="full" />
       <motion.div
         key={step}
         initial={{ opacity: 0, x: 24 }}

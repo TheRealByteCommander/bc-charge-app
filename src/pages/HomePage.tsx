@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { Logo } from '../components/Logo';
 import { HomeMoreSheet } from '../components/sheets/HomeMoreSheet';
 import { StationCard } from '../components/StationCard';
 import { useNearbyStations } from '../hooks/useStationLists';
@@ -52,7 +53,27 @@ export function HomePage() {
 
   return (
     <div className="page-shell">
-      <header className="flex items-end justify-between py-2">
+      <header className="space-y-3 py-2">
+        <div className="flex items-center justify-between gap-3">
+          <Logo size="sm" variant="wordmark" />
+          <div className="flex items-center gap-2">
+            <Link
+              to="/vorteile"
+              className="rounded-full border border-bc-accent/25 bg-bc-accent/10 px-3 py-1.5 text-xs font-bold text-bc-accent"
+              aria-label={de ? 'BC Points' : 'BC Points'}
+            >
+              {formatPoints(user.loyaltyPoints)} pts
+            </Link>
+            <button
+              type="button"
+              onClick={() => setMoreOpen(true)}
+              className="rounded-full p-2 text-bc-muted transition-all duration-200 hover:bg-bc-elevated hover:text-bc-text active:scale-95"
+              aria-label={de ? 'Mehr' : 'More'}
+            >
+              <MoreHorizontal className="h-6 w-6" />
+            </button>
+          </div>
+        </div>
         <div className="space-y-0.5">
           <p className="text-xs font-medium tracking-wide text-bc-muted/80">
             {de ? 'WILLKOMMEN ZURÜCK' : 'WELCOME BACK'}
@@ -60,23 +81,6 @@ export function HomePage() {
           <h1 className="font-display text-3xl font-bold tracking-tight text-bc-text">
             {de ? 'Hallo' : 'Hi'}, {user.firstName}
           </h1>
-        </div>
-        <div className="flex items-center gap-2">
-          <Link
-            to="/vorteile"
-            className="rounded-full border border-bc-accent/25 bg-bc-accent/10 px-3 py-1.5 text-xs font-bold text-bc-accent"
-            aria-label={de ? 'BC Points' : 'BC Points'}
-          >
-            {formatPoints(user.loyaltyPoints)} pts
-          </Link>
-          <button
-            type="button"
-            onClick={() => setMoreOpen(true)}
-            className="rounded-full p-2 text-bc-muted transition-all duration-200 hover:bg-bc-elevated hover:text-bc-text active:scale-95"
-            aria-label={de ? 'Mehr' : 'More'}
-          >
-            <MoreHorizontal className="h-6 w-6" />
-          </button>
         </div>
       </header>
 

@@ -9,9 +9,9 @@ const LOGO_PATH = resolve(__dirname, '../assets/invoice-logo.png');
 
 const VAT_RATE = 0.19;
 const BRAND = {
-  dark: '#1a2332',
-  accent: '#10b981',
-  accentLight: '#34d399',
+  dark: '#0b1620',
+  accent: '#a0e040',
+  accentLight: '#00c8d8',
   muted: '#6b7280',
   border: '#e5e7eb',
   text: '#111827',
