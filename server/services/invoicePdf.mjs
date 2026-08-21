@@ -17,6 +17,20 @@ const BRAND = {
   text: '#111827',
 };
 
+/** Fixed A4 table geometry — columns must not overlap. */
+export const INVOICE_TABLE_LAYOUT = Object.freeze({
+  pageLeft: 50,
+  pageRight: 545,
+  headerH: 22,
+  rowPadY: 6,
+  rowGapAfter: 8,
+  minRowH: 20,
+  pos: Object.freeze({ x: 50, width: 250, padX: 8 }),
+  qty: Object.freeze({ x: 308, width: 68 }),
+  unit: Object.freeze({ x: 382, width: 78 }),
+  total: Object.freeze({ x: 466, width: 79 }),
+});
+
 function eur(n) {
   return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(n);
 }
@@ -102,12 +116,26 @@ function paymentStatusLabel(status) {
   return 'Offen';
 }
 
-function buildLineRows(session, grossTotal) {
+/** Soft-break long opaque ids so PDFKit can wrap inside the position column. */
+export function softBreakInvoiceText(text, chunk = 24) {
+  const s = String(text ?? '');
+  if (!s) return s;
+  // Insert zero-width spaces after separators / every N chars of unbroken tokens.
+  return s
+    .split(/(\s+)/)
+    .map((token) => {
+      if (/^\s+$/.test(token) || token.length <= chunk) return token;
+      return token.replace(new RegExp(`.{1,${chunk}}`, 'g'), (m) => `${m}\u200b`);
+    })
+    .join('');
+}
+
+export function buildLineRows(session, grossTotal) {
   // Sammelrechnung: one row per included charging session
   if (session.isCollectiveInvoice && Array.isArray(session.lineItems) && session.lineItems.length) {
     const rows = session.lineItems.map((item) => ({
-      label: item.label || 'Ladevorgang',
-      sub: item.detail || null,
+      label: softBreakInvoiceText(item.label || 'Ladevorgang'),
+      sub: item.detail ? softBreakInvoiceText(item.detail) : null,
       qty: item.energyKwh > 0 ? `${Number(item.energyKwh).toFixed(3)} kWh` : '1',
       unit: item.pricePerKwh > 0 ? eur(item.pricePerKwh) : '—',
       total: eur(item.usageEur ?? 0),
@@ -205,6 +233,101 @@ function buildLineRows(session, grossTotal) {
   return rows;
 }
 
+/**
+ * Measure row height from wrapped position text so numeric columns never sit on top of labels.
+ * Uses the caller's font metrics (PDFDocument or test stub with heightOfString).
+ */
+export function measureInvoiceRowHeight(doc, row, layout = INVOICE_TABLE_LAYOUT) {
+  const textWidth = layout.pos.width - layout.pos.padX * 2;
+  doc.font('Helvetica').fontSize(9);
+  const labelH = doc.heightOfString(row.label || ' ', { width: textWidth });
+  let subH = 0;
+  if (row.sub) {
+    doc.font('Helvetica').fontSize(7);
+    subH = 2 + doc.heightOfString(row.sub, { width: textWidth });
+    doc.font('Helvetica').fontSize(9);
+  }
+  return Math.max(layout.minRowH, layout.rowPadY * 2 + labelH + subH);
+}
+
+function ensureTableSpace(doc, neededH) {
+  const bottom = doc.page.height - doc.page.margins.bottom - 120;
+  if (doc.y + neededH > bottom) {
+    doc.addPage();
+    drawHeader(doc);
+    doc.y = 120;
+    return true;
+  }
+  return false;
+}
+
+function drawTableHeader(doc, y, layout = INVOICE_TABLE_LAYOUT) {
+  doc.rect(layout.pageLeft, y, layout.pageRight - layout.pageLeft, layout.headerH).fill('#f3f4f6');
+  doc.fillColor(BRAND.muted).font('Helvetica-Bold').fontSize(8);
+  const textY = y + 7;
+  doc.text('POSITION', layout.pos.x + layout.pos.padX, textY, {
+    width: layout.pos.width - layout.pos.padX * 2,
+  });
+  doc.text('MENGE', layout.qty.x, textY, { width: layout.qty.width, align: 'right' });
+  doc.text('EINZELPREIS', layout.unit.x, textY, { width: layout.unit.width, align: 'right' });
+  doc.text('BETRAG', layout.total.x, textY, { width: layout.total.width, align: 'right' });
+  return y + layout.headerH + 6;
+}
+
+function drawTableRow(doc, row, y, layout = INVOICE_TABLE_LAYOUT) {
+  const rowH = measureInvoiceRowHeight(doc, row, layout);
+  const textX = layout.pos.x + layout.pos.padX;
+  const textW = layout.pos.width - layout.pos.padX * 2;
+  const textY = y + layout.rowPadY;
+
+  doc.fillColor(BRAND.text).font('Helvetica').fontSize(9);
+  doc.text(row.label, textX, textY, {
+    width: textW,
+    lineBreak: true,
+    align: 'left',
+  });
+
+  let subBottom = textY + doc.heightOfString(row.label || ' ', { width: textW });
+  if (row.sub) {
+    doc.fillColor(BRAND.muted).font('Helvetica').fontSize(7);
+    const subY = subBottom + 2;
+    doc.text(row.sub, textX, subY, {
+      width: textW,
+      lineBreak: true,
+      align: 'left',
+    });
+    subBottom = subY + doc.heightOfString(row.sub, { width: textW });
+    doc.fillColor(BRAND.text).font('Helvetica').fontSize(9);
+  }
+
+  // Numeric columns: fixed boxes, right-aligned, never share the position band.
+  doc.fillColor(BRAND.text).font('Helvetica').fontSize(9);
+  doc.text(row.qty, layout.qty.x, textY, {
+    width: layout.qty.width,
+    align: 'right',
+    lineBreak: false,
+  });
+  doc.text(row.unit, layout.unit.x, textY, {
+    width: layout.unit.width,
+    align: 'right',
+    lineBreak: false,
+  });
+  doc.text(row.total, layout.total.x, textY, {
+    width: layout.total.width,
+    align: 'right',
+    lineBreak: false,
+  });
+
+  const bottomY = y + rowH;
+  doc
+    .moveTo(layout.pageLeft, bottomY)
+    .lineTo(layout.pageRight, bottomY)
+    .strokeColor(BRAND.border)
+    .lineWidth(0.5)
+    .stroke();
+  return bottomY + layout.rowGapAfter;
+}
+
 export function buildInvoicePdf({ invoiceNumber, session, customer }) {
   // Prefer Stripe-captured total when present so invoice matches the card charge.
   const charged =
@@ -217,6 +340,7 @@ export function buildInvoicePdf({ invoiceNumber, session, customer }) {
   const amounts = computeInvoiceAmounts(grossTotal);
   const invoiceDate = session.endedAt ?? new Date().toISOString();
   const isCollective = Boolean(session.isCollectiveInvoice || session.invoiceKind === 'collective');
+  const layout = INVOICE_TABLE_LAYOUT;
 
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ margin: 50, size: 'A4' });
@@ -305,33 +429,21 @@ export function buildInvoicePdf({ invoiceNumber, session, customer }) {
     if (session.stripePaymentIntentId) doc.text(`Zahlungsreferenz: ${session.stripePaymentIntentId}`);
     doc.moveDown(1);
 
-    const col = { pos: 50, qty: 250, unit: 320, total: 470 };
-    const tableTop = doc.y;
-    doc.rect(50, tableTop, 495, 22).fill('#f3f4f6');
-    doc.fillColor(BRAND.muted).font('Helvetica-Bold').fontSize(8);
-    doc.text('POSITION', col.pos + 8, tableTop + 7);
-    doc.text('MENGE', col.qty, tableTop + 7);
-    doc.text('EINZELPREIS', col.unit, tableTop + 7);
-    doc.text('BETRAG', col.total, tableTop + 7, { width: 70, align: 'right' });
-
     const rows = buildLineRows(session, grossTotal);
+    let rowY = drawTableHeader(doc, doc.y, layout);
 
-    let rowY = tableTop + 28;
-    doc.font('Helvetica').fontSize(9).fillColor(BRAND.text);
     for (const row of rows) {
-      doc.text(row.label, col.pos + 8, rowY, { width: 190 });
-      if (row.sub) {
-        doc.fillColor(BRAND.muted).fontSize(7).text(row.sub, col.pos + 8, rowY + 11, { width: 190 });
-        doc.fillColor(BRAND.text).fontSize(9);
+      const needed = measureInvoiceRowHeight(doc, row, layout) + layout.rowGapAfter + 4;
+      if (ensureTableSpace(doc, needed)) {
+        rowY = drawTableHeader(doc, doc.y, layout);
       }
-      doc.text(row.qty, col.qty, rowY);
-      doc.text(row.unit, col.unit, rowY);
-      doc.text(row.total, col.total, rowY, { width: 70, align: 'right' });
-      rowY += row.sub ? 30 : 22;
-      doc.moveTo(50, rowY - 6).lineTo(545, rowY - 6).strokeColor(BRAND.border).stroke();
+      rowY = drawTableRow(doc, row, rowY, layout);
+      doc.y = rowY;
     }
 
-    const totalsY = rowY + 16;
+    // Totals block — keep on same page when possible
+    ensureTableSpace(doc, 110);
+    const totalsY = Math.max(doc.y + 8, rowY + 8);
     const totalsX = 330;
     doc.font('Helvetica').fontSize(10).fillColor(BRAND.text);
     doc.text(`Nettobetrag`, totalsX, totalsY);
