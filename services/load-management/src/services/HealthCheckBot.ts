@@ -1,6 +1,7 @@
 import { EventEmitter } from 'events';
 import { WebSocket } from 'ws';
 import { v4 as uuidv4 } from 'uuid';
+import { parseCitrineWsEnvelope } from './citrineWsEnvelope';
 
 export type StationHealthStatus =
   | 'unknown'
@@ -193,7 +194,11 @@ export class HealthCheckBot extends EventEmitter {
 
     ws.on('message', (data) => {
       try {
-        const message = JSON.parse(data.toString());
+        const message = parseCitrineWsEnvelope(data);
+        if (!message) {
+          console.warn('HealthCheckBot: dropping invalid Citrine WS frame');
+          return;
+        }
         this.handleMessage(message);
       } catch (e) {
         console.error('HealthCheckBot: error handling message:', e);

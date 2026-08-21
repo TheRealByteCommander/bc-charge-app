@@ -1,6 +1,17 @@
 import { WebSocket } from 'ws';
 import { v4 as uuidv4 } from 'uuid';
 import { EventEmitter } from 'events';
+import { parseCitrineWsEnvelope } from './citrineWsEnvelope';
+import {
+  deriveLimitKwFromSchedule as deriveLimitKwFromScheduleShape,
+  extractChargingScheduleFromPayload,
+  isPlainObject,
+  normalizeChargingSchedulePeriod,
+  readChargingRateUnit,
+  readChargingSchedulePeriods,
+  readOptionalFiniteNumber,
+  readOptionalString,
+} from './chargingScheduleShape';
 
 /**
  * LoadManager Service for Dynamic Load Management
@@ -537,10 +548,14 @@ export class LoadManager extends EventEmitter {
 
     ws.on('message', (data) => {
       try {
-        const message = JSON.parse(data.toString());
+        const message = parseCitrineWsEnvelope(data);
+        if (!message) {
+          console.warn('LoadManager: dropping invalid Citrine WS frame');
+          return;
+        }
         this.handleCitrineMessage(message);
       } catch (error) {
-        console.error('Error parsing WebSocket message:', error);
+        console.error('Error handling WebSocket message:', error);
       }
     });
 
@@ -853,40 +868,14 @@ export class LoadManager extends EventEmitter {
   }
 
   /**
-   * Lowest limit from schedule period(s), normalized to kW when unit is W.
+   * Lowest limit from schedule period(s), normalized to kW when unit is W/A.
+   * Delegates to shared parse-don't-cast helper (camel + snake aliases).
    */
   private deriveLimitKwFromSchedule(
     schedule: unknown,
     fallbackUnit?: string
   ): number | null {
-    if (!schedule) return null;
-    const schedules = Array.isArray(schedule) ? schedule : [schedule];
-    let minKw: number | null = null;
-
-    for (const sch of schedules) {
-      if (!sch || typeof sch !== 'object') continue;
-      const unit = String(
-        (sch as any).chargingRateUnit || fallbackUnit || 'W'
-      ).toUpperCase();
-      const periods =
-        (sch as any).chargingSchedulePeriod ||
-        (sch as any).charging_schedule_period ||
-        [];
-      if (!Array.isArray(periods)) continue;
-      for (const p of periods) {
-        const raw = Number(p?.limit);
-        if (!Number.isFinite(raw)) continue;
-        let kw = raw;
-        if (unit === 'W') kw = raw / 1000;
-        // Amps: approximate 3-phase 230V → kW = A * 0.23 * phases
-        if (unit === 'A') {
-          const phases = Number(p?.numberPhases ?? p?.number_phases ?? 3) || 3;
-          kw = (raw * 230 * phases) / 1000;
-        }
-        if (minKw == null || kw < minKw) minKw = kw;
-      }
-    }
-    return minKw;
+    return deriveLimitKwFromScheduleShape(schedule, fallbackUnit);
   }
 
   /**
@@ -894,7 +883,7 @@ export class LoadManager extends EventEmitter {
    * We store it, optionally apply SetChargingProfile, and emit externalLimit.
    */
   private handleNotifyChargingLimit(message: any): void {
-    const payload = (message?.payload || {}) as Record<string, any>;
+    const payload = isPlainObject(message?.payload) ? message.payload : {};
     const stationId = this.extractStationId(message, payload);
     if (!stationId) {
       console.warn('NotifyChargingLimit missing stationId', message);
@@ -905,7 +894,8 @@ export class LoadManager extends EventEmitter {
       this.registerStation(stationId, this.defaultMaxPowerKw);
     }
 
-    const chargingLimit = payload.chargingLimit || payload.charging_limit || {};
+    const chargingLimitRaw = payload.chargingLimit ?? payload.charging_limit;
+    const chargingLimit = isPlainObject(chargingLimitRaw) ? chargingLimitRaw : {};
     const source = this.normalizeChargingLimitSource(
       chargingLimit.chargingLimitSource ?? chargingLimit.charging_limit_source
     );
@@ -916,9 +906,8 @@ export class LoadManager extends EventEmitter {
       payload.evseId ?? payload.evse_id ?? this.extractConnectorId(payload) ?? 0
     );
     const schedule =
-      payload.chargingSchedule ??
-      payload.charging_schedule ??
-      chargingLimit.chargingSchedule;
+      extractChargingScheduleFromPayload(payload) ??
+      extractChargingScheduleFromPayload(chargingLimit);
     const limitKw = this.deriveLimitKwFromSchedule(schedule);
 
     const entry: ExternalChargingLimit = {
@@ -948,13 +937,19 @@ export class LoadManager extends EventEmitter {
   }
 
   private handleClearedChargingLimit(message: any): void {
-    const payload = (message?.payload || {}) as Record<string, any>;
+    const payload = isPlainObject(message?.payload) ? message.payload : {};
     const stationId = this.extractStationId(message, payload);
     if (!stationId) return;
+    const nestedLimit = isPlainObject(payload.chargingLimit)
+      ? payload.chargingLimit
+      : isPlainObject(payload.charging_limit)
+        ? payload.charging_limit
+        : null;
     const sourceRaw =
       payload.chargingLimitSource ??
       payload.charging_limit_source ??
-      payload.chargingLimit?.chargingLimitSource;
+      nestedLimit?.chargingLimitSource ??
+      nestedLimit?.charging_limit_source;
     const source = sourceRaw
       ? this.normalizeChargingLimitSource(sourceRaw)
       : undefined;
@@ -962,7 +957,7 @@ export class LoadManager extends EventEmitter {
   }
 
   private handleGetCompositeScheduleResponse(message: any): void {
-    const payload = (message?.payload || {}) as Record<string, any>;
+    const payload = isPlainObject(message?.payload) ? message.payload : {};
     const uniqueId = String(
       message?.uniqueId ?? message?.unique_id ?? message?.messageId ?? ''
     );
@@ -980,45 +975,35 @@ export class LoadManager extends EventEmitter {
     }
 
     const status = String(payload.status ?? message?.status ?? 'Unknown');
-    const schedule =
-      payload.schedule ||
-      payload.chargingSchedule ||
-      payload.compositeSchedule ||
-      null;
+    const schedule = extractChargingScheduleFromPayload(payload);
     const evseId = Number(
       payload.evseId ?? payload.evse_id ?? pending?.evseId ?? 0
     );
 
-    const periodsRaw =
-      schedule?.chargingSchedulePeriod ||
-      schedule?.charging_schedule_period ||
-      [];
-    const periods: CompositeSchedulePeriod[] = Array.isArray(periodsRaw)
-      ? periodsRaw.map((p: any) => ({
-          startPeriod: Number(p?.startPeriod ?? p?.start_period ?? 0) || 0,
-          limit: Number(p?.limit) || 0,
-          numberPhases:
-            p?.numberPhases != null || p?.number_phases != null
-              ? Number(p?.numberPhases ?? p?.number_phases)
-              : undefined,
-        }))
-      : [];
+    const periods: CompositeSchedulePeriod[] = readChargingSchedulePeriods(schedule)
+      .map((p) => normalizeChargingSchedulePeriod(p))
+      .filter((p): p is CompositeSchedulePeriod => p != null);
 
-    const unit = schedule
-      ? String(schedule.chargingRateUnit || schedule.charging_rate_unit || 'W')
-      : undefined;
+    const unit = schedule ? readChargingRateUnit(schedule, 'W') : undefined;
     const effectiveLimitKw =
       status.toLowerCase() === 'accepted'
         ? this.deriveLimitKwFromSchedule(schedule, unit)
         : null;
 
+    const scheduleObj = isPlainObject(schedule) ? schedule : null;
     const composite: CompositeSchedule = {
       stationId,
       evseId: Number.isFinite(evseId) ? evseId : 0,
       status,
-      duration: schedule?.duration != null ? Number(schedule.duration) : undefined,
+      duration: scheduleObj
+        ? readOptionalFiniteNumber(scheduleObj.duration)
+        : undefined,
       chargingRateUnit: unit,
-      startSchedule: schedule?.startSchedule || schedule?.start_schedule,
+      startSchedule: scheduleObj
+        ? readOptionalString(
+            scheduleObj.startSchedule ?? scheduleObj.start_schedule
+          )
+        : undefined,
       chargingSchedulePeriod: periods,
       effectiveLimitKw,
       fetchedAt: new Date(),

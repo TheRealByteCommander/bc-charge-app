@@ -328,4 +328,68 @@ describe('LoadManager', () => {
     expect(loadManager.getEffectiveMaxPowerKw('CS-CLR')).toBe(22);
   });
 
+  test('NotifyChargingLimit + composite response accept snake_case schedule aliases', async () => {
+    const sendSpy = jest.spyOn(loadManager as any, 'sendWsMessage').mockReturnValue(true);
+    loadManager.registerStation('CS-SNAKE', 22);
+
+    (loadManager as any).handleCitrineMessage({
+      action: 'NotifyChargingLimit',
+      stationId: 'CS-SNAKE',
+      payload: {
+        evse_id: 1,
+        charging_limit: {
+          charging_limit_source: 'EMS',
+          is_grid_critical: false,
+        },
+        charging_schedule: {
+          charging_rate_unit: 'W',
+          charging_schedule_period: [{ start_period: 0, limit: 6000, number_phases: 3 }],
+        },
+      },
+    });
+
+    expect(loadManager.getExternalLimit('CS-SNAKE')).toMatchObject({
+      source: 'EMS',
+      limitKw: 6,
+      evseId: 1,
+    });
+    expect(sendSpy).toHaveBeenCalled();
+
+    sendSpy.mockImplementation((message: any) => {
+      setTimeout(() => {
+        (loadManager as any).handleCitrineMessage({
+          action: 'GetCompositeScheduleResponse',
+          uniqueId: message.uniqueId,
+          stationId: 'CS-SNAKE',
+          payload: {
+            status: 'Accepted',
+            evse_id: 0,
+            composite_schedule: {
+              duration: 1800,
+              charging_rate_unit: 'W',
+              start_schedule: '2026-08-21T06:00:00.000Z',
+              charging_schedule_period: [
+                { start_period: 0, limit: 7000, number_phases: 3 },
+                { start_period: 900, limit: 'bad' },
+              ],
+            },
+          },
+        });
+      }, 5);
+      return true;
+    });
+
+    const composite = await loadManager.requestCompositeSchedule('CS-SNAKE', {
+      durationSeconds: 1800,
+      timeoutMs: 2000,
+    });
+    expect(composite).not.toBeNull();
+    expect(composite!.effectiveLimitKw).toBe(7);
+    expect(composite!.chargingRateUnit).toBe('W');
+    expect(composite!.startSchedule).toBe('2026-08-21T06:00:00.000Z');
+    expect(composite!.chargingSchedulePeriod).toEqual([
+      { startPeriod: 0, limit: 7000, numberPhases: 3 },
+    ]);
+  });
+
 });
