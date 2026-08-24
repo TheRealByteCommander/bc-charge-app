@@ -12,6 +12,7 @@
 
 import type { Station } from '../types';
 import {
+  cachedStationsDomainEqual,
   normalizeCachedStation,
   normalizeCachedStations,
   normalizeStationsCacheMeta,
@@ -63,7 +64,19 @@ export async function saveStationsToIndexedDB(
   source: string
 ): Promise<void> {
   const cleaned = normalizeCachedStations(stations);
+  const normalizedSource = typeof source === 'string' && source ? source : 'unknown';
   try {
+    // Skip clear+put when domain payload + source are unchanged (polled Citrine sync).
+    // Ignores meta.savedAt — mirrors localStorage offline-cache equal-skip.
+    const existing = await loadStationsFromIndexedDB();
+    if (
+      existing &&
+      existing.source === normalizedSource &&
+      cachedStationsDomainEqual(existing.stations, cleaned)
+    ) {
+      return;
+    }
+
     const db = await openDatabase();
     const tx = db.transaction([STORE_STATIONS, STORE_META], 'readwrite');
 
@@ -78,7 +91,7 @@ export async function saveStationsToIndexedDB(
     const meta: CacheMeta = {
       key: META_KEY,
       savedAt: new Date().toISOString(),
-      source: typeof source === 'string' && source ? source : 'unknown',
+      source: normalizedSource,
       count: cleaned.length,
     };
     metaStore.put(meta);

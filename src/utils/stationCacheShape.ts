@@ -169,6 +169,73 @@ export function normalizeCachedStations(values: unknown): Station[] {
   return out;
 }
 
+/** Stable domain key for one connector (offline-cache equal-skip). */
+function connectorDomainKey(c: Connector): string {
+  return [
+    c.id,
+    c.type,
+    c.status,
+    c.evseId,
+    String(c.powerKw),
+    String(c.pricePerKwh),
+    c.pricePerMin ?? '',
+    c.sessionFee ?? '',
+    c.currency ?? '',
+    c.tariffId ?? '',
+    c.livePricing === true ? '1' : '0',
+    c.priceKnown === false ? '0' : '1',
+    c.ocppRawStatus ?? '',
+    c.evseNumber ?? '',
+    c.connectorNumber ?? '',
+  ].join('|');
+}
+
+/** Stable domain key for one station (ignore cache envelope timestamps). */
+function stationDomainKey(s: Station): string {
+  const connectors = [...s.connectors].map(connectorDomainKey).sort().join(';');
+  const amenities = [...(s.amenities ?? [])].map(String).sort().join(',');
+  return [
+    s.id,
+    s.evseCode,
+    s.name,
+    s.address,
+    s.city,
+    s.zip,
+    String(s.lat),
+    String(s.lng),
+    s.operator,
+    s.network,
+    String(s.rating),
+    String(s.reviewCount),
+    s.openingHours,
+    s.greenEnergy ? '1' : '0',
+    s.accessible ? '1' : '0',
+    s.chargePointVendor ?? '',
+    s.chargePointModel ?? '',
+    s.hardwareModel ?? '',
+    s.citrineosDatabaseId ?? '',
+    amenities,
+    connectors,
+  ].join('#');
+}
+
+/**
+ * True when two normalized station lists match on domain fields that matter for
+ * offline cache freshness (status/tariff/geo/identity). Order-independent.
+ * Used to skip localStorage/IDB rewrites on identical Citrine sync polls.
+ */
+export function cachedStationsDomainEqual(a: Station[], b: Station[]): boolean {
+  if (a === b) return true;
+  if (!Array.isArray(a) || !Array.isArray(b)) return false;
+  if (a.length !== b.length) return false;
+  const ak = a.map(stationDomainKey).sort();
+  const bk = b.map(stationDomainKey).sort();
+  for (let i = 0; i < ak.length; i++) {
+    if (ak[i] !== bk[i]) return false;
+  }
+  return true;
+}
+
 /** Narrow IndexedDB / offline cache meta rows. */
 export function normalizeStationsCacheMeta(
   value: unknown,

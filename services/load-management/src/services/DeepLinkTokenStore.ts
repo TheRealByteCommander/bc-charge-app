@@ -56,6 +56,39 @@ interface StoreFileShape {
   tokens: DeepLinkTokenRecord[];
 }
 
+
+/**
+ * Parse-don't-cast for deep-link metadata bags.
+ * Keeps only plain string/number/boolean values; drops nested objects, arrays,
+ * null/undefined, NaN/Infinity. Empty/corrupt bags become undefined.
+ */
+export function normalizeDeepLinkMetadata(
+  value: unknown
+): Record<string, string | number | boolean> | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined;
+  }
+  const out: Record<string, string | number | boolean> = {};
+  for (const [rawKey, rawVal] of Object.entries(value as Record<string, unknown>)) {
+    const key = typeof rawKey === 'string' ? rawKey.trim() : '';
+    if (!key) continue;
+    if (typeof rawVal === 'string') {
+      out[key] = rawVal;
+      continue;
+    }
+    if (typeof rawVal === 'boolean') {
+      out[key] = rawVal;
+      continue;
+    }
+    if (typeof rawVal === 'number' && Number.isFinite(rawVal)) {
+      out[key] = rawVal;
+      continue;
+    }
+    // drop nested objects, arrays, null, undefined, NaN/Infinity, symbols, functions
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
 /**
  * Durable deep-link token store (JSON file + atomic rewrite).
  * Tokens authorize remote start/stop for a concrete station/connector.
@@ -107,7 +140,7 @@ export class DeepLinkTokenStore {
       useCount: 0,
       createdAt: now.toISOString(),
       expiresAt: expiresAt.toISOString(),
-      metadata: input.metadata,
+      metadata: normalizeDeepLinkMetadata(input.metadata),
     };
 
     this.tokens.set(record.token, record);
@@ -271,7 +304,7 @@ export class DeepLinkTokenStore {
    * Parse/validate a persisted token record. Drops corrupt entries instead of casting.
    */
   private normalizeRecord(value: unknown): DeepLinkTokenRecord | null {
-    if (!value || typeof value !== 'object') {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
       return null;
     }
     const r = value as Record<string, unknown>;
@@ -304,25 +337,28 @@ export class DeepLinkTokenStore {
       return null;
     }
 
-    const metadata =
-      r.metadata && typeof r.metadata === 'object' && !Array.isArray(r.metadata)
-        ? (r.metadata as Record<string, string | number | boolean>)
-        : undefined;
+    const metadata = normalizeDeepLinkMetadata(r.metadata);
+
+    const optionalString = (v: unknown): string | undefined => {
+      if (typeof v !== 'string') return undefined;
+      const t = v.trim();
+      return t || undefined;
+    };
 
     return {
       token: r.token,
       stationId: r.stationId.trim(),
       connectorId,
       purpose,
-      customerId: typeof r.customerId === 'string' ? r.customerId : undefined,
-      locationId: typeof r.locationId === 'string' ? r.locationId : undefined,
-      idTag: typeof r.idTag === 'string' ? r.idTag : undefined,
+      customerId: optionalString(r.customerId),
+      locationId: optionalString(r.locationId),
+      idTag: optionalString(r.idTag),
       maxUses,
       useCount,
       createdAt: r.createdAt,
       expiresAt: r.expiresAt,
-      lastUsedAt: typeof r.lastUsedAt === 'string' ? r.lastUsedAt : undefined,
-      revokedAt: typeof r.revokedAt === 'string' ? r.revokedAt : undefined,
+      lastUsedAt: optionalString(r.lastUsedAt),
+      revokedAt: optionalString(r.revokedAt),
       metadata,
     };
   }

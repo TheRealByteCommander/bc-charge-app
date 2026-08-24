@@ -1,9 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   isCachedConnector,
   isCachedStation,
   normalizeCachedStation,
   parseStationsOfflineCache,
+  saveStationsOfflineCacheSync,
 } from './offlineCache';
 
 const goodConnector = {
@@ -129,5 +130,56 @@ describe('parseStationsOfflineCache', () => {
     expect(parsed!.savedAt).toBe('2026-08-18T10:00:00.000Z');
     expect(parsed!.stations).toHaveLength(1);
     expect(parsed!.stations[0].id).toBe('ST1');
+  });
+});
+
+describe('saveStationsOfflineCacheSync equal-skip', () => {
+  const store = new Map<string, string>();
+
+  afterEach(() => {
+    store.clear();
+    vi.unstubAllGlobals();
+  });
+
+  function stubLocalStorage() {
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => {
+        store.set(k, v);
+      },
+      removeItem: (k: string) => {
+        store.delete(k);
+      },
+    });
+  }
+
+  it('skips localStorage rewrite when domain payload + source are unchanged', () => {
+    stubLocalStorage();
+    const station = normalizeCachedStation(goodStation)!;
+    saveStationsOfflineCacheSync([station], 'citrineos');
+    const first = store.get('bc_stations_offline_v1');
+    expect(first).toBeTruthy();
+    const firstSavedAt = JSON.parse(first!).savedAt as string;
+
+    saveStationsOfflineCacheSync([{ ...station }], 'citrineos');
+    const second = store.get('bc_stations_offline_v1');
+    expect(second).toBe(first);
+    expect(JSON.parse(second!).savedAt).toBe(firstSavedAt);
+  });
+
+  it('rewrites when connector status changes', () => {
+    stubLocalStorage();
+    const station = normalizeCachedStation(goodStation)!;
+    saveStationsOfflineCacheSync([station], 'citrineos');
+    const first = store.get('bc_stations_offline_v1');
+
+    const flipped = normalizeCachedStation({
+      ...goodStation,
+      connectors: [{ ...goodConnector, status: 'occupied' }],
+    })!;
+    saveStationsOfflineCacheSync([flipped], 'citrineos');
+    const second = store.get('bc_stations_offline_v1');
+    expect(second).not.toBe(first);
+    expect(JSON.parse(second!).stations[0].connectors[0].status).toBe('occupied');
   });
 });

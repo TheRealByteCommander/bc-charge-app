@@ -1,5 +1,5 @@
 /** Integrationsvertrag CitrineOS ↔ bc-charge-app (v1.8.4)
- * Upstream watch (2026-08-21): citrineos-core latest pre-release tag still **v2.0.0-beta3**
+ * Upstream watch (2026-08-24): citrineos-core latest pre-release tag still **v2.0.0-beta3**
  * (tag 2026-08-12; no newer tag on releases). Still NOT a prod pin — stay on 1.8.4 until staging
  * CANARY_FORCE=1 soak + pinBump.ready + hardware smoke (Elinta/go-e).
  * beta3 highlights for BC: OCPP message correlation (#832), tenant-scoped repo deletes (#842),
@@ -16,7 +16,7 @@
  *     samples as Energy.Active.Import.Register — aligns with BC webhook strict energy extract.
  *   - **#859** EVSE-scoped connector status (merged 2026-08-20 → next): OCPP 2.0.1 multi-EVSE
  *     connectorId collision fixed upstream; BC ids already `evse-{n}-conn-{m}`.
- * Open drift risks (still open 2026-08-21):
+ * Open drift risks (still open 2026-08-24):
  *   - **#851 tenant path mapping** (open): config → tenant DB + cache + path sanitization.
  *   - **#867** OCPPMessages weekly partition (open): ops/migration risk; entrypoint must provision
  *     partitions or inserts fail (less fatal once #846 is deployed, still lossy/noisy).
@@ -25,6 +25,17 @@
  *     be audited/routed on the wrong action table for 2.0.1 stations (frame still reaches charger).
  *   - **#869** (open): OCPP 2.x standalone MeterValues not attached to transaction / CostUpdated never
  *     fires from that handler — BC meter SoT remains TransactionEvent webhooks + strict energy extract.
+ *   - **#868** (open): MeterValueUtils.getTotalKwh returns 0 on non-energy batches and callers write it
+ *     back → live Transaction.totalKwh wipe. BC webhook path already guards via pickMonotonicEnergyKwh.
+ *   - **#879** (open): DC TxProfile from NotifyEVChargingNeeds mis-scales W/A (evMaxPower already W
+ *     but ×1000; current×voltage returned as A). LM must not trust Citrine-derived DC ceilings blindly.
+ *   - **#918** (open): smart-charging criteria treat 0 as absent (evseId=0 station-wide clear refused).
+ *   - **#894** (open): TxProfile schedule duration unit wrong (not seconds) on Citrine-built profiles.
+ *   - **#934** (open): charging-needs lookup mixes EvseTypes.databaseId vs Evses.id — EV-needs→TxProfile
+ *     path can miss needs on multi-EVSE / non-empty device-model DBs.
+ *   - **#871** (closed unmerged 2026-08-21): MeterValueUtils.normalizeToKwh throws on non-energy units
+ *     (e.g. energy measurand default + unit A) → whole MeterValues/TransactionEvent CallError. BC
+ *     energy extract allowlists Wh/kWh only (skip A/V/W) on webhook + LM paths.
  * Webhooks: TransactionEvent seqNo + triggerReason (ChargingRateChanged/ChargingStateChanged → LM
  * reopt) + chargingState persist + meterValue energy (citrineosWebhooks.mjs / loadManagementReopt.mjs).
  * Hasura: station-status live queries only via BFF WS proxy; meter/LM stays on webhooks (live-query
@@ -117,6 +128,48 @@ export const CITRINEOS_UPSTREAM_OPEN = [
     url: 'https://github.com/citrineos/citrineos-core/pull/869',
     risk:
       'Standalone MeterValuesRequestOcpp2Handler never wires _sendCostUpdatedOnMeterValue; samples may not attach to tx. BC billing/UI meter SoT stays TransactionEvent webhooks + Energy.Active.Import.Register extract — do not depend on Citrine CostUpdated from MeterValues alone.',
+  },
+  {
+    id: 868,
+    title: "fix(base): don't reset a session's totalKwh when a meter batch has no energy reading",
+    url: 'https://github.com/citrineos/citrineos-core/pull/868',
+    risk:
+      'Upstream MeterValueUtils.getTotalKwh returns 0 when batch has no usable energy (clock-only / SoC-only); callers write 0 onto Transaction.totalKwh and wipe live totals. BC apply path uses pickMonotonicEnergyKwh (rejects regression incl. 0 after real kWh). Still risky for any consumer reading Citrine REST/Hasura totalKwh directly during those ticks.',
+  },
+  {
+    id: 879,
+    title: 'fix(core): emit DC charging-profile limits in the unit they are labelled with',
+    url: 'https://github.com/citrineos/citrineos-core/pull/879',
+    risk:
+      'NotifyEVChargingNeeds→TxProfile DC path mislabels limits (W×1000 or W-as-A). Station may reject or apply no real ceiling. BC LM chargingScheduleShape unit conversion is correct for honest frames — do not treat Citrine-built DC TxProfiles as ground truth until #879 lands; prefer BC/EMS SetChargingProfile limits.',
+  },
+  {
+    id: 918,
+    title: 'fix(core): treat 0 as a value in the smart charging criteria, not as absent',
+    url: 'https://github.com/citrineos/citrineos-core/pull/918',
+    risk:
+      'ClearChargingProfile/GetChargingProfiles criteria use truthiness; evseId=0 (station-wide), stackLevel=0, chargingProfileId=0 look "missing". Station-wide clear/list can fail — LM clear/composite helpers must avoid assuming 0 works on unpatched Citrine.',
+  },
+  {
+    id: 894,
+    title: 'fix(smart-charging): convert TxProfile schedule duration to seconds',
+    url: 'https://github.com/citrineos/citrineos-core/pull/894',
+    risk:
+      'Citrine-built TxProfile chargingSchedule.duration may not be in OCPP seconds. BC LM/PV outbound profiles omit duration (startSchedule + open-ended period) so send path is OK; inbound GetCompositeSchedule/Notify* duration fields must be treated as untrusted units until #894 lands — do not drive billing windows off Citrine duration alone.',
+  },
+  {
+    id: 934,
+    title: 'fix(core): find charging needs by the EVSE the transaction is on',
+    url: 'https://github.com/citrineos/citrineos-core/pull/934',
+    risk:
+      'validateChargingProfileType looked up ChargingNeeds via EvseTypes.databaseId while needs are stored under Evses.id — multi-EVSE / non-toy DBs miss EV-reported needs and skip or mis-build TxProfiles. Compounds #879 on NotifyEVChargingNeeds→TxProfile; BC must keep EMS/LM SetChargingProfile as ceiling SoT.',
+  },
+  {
+    id: 871,
+    title: 'fix(base): ignore non-energy meter units instead of throwing',
+    url: 'https://github.com/citrineos/citrineos-core/pull/871',
+    risk:
+      'Closed unmerged (2026-08-21): normalizeToKwh throws on unknown/non-energy units reached from getTotalKwh/getMeterStart → entire MeterValues/TransactionEvent aborts with CallError. Distinct from #852 (measurand map) and #868 (0 wipe). BC webhook+LM energy extract allowlist Wh/kWh only and skip A/V/W on energy measurand; still do not bill off Citrine REST totalKwh while this class is unpatched upstream.',
   },
 ];
 

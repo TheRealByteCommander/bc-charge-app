@@ -194,6 +194,51 @@ describe('normalizeCitrineosWebhookPayload OCPP2 nested', () => {
     assert.equal(kwhExplicit?.totalKwh, 4.2);
   });
 
+  it('skips non-energy units on energy measurand (amps/W) and keeps sibling Wh (#871 class)', () => {
+    const onlyAmps = normalizeCitrineosWebhookPayload({
+      transactionId: 'tx-amps-energy',
+      meterValue: [
+        {
+          sampledValue: [
+            {
+              // measurand-less defaults are charger bugs; explicit energy + A must not become kWh
+              measurand: 'Energy.Active.Import.Register',
+              value: '16',
+              unitOfMeasure: { unit: 'A' },
+            },
+          ],
+        },
+      ],
+    });
+    assert.equal(onlyAmps?.totalKwh, null);
+
+    const mixed = normalizeCitrineosWebhookPayload({
+      transactionId: 'tx-mixed-unit',
+      meterValue: [
+        {
+          sampledValue: [
+            {
+              measurand: 'Energy.Active.Import.Register',
+              value: '16',
+              unitOfMeasure: { unit: 'A' },
+            },
+            {
+              measurand: 'Energy.Active.Import.Register',
+              value: '2500',
+              unit: 'Wh',
+            },
+            {
+              measurand: 'Energy.Active.Import.Register',
+              value: '11',
+              unitOfMeasure: { unit: 'W' },
+            },
+          ],
+        },
+      ],
+    });
+    assert.equal(mixed?.totalKwh, 2.5);
+  });
+
   it('ignores body.state lifecycle strings and normalizes chargingState casing', () => {
     const poisoned = normalizeCitrineosWebhookPayload({
       transactionId: 'tx-state-poison',

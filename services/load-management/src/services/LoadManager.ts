@@ -12,6 +12,18 @@ import {
   readOptionalFiniteNumber,
   readOptionalString,
 } from './chargingScheduleShape';
+import {
+  extractConnectorId as extractConnectorIdShape,
+  extractEnergyKwhFromMeterValue as extractEnergyKwhFromMeterValueShape,
+  extractIdTag as extractIdTagShape,
+  extractMeterStartKwh,
+  extractMeterStopKwh,
+  extractMeterValueArray as extractMeterValueArrayShape,
+  extractPowerKwFromMeterValue,
+  extractStationId as extractStationIdShape,
+  extractTransactionEventType,
+  extractTransactionId as extractTransactionIdShape,
+} from './ocppMeterTransactionShape';
 
 /**
  * LoadManager Service for Dynamic Load Management
@@ -96,6 +108,8 @@ export class LoadManager extends EventEmitter {
   private readonly wsUrl: string;
   private readonly defaultMaxPowerKw: number;
   private readonly compositeTimeoutMs: number;
+  /** Monotonic counter mixed into OCPP integer chargingProfileId (not UUID). */
+  private profileIdSeq = 0;
 
   constructor(config: LoadManagementConfig, citrineWsUrl: string, defaultMaxPowerKw = 22) {
     super();
@@ -104,6 +118,20 @@ export class LoadManager extends EventEmitter {
     this.defaultMaxPowerKw = defaultMaxPowerKw;
     this.compositeTimeoutMs = Number(process.env.COMPOSITE_SCHEDULE_TIMEOUT_MS || 15_000);
     this.citrineWs = this.createSocket();
+  }
+
+  /**
+   * OCPP 2.0.1 ChargingProfileType.id / chargingProfileId is integer (1..2^31-1).
+   * UUID strings are schema-invalid and stations/Citrine may reject the profile.
+   */
+  private nextChargingProfileId(): number {
+    this.profileIdSeq = (this.profileIdSeq + 1) % 1_000_000;
+    const mixed =
+      ((Date.now() % 2_000_000) * 1_000) +
+      this.profileIdSeq +
+      Math.floor(Math.random() * 997);
+    const id = mixed % 2_147_483_647;
+    return id === 0 ? 1 : id;
   }
 
   public getDefaultMaxPower(): number {
@@ -451,8 +479,9 @@ export class LoadManager extends EventEmitter {
 
     // OCPP 2.0.1 K01: station-wide cap is ChargingStationMaxProfile (not 1.6 ChargePointMaxProfile).
     // Absolute profiles require startSchedule — stations reject missing startSchedule (see CitrineOS #785).
+    // chargingProfileId must be integer (OCPP schema) — never a UUID string.
     const chargingProfile = {
-      chargingProfileId: uuidv4(),
+      chargingProfileId: this.nextChargingProfileId(),
       stackLevel: 1,
       chargingProfilePurpose: "ChargingStationMaxProfile",
       chargingProfileKind: "Absolute",
@@ -600,8 +629,9 @@ export class LoadManager extends EventEmitter {
     } else if (action === "StartTransaction") {
       this.handleStartTransaction(message);
     } else if (action === "TransactionEvent") {
-      // OCPP 2.x TransactionEvent: Started / Updated / Ended
-      const eventType = String(message?.payload?.eventType || "").toLowerCase();
+      // OCPP 2.x TransactionEvent: Started / Updated / Ended (camel + snake event_type)
+      const payload = isPlainObject(message?.payload) ? message.payload : {};
+      const eventType = extractTransactionEventType(payload);
       if (eventType === "started") {
         this.handleStartTransaction(message);
       } else if (eventType === "ended") {
@@ -613,12 +643,10 @@ export class LoadManager extends EventEmitter {
     } else if (action === "StopTransaction") {
       this.handleStopTransaction(message);
     } else if (action === "BootNotification" || action === "StatusNotification") {
-      const stationId =
-        message?.stationId ||
-        message?.payload?.stationId ||
-        message?.payload?.chargingStationId;
+      const payload = isPlainObject(message?.payload) ? message.payload : {};
+      const stationId = this.extractStationId(message, payload);
       if (stationId && !this.stations.has(stationId)) {
-        this.registerStation(String(stationId), this.defaultMaxPowerKw);
+        this.registerStation(stationId, this.defaultMaxPowerKw);
       }
     } else if (action === 'NotifyChargingLimit') {
       this.handleNotifyChargingLimit(message);
@@ -637,112 +665,45 @@ export class LoadManager extends EventEmitter {
 
   /**
    * Resolve station id from top-level or payload aliases (OCPP 1.6 + 2.x / CitrineOS).
+   * Delegates to shared parse-don't-cast helper.
    */
-  private extractStationId(message: any, payload: Record<string, any>): string | null {
-    const raw =
-      message?.stationId ??
-      payload.stationId ??
-      payload.chargingStationId ??
-      payload.station_id ??
-      null;
-    if (raw == null || raw === '') return null;
-    return String(raw);
+  private extractStationId(message: unknown, payload: unknown): string | null {
+    return extractStationIdShape(message, payload);
   }
 
-  /**
-   * OCPP 2.0.1 puts connector under payload.evse; 1.6 uses payload.connectorId.
-   */
-  private extractConnectorId(payload: Record<string, any>): number {
-    const raw =
-      payload.connectorId ??
-      payload.connector_id ??
-      payload.evse?.connectorId ??
-      payload.evse?.connector_id ??
-      payload.evse?.id ??
-      0;
-    const n = Number(raw);
-    return Number.isFinite(n) ? n : 0;
+  /** OCPP 2.0.1 evse nest + 1.6 connectorId — shared shape helper. */
+  private extractConnectorId(payload: unknown): number {
+    return extractConnectorIdShape(payload);
   }
 
-  /**
-   * OCPP 2.0.1 transactionId lives in transactionInfo; 1.6 is flat on payload.
-   */
-  private extractTransactionId(
-    payload: Record<string, any>
-  ): string | number | undefined {
-    const raw =
-      payload.transactionId ??
-      payload.transaction_id ??
-      payload.transactionInfo?.transactionId ??
-      payload.transactionInfo?.transaction_id ??
-      payload.transaction?.id ??
-      payload.transaction?.transactionId;
-    if (raw == null || raw === '') return undefined;
-    return raw as string | number;
+  /** OCPP 2.0.1 transactionInfo + 1.6 flat id — shared shape helper. */
+  private extractTransactionId(payload: unknown): string | number | undefined {
+    return extractTransactionIdShape(payload);
   }
 
-  private extractIdTag(payload: Record<string, any>): string | undefined {
-    const raw =
-      payload.idTag ??
-      payload.id_tag ??
-      payload.idToken?.idToken ??
-      payload.idToken?.id_token ??
-      payload.idToken;
-    if (raw == null || raw === '') return undefined;
-    return String(raw);
+  private extractIdTag(payload: unknown): string | undefined {
+    return extractIdTagShape(payload);
   }
 
-  /**
-   * Pull Energy.Active.Import.Register from meterValue arrays (Wh or kWh).
-   */
+  /** Energy.Active.Import.Register from meterValue[] (Wh/kWh). */
   private extractEnergyKwhFromMeterValue(meterValue: unknown): number | undefined {
-    if (!meterValue || !Array.isArray(meterValue)) return undefined;
-    let energyKwh: number | undefined;
-    for (const value of meterValue) {
-      const samples = value?.sampledValue || value?.sampled_value;
-      if (!samples || !Array.isArray(samples)) continue;
-      for (const sample of samples) {
-        const measurand = sample?.measurand || sample?.Measurand;
-        if (measurand !== 'Energy.Active.Import.Register') continue;
-        const raw = parseFloat(sample?.value);
-        if (!Number.isFinite(raw)) continue;
-        const eUnit = String(sample?.unit || sample?.unitOfMeasure?.unit || '').toLowerCase();
-        energyKwh = eUnit === 'wh' ? raw / 1000 : raw;
-      }
-    }
-    return energyKwh;
+    return extractEnergyKwhFromMeterValueShape(meterValue);
   }
 
-  private extractMeterValueArray(payload: Record<string, any>): unknown {
-    return (
-      payload.meterValue ||
-      payload.meterValues ||
-      payload.meterValueArray ||
-      payload.transactionInfo?.meterValue ||
-      payload.transactionInfo?.meterValues
-    );
+  private extractMeterValueArray(payload: unknown): unknown {
+    return extractMeterValueArrayShape(payload);
   }
 
   /**
    * Handle StopTransaction and trigger idle tracking if connector is still occupied
    */
   private handleStopTransaction(message: any): void {
-    const payload = (message?.payload || {}) as Record<string, any>;
+    const payload = isPlainObject(message?.payload) ? message.payload : {};
     const stationId = this.extractStationId(message, payload);
     const connectorId = this.extractConnectorId(payload);
     const transactionId = this.extractTransactionId(payload);
-
-    let meterStop: number | undefined;
-    if (payload.meterStop !== undefined) {
-      const n = Number(payload.meterStop);
-      if (Number.isFinite(n)) meterStop = n;
-    } else if (payload.meter_stop !== undefined) {
-      const n = Number(payload.meter_stop);
-      if (Number.isFinite(n)) meterStop = n;
-    } else {
-      // OCPP 2.x Ended often only carries energy in meterValue[], not meterStop
-      meterStop = this.extractEnergyKwhFromMeterValue(this.extractMeterValueArray(payload));
-    }
+    // OCPP 2.x Ended often only carries energy in meterValue[], not meterStop
+    const meterStop = extractMeterStopKwh(payload);
 
     if (!stationId) {
       console.warn("StopTransaction missing stationId", message);
@@ -769,23 +730,12 @@ export class LoadManager extends EventEmitter {
   }
 
   private handleStartTransaction(message: any): void {
-    const payload = (message?.payload || {}) as Record<string, any>;
+    const payload = isPlainObject(message?.payload) ? message.payload : {};
     const stationId = this.extractStationId(message, payload);
     const connectorId = this.extractConnectorId(payload);
     const transactionId = this.extractTransactionId(payload);
     const idTag = this.extractIdTag(payload);
-
-    let meterStart = 0;
-    if (payload.meterStart !== undefined) {
-      const n = Number(payload.meterStart);
-      meterStart = Number.isFinite(n) ? n : 0;
-    } else if (payload.meter_start !== undefined) {
-      const n = Number(payload.meter_start);
-      meterStart = Number.isFinite(n) ? n : 0;
-    } else {
-      const fromMeter = this.extractEnergyKwhFromMeterValue(this.extractMeterValueArray(payload));
-      if (fromMeter !== undefined) meterStart = fromMeter;
-    }
+    const meterStart = extractMeterStartKwh(payload);
 
     if (!stationId) {
       return;
@@ -808,50 +758,26 @@ export class LoadManager extends EventEmitter {
    * Handle MeterValues messages to update station power
    */
   private handleMeterValues(message: any): void {
-    const payload = (message?.payload || {}) as Record<string, any>;
+    const payload = isPlainObject(message?.payload) ? message.payload : {};
     const stationId = this.extractStationId(message, payload);
     const connectorId = this.extractConnectorId(payload);
     const meterValue = this.extractMeterValueArray(payload);
-
-    // Extract power value from meterValue (OCPP 1.6 / 2.x shapes)
-    let powerValue = 0;
-    let unit: string | undefined;
-    if (meterValue && Array.isArray(meterValue)) {
-      outer: for (const value of meterValue) {
-        const samples = value.sampledValue || value.sampled_value;
-        if (samples && Array.isArray(samples)) {
-          for (const sample of samples) {
-            const measurand = sample.measurand || sample.Measurand;
-            if (measurand === 'Power.Active.Import' || measurand === 'Power.Active.Import.L1') {
-              powerValue = parseFloat(sample.value) || 0;
-              unit = sample.unit || sample.unitOfMeasure?.unit;
-              break outer;
-            }
-          }
-        }
-      }
-    }
-
-    // Normalize to kW (OCPP often reports W)
-    const unitLower = String(unit || '').toLowerCase();
-    if (unitLower === 'w' || (!unitLower && powerValue > 100)) {
-      powerValue = powerValue / 1000;
-    }
+    const powerValue = extractPowerKwFromMeterValue(meterValue);
 
     if (!stationId) {
       console.warn("MeterValues missing stationId");
       return;
     }
     if (!this.stations.has(stationId)) {
-      this.registerStation(String(stationId), this.defaultMaxPowerKw);
+      this.registerStation(stationId, this.defaultMaxPowerKw);
     }
-    this.updateStationPower(String(stationId), powerValue);
+    this.updateStationPower(stationId, powerValue);
 
     // Forward energy meter (kWh) for open pricing sessions when present
     const energyKwh = this.extractEnergyKwhFromMeterValue(meterValue);
     if (energyKwh !== undefined) {
       this.emit('meterEnergy', {
-        stationId: String(stationId),
+        stationId,
         connectorId,
         energyKwh,
         timestamp: new Date(),
@@ -991,6 +917,8 @@ export class LoadManager extends EventEmitter {
         : null;
 
     const scheduleObj = isPlainObject(schedule) ? schedule : null;
+    // OCPP duration is seconds. Until Citrine #894 lands, upstream TxProfile durations may be
+    // wrong-unit — keep as opaque number for telemetry; do not convert to wall-clock billing windows.
     const composite: CompositeSchedule = {
       stationId,
       evseId: Number.isFinite(evseId) ? evseId : 0,

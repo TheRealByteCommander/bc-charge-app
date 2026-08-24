@@ -462,9 +462,18 @@ export async function upsertSession(userId, session) {
       .prepare('SELECT id FROM charging_sessions WHERE id = ? AND user_id = ?')
       .get(session.id, userId);
     if (existing) {
+      // SQLite parity with PG IS DISTINCT FROM on upsertSession: skip identical client syncs.
       sqliteDb
-        .prepare('UPDATE charging_sessions SET data_json = ?, status = ?, updated_at = ? WHERE id = ?')
-        .run(dataJson, session.status, now, session.id);
+        .prepare(
+          `UPDATE charging_sessions
+           SET data_json = ?, status = ?, updated_at = ?
+           WHERE id = ?
+             AND (
+               data_json IS NOT ?
+               OR status IS NOT ?
+             )`
+        )
+        .run(dataJson, session.status, now, session.id, dataJson, session.status);
     } else {
       sqliteDb
         .prepare(
@@ -1185,12 +1194,10 @@ export function appendSessionPricingEvent(data, ev) {
 }
 
 /**
- * Import register energy must not go backwards within an active session
- * (stale meter sample / unit glitch / out-of-order deliver without seqNo).
- * Returns the energy to persist, or null when the sample should be ignored.
- * @param {unknown} prevEnergy
- * @param {unknown} nextEnergy
- * @returns {number | null}
+ * Keep session energy monotonic across webhook ticks.
+ * Guards BC against Citrine upstream #868-class bugs where a non-energy meter batch
+ * (clock-only / SoC-only) yields totalKwh=0 and would otherwise wipe live kWh.
+ * Returns null when next is missing/invalid or a material regression vs prev.
  */
 export function pickMonotonicEnergyKwh(prevEnergy, nextEnergy) {
   if (nextEnergy == null || nextEnergy === '') return null;

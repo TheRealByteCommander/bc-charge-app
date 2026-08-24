@@ -4,6 +4,7 @@ import { PricingService, ChargingSession } from './pricing';
 import {
   CreateDeepLinkTokenInput,
   DeepLinkTokenStore,
+  normalizeDeepLinkMetadata,
 } from './DeepLinkTokenStore';
 
 /**
@@ -75,7 +76,7 @@ export class DeepLinkController {
         ttlSeconds: ttlSeconds !== undefined ? Number(ttlSeconds) : undefined,
         maxUses: maxUses !== undefined ? Number(maxUses) : undefined,
         expiresAt: expiresAt ? new Date(expiresAt) : undefined,
-        metadata: metadata && typeof metadata === 'object' ? metadata : undefined,
+        metadata: normalizeDeepLinkMetadata(metadata),
       };
 
       if (input.ttlSeconds !== undefined && (!Number.isFinite(input.ttlSeconds) || input.ttlSeconds < 60)) {

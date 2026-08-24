@@ -3,7 +3,12 @@ import { mkdirSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { calculateSession } from './pricingEngine.mjs';
-import { calculateSplit } from './revenueShareManager.mjs';
+import {
+  calculateSplit,
+  initRevenueShareTables,
+  upsertAgreement,
+  getAgreementForSite,
+} from './revenueShareManager.mjs';
 import {
   updateSessionState,
   evaluateIdleSessions,
@@ -80,6 +85,34 @@ describe('revenueShareManager (aus revenue-share-manager.ts)', () => {
     expect(result.partnerPayout).toBe('1.2');
     expect(result.bcChargePayout).toBe('2.8');
   });
+
+  it('upsertAgreement skips no-op rewrite and keeps stable id (SQLite)', async () => {
+    await initRevenueShareTables();
+    const base = {
+      partnerId: 'partner-noop',
+      siteId: 'site-noop',
+      energyCostPassThrough: true,
+      partnerMarginPercentage: 0.25,
+      bcChargeMarginPercentage: 0.75,
+    };
+    const first = await upsertAgreement(base);
+    expect(first.id).toMatch(/^rsa_/);
+    const second = await upsertAgreement({ ...base });
+    expect(second.id).toBe(first.id);
+    const loaded = await getAgreementForSite('site-noop');
+    expect(loaded?.id).toBe(first.id);
+    expect(loaded?.partnerMarginPercentage).toBe(0.25);
+
+    const third = await upsertAgreement({
+      ...base,
+      partnerMarginPercentage: 0.4,
+      bcChargeMarginPercentage: 0.6,
+    });
+    expect(third.id).toBe(first.id);
+    const afterChange = await getAgreementForSite('site-noop');
+    expect(afterChange?.partnerMarginPercentage).toBe(0.4);
+    expect(afterChange?.bcChargeMarginPercentage).toBe(0.6);
+  });
 });
 
 describe('idleTimer + billingAudit (OCPP-States)', () => {
@@ -147,5 +180,60 @@ describe('idleTimer + billingAudit (OCPP-States)', () => {
     expect(results.length).toBe(1);
     expect(results[0].sessionId).toBe(sessionId);
     expect(Number.isFinite(results[0].idleBillableMinutes)).toBe(true);
+  });
+
+  it('finalisiert Idle bei session_stop und untrackt die Session', async () => {
+    const sessionId = 'sess-idle-end';
+    clearSession(sessionId);
+
+    updateSessionState({
+      sessionId,
+      chargerId: 'cp-end',
+      tariff: standardTariff,
+      events: [
+        { at: '2026-07-01T12:00:00.000Z', type: 'session_start' },
+        { at: '2026-07-01T12:05:00.000Z', type: 'charging_state', chargingState: 'Charging' },
+        { at: '2026-07-01T12:20:00.000Z', type: 'charging_state', chargingState: 'SuspendedEV' },
+        { at: '2026-07-01T12:50:00.000Z', type: 'session_stop' },
+      ],
+    });
+
+    const results = await evaluateIdleSessions(standardTariff, '2026-07-01T13:00:00.000Z');
+    expect(results.length).toBe(1);
+    expect(results[0].sessionId).toBe(sessionId);
+    expect(results[0].ended).toBe(true);
+    // Idle closed at session_stop (12:50), not asOf (13:00): 30min - 15 grace = 15 billable.
+    expect(results[0].idleBillableMinutes).toBe(15);
+    expect(getTrackedSessionIds()).not.toContain(sessionId);
+
+    // Second evaluate must not re-bill a cleared session.
+    const again = await evaluateIdleSessions(standardTariff, '2026-07-01T14:00:00.000Z');
+    expect(again.some((r) => r.sessionId === sessionId)).toBe(false);
+  });
+
+  it('untrackt session_stop auch ohne Tarif (kein Map-Leak)', async () => {
+    const sessionId = 'sess-idle-no-tariff-end';
+    clearSession(sessionId);
+
+    updateSessionState({
+      sessionId,
+      chargerId: 'cp-no-tariff',
+      // neither state.tariff nor defaultTariff
+      events: [
+        { at: '2026-07-01T12:00:00.000Z', type: 'session_start' },
+        { at: '2026-07-01T12:05:00.000Z', type: 'charging_state', chargingState: 'Charging' },
+        { at: '2026-07-01T12:20:00.000Z', type: 'charging_state', chargingState: 'SuspendedEV' },
+        { at: '2026-07-01T12:50:00.000Z', type: 'session_stop' },
+      ],
+    });
+
+    expect(getTrackedSessionIds()).toContain(sessionId);
+    const results = await evaluateIdleSessions(undefined, '2026-07-01T13:00:00.000Z');
+    expect(results.some((r) => r.sessionId === sessionId)).toBe(false);
+    expect(getTrackedSessionIds()).not.toContain(sessionId);
+
+    // Still gone on a later evaluate with a real tariff (no zombie re-bill).
+    const again = await evaluateIdleSessions(standardTariff, '2026-07-01T14:00:00.000Z');
+    expect(again.some((r) => r.sessionId === sessionId)).toBe(false);
   });
 });

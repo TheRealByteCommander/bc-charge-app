@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from 'react';
 import {
+  accessibilityPrefsEqual,
   defaultAccessibilityPrefs,
   type AccessibilityPrefs,
   type FontScale,
@@ -56,9 +57,17 @@ export function AccessibilityProvider({ children }: { children: ReactNode }) {
   });
 
   const persist = useCallback((next: AccessibilityPrefs) => {
-    setPrefs(next);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-    applyToDocument(next);
+    setPrefs((prev) => {
+      // Client no-op family: skip localStorage + document churn when toggled value equals current.
+      if (accessibilityPrefsEqual(prev, next)) return prev;
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      } catch {
+        /* quota / private mode */
+      }
+      applyToDocument(next);
+      return next;
+    });
   }, []);
 
   useEffect(() => {

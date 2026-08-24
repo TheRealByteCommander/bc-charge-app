@@ -202,6 +202,12 @@ describe('pinBump readiness gate', () => {
     assert.ok(stats.upstreamOpen.some((x) => x.id === 881), 'watch #881 protocol hard-code follow-up');
     assert.ok(stats.upstreamOpen.some((x) => x.id === 893), 'watch #893 tx SetChargingProfile protocol');
     assert.ok(stats.upstreamOpen.some((x) => x.id === 869), 'watch #869 MeterValues attach');
+    assert.ok(stats.upstreamOpen.some((x) => x.id === 868), 'watch #868 totalKwh wipe on non-energy meter batch');
+    assert.ok(stats.upstreamOpen.some((x) => x.id === 879), 'watch #879 DC profile unit mismatch');
+    assert.ok(stats.upstreamOpen.some((x) => x.id === 918), 'watch #918 smart-charging criteria 0-as-absent');
+    assert.ok(stats.upstreamOpen.some((x) => x.id === 894), 'watch #894 TxProfile duration unit');
+    assert.ok(stats.upstreamOpen.some((x) => x.id === 934), 'watch #934 charging-needs EVSE id mixup');
+    assert.ok(stats.upstreamOpen.some((x) => x.id === 871), 'watch #871 non-energy meter unit throw');
     assert.ok(!stats.upstreamOpen.some((x) => x.id === 849), '#849 no longer open');
     assert.ok(!stats.upstreamOpen.some((x) => x.id === 846), '#846 no longer open');
     assert.ok(!stats.upstreamOpen.some((x) => x.id === 852), '#852 no longer open');

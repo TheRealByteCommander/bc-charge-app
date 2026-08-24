@@ -59,8 +59,15 @@ export async function evaluateIdleSessions(defaultTariff, asOf = new Date().toIS
   /** @type {object[]} */
   const results = [];
   const asOfIso = isValidEventAt(asOf) ? String(asOf).trim() : new Date().toISOString();
+  /** Sessions with a terminal session_stop — drop after this evaluate to avoid map leak. */
+  const endedSessionIds = [];
 
   for (const [sessionId, state] of activeSessions) {
+    // Terminal session_stop must untrack even when no tariff is available
+    // (otherwise activeSessions/lastLoggedBillableMin leak forever).
+    const hasSessionStop = state.events.some((ev) => ev?.type === 'session_stop');
+    if (hasSessionStop) endedSessionIds.push(sessionId);
+
     const tariff = state.tariff ?? defaultTariff;
     if (!tariff) continue;
 
@@ -70,6 +77,7 @@ export async function evaluateIdleSessions(defaultTariff, asOf = new Date().toIS
     const graceSeconds = Math.round((Number(tariff.gracePeriodMinutes) || 0) * 60);
     let idleSeconds = 0;
     for (const iv of intervals) {
+      // Closed intervals keep their end; open idle ends at session_stop or asOf.
       const end = iv.end ?? asOfIso;
       idleSeconds += Math.max(0, durationSeconds(iv.start, end) - graceSeconds);
     }
@@ -100,7 +108,13 @@ export async function evaluateIdleSessions(defaultTariff, asOf = new Date().toIS
       blockFeeCost: calc.blockFeeCost,
       idleBillableMinutes: calc.idleBillableMinutes,
       audited: billableMin > prev,
+      ended: hasSessionStop,
     });
+  }
+
+  // Final settle on session_stop: one last BLOCK_FEE (if any), then untrack.
+  for (const sessionId of endedSessionIds) {
+    clearSession(sessionId);
   }
 
   return results;

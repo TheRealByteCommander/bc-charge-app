@@ -9,9 +9,11 @@ import {
   readResponseJson,
 } from '../parse';
 import {
+  AdhocLocalSessionSchema,
   AdhocPreparePaymentSchema,
   AdhocQuoteSchema,
   AdhocSessionEnvelopeSchema,
+  type AdhocLocalSession,
 } from './schemas';
 
 export class AdhocApiError extends Error {
@@ -177,23 +179,48 @@ export async function stopAdhocSession(
 
 const STORAGE_KEY = 'bc_adhoc_session';
 
-export function saveAdhocSessionLocal(sessionId: string, accessToken: string): void {
-  sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ sessionId, accessToken }));
+/** True when both local ad-hoc resume envelopes hold the same id + capability token. */
+export function adhocLocalSessionEqual(
+  a: AdhocLocalSession | null | undefined,
+  b: AdhocLocalSession | null | undefined
+): boolean {
+  if (a == null || b == null) return a == null && b == null;
+  return a.sessionId === b.sessionId && a.accessToken === b.accessToken;
 }
 
-export function loadAdhocSessionLocal(): { sessionId: string; accessToken: string } | null {
-  const raw = sessionStorage.getItem(STORAGE_KEY);
-  if (!raw) return null;
+export function parseAdhocSessionLocal(raw: string | null | undefined): AdhocLocalSession | null {
+  if (raw == null || raw === '') return null;
   const parsed = safeParseJson<unknown>(raw, null);
   if (!isPlainObject(parsed)) return null;
-  const sessionId = parsed.sessionId;
-  const accessToken = parsed.accessToken;
-  if (typeof sessionId === 'string' && sessionId && typeof accessToken === 'string' && accessToken) {
-    return { sessionId, accessToken };
+  const result = AdhocLocalSessionSchema.safeParse(parsed);
+  return result.success ? result.data : null;
+}
+
+export function saveAdhocSessionLocal(sessionId: string, accessToken: string): void {
+  const nextResult = AdhocLocalSessionSchema.safeParse({ sessionId, accessToken });
+  if (!nextResult.success) return;
+  const next = nextResult.data;
+  // Guest poll / resume paths: skip sessionStorage rewrite when token envelope unchanged.
+  if (adhocLocalSessionEqual(loadAdhocSessionLocal(), next)) return;
+  try {
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  } catch {
+    /* quota */
   }
-  return null;
+}
+
+export function loadAdhocSessionLocal(): AdhocLocalSession | null {
+  try {
+    return parseAdhocSessionLocal(sessionStorage.getItem(STORAGE_KEY));
+  } catch {
+    return null;
+  }
 }
 
 export function clearAdhocSessionLocal(): void {
-  sessionStorage.removeItem(STORAGE_KEY);
+  try {
+    sessionStorage.removeItem(STORAGE_KEY);
+  } catch {
+    /* private mode */
+  }
 }

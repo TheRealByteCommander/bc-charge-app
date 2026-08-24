@@ -69,3 +69,13 @@ export const AdhocPreparePaymentSchema = z
     preAuthCents: finiteNumber,
   })
   .passthrough();
+
+/** sessionStorage resume envelope for guest ad-hoc charge (id + capability token only). */
+export const AdhocLocalSessionSchema = z
+  .object({
+    sessionId: z.string().min(1),
+    accessToken: z.string().min(1),
+  })
+  .strict();
+
+export type AdhocLocalSession = z.infer<typeof AdhocLocalSessionSchema>;

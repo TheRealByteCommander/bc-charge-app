@@ -118,9 +118,13 @@ export async function upsertAgreement(agreement) {
   const id = agreement.id ?? `rsa_${randomUUID().replace(/-/g, '').slice(0, 12)}`;
   const now = new Date().toISOString();
   const pass = agreement.energyCostPassThrough !== false ? 1 : 0;
+  const partnerPct = String(agreement.partnerMarginPercentage);
+  const bcPct = String(agreement.bcChargeMarginPercentage);
 
   if (db().isPostgres) {
-    await db().pgPool.query(
+    // Skip no-op rewrites (IS DISTINCT FROM) — admin path, same family as app_config.
+    // On no-op UPDATE, RETURNING is empty → resolve existing id so callers keep stable PK.
+    const result = await db().pgPool.query(
       `INSERT INTO revenue_share_agreements
        (id, partner_id, site_id, energy_cost_pass_through, partner_margin_pct, bc_charge_margin_pct, active, created_at, updated_at)
        VALUES ($1,$2,$3,$4,$5,$6,1,$7,$7)
@@ -129,42 +133,70 @@ export async function upsertAgreement(agreement) {
          partner_margin_pct = EXCLUDED.partner_margin_pct,
          bc_charge_margin_pct = EXCLUDED.bc_charge_margin_pct,
          active = 1,
-         updated_at = EXCLUDED.updated_at`,
-      [
-        id,
-        agreement.partnerId,
-        agreement.siteId,
-        pass,
-        String(agreement.partnerMarginPercentage),
-        String(agreement.bcChargeMarginPercentage),
-        now,
-      ]
+         updated_at = EXCLUDED.updated_at
+       WHERE revenue_share_agreements.energy_cost_pass_through IS DISTINCT FROM EXCLUDED.energy_cost_pass_through
+          OR revenue_share_agreements.partner_margin_pct IS DISTINCT FROM EXCLUDED.partner_margin_pct
+          OR revenue_share_agreements.bc_charge_margin_pct IS DISTINCT FROM EXCLUDED.bc_charge_margin_pct
+          OR revenue_share_agreements.active IS DISTINCT FROM 1
+       RETURNING id`,
+      [id, agreement.partnerId, agreement.siteId, pass, partnerPct, bcPct, now]
     );
-  } else {
-    db().sqliteDb
-      .prepare(
-        `INSERT INTO revenue_share_agreements
-         (id, partner_id, site_id, energy_cost_pass_through, partner_margin_pct, bc_charge_margin_pct, active, created_at, updated_at)
-         VALUES (?,?,?,?,?,?,1,?,?)
-         ON CONFLICT(partner_id, site_id) DO UPDATE SET
-           energy_cost_pass_through = excluded.energy_cost_pass_through,
-           partner_margin_pct = excluded.partner_margin_pct,
-           bc_charge_margin_pct = excluded.bc_charge_margin_pct,
-           active = 1,
-           updated_at = excluded.updated_at`
-      )
-      .run(
-        id,
-        agreement.partnerId,
-        agreement.siteId,
-        pass,
-        String(agreement.partnerMarginPercentage),
-        String(agreement.bcChargeMarginPercentage),
-        now,
-        now
+    let resolvedId = result.rows[0]?.id;
+    if (!resolvedId) {
+      const existing = await db().pgPool.query(
+        `SELECT id FROM revenue_share_agreements WHERE partner_id = $1 AND site_id = $2`,
+        [agreement.partnerId, agreement.siteId]
       );
+      resolvedId = existing.rows[0]?.id ?? id;
+    }
+    return { ...agreement, id: resolvedId };
   }
-  return { ...agreement, id };
+
+  // SQLite parity with PG IS DISTINCT FROM: skip identical admin rewrites (local/dev).
+  const write = db().sqliteDb
+    .prepare(
+      `INSERT INTO revenue_share_agreements
+       (id, partner_id, site_id, energy_cost_pass_through, partner_margin_pct, bc_charge_margin_pct, active, created_at, updated_at)
+       VALUES (?,?,?,?,?,?,1,?,?)
+       ON CONFLICT(partner_id, site_id) DO UPDATE SET
+         energy_cost_pass_through = excluded.energy_cost_pass_through,
+         partner_margin_pct = excluded.partner_margin_pct,
+         bc_charge_margin_pct = excluded.bc_charge_margin_pct,
+         active = 1,
+         updated_at = excluded.updated_at
+       WHERE revenue_share_agreements.energy_cost_pass_through IS NOT excluded.energy_cost_pass_through
+          OR revenue_share_agreements.partner_margin_pct IS NOT excluded.partner_margin_pct
+          OR revenue_share_agreements.bc_charge_margin_pct IS NOT excluded.bc_charge_margin_pct
+          OR revenue_share_agreements.active IS NOT 1`
+    )
+    .run(
+      id,
+      agreement.partnerId,
+      agreement.siteId,
+      pass,
+      partnerPct,
+      bcPct,
+      now,
+      now
+    );
+  let resolvedId = id;
+  if (write.changes === 0) {
+    const existing = db()
+      .sqliteDb.prepare(
+        `SELECT id FROM revenue_share_agreements WHERE partner_id = ? AND site_id = ?`
+      )
+      .get(agreement.partnerId, agreement.siteId);
+    if (existing?.id) resolvedId = existing.id;
+  } else {
+    // INSERT or real UPDATE — prefer row id (conflict keeps prior PK).
+    const row = db()
+      .sqliteDb.prepare(
+        `SELECT id FROM revenue_share_agreements WHERE partner_id = ? AND site_id = ?`
+      )
+      .get(agreement.partnerId, agreement.siteId);
+    if (row?.id) resolvedId = row.id;
+  }
+  return { ...agreement, id: resolvedId };
 }
 
 export async function getAgreementForSite(siteId) {

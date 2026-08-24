@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  cachedStationsDomainEqual,
   isCachedConnector,
   isCachedStation,
   normalizeCachedStation,
@@ -85,5 +86,36 @@ describe('stationCacheShape guards', () => {
       count: 3,
     });
     expect(normalizeStationsCacheMeta({ count: '2', source: 'sync' })?.count).toBe(2);
+  });
+});
+
+describe('cachedStationsDomainEqual', () => {
+  const a = normalizeCachedStation(goodStation)!;
+  const b = normalizeCachedStation({
+    ...goodStation,
+    id: 'ST2',
+    evseCode: 'ST2',
+    name: 'Other',
+  })!;
+
+  it('treats identical domain payloads as equal (order-independent)', () => {
+    expect(cachedStationsDomainEqual([a], [a])).toBe(true);
+    expect(cachedStationsDomainEqual([a, b], [b, a])).toBe(true);
+    expect(cachedStationsDomainEqual([], [])).toBe(true);
+  });
+
+  it('detects status / tariff / identity changes', () => {
+    const statusFlip = normalizeCachedStation({
+      ...goodStation,
+      connectors: [{ ...goodConnector, status: 'occupied' }],
+    })!;
+    const priceFlip = normalizeCachedStation({
+      ...goodStation,
+      connectors: [{ ...goodConnector, pricePerKwh: 0.55 }],
+    })!;
+    expect(cachedStationsDomainEqual([a], [statusFlip])).toBe(false);
+    expect(cachedStationsDomainEqual([a], [priceFlip])).toBe(false);
+    expect(cachedStationsDomainEqual([a], [a, b])).toBe(false);
+    expect(cachedStationsDomainEqual([a], [b])).toBe(false);
   });
 });

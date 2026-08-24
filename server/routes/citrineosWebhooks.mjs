@@ -74,10 +74,16 @@ export function assertCitrineosWebhookAuthorized(req, env = process.env) {
 /** Canonical OCPP energy import register measurand (case-insensitive match). */
 const ENERGY_IMPORT_REGISTER = 'energy.active.import.register';
 
+/** Energy units accepted for Energy.Active.Import.Register → kWh (OCPP unit names, lowercased). */
+const ENERGY_KWH_UNITS = new Set(['kwh', 'kw.h', 'kilowatthour']);
+const ENERGY_WH_UNITS = new Set(['wh', 'w.h', 'watthour']);
+
 /**
  * Pull Energy.Active.Import.Register from OCPP 2.0.1 meterValue arrays (Wh or kWh).
  * OCPP default unit for this measurand is Wh when unit/unitOfMeasure is omitted.
  * Honors unitOfMeasure.multiplier (value × 10^multiplier) per the protocol.
+ * Non-energy units (A/V/W/…) on an energy measurand are skipped — same class as
+ * upstream citrineos-core #871 (throw on unknown unit) / #852 (don't invent energy).
  * Returns null when no usable sample is present.
  */
 function extractEnergyKwhFromMeterValues(meterValue) {
@@ -106,7 +112,9 @@ function extractEnergyKwhFromMeterValues(meterValue) {
         (uom ? uom.unit ?? uom.Unit : null) ??
         '';
       // Spec default for Energy.Active.Import.Register is Wh — never treat empty as kWh.
+      // Explicit non-energy units must not silently become Wh (amps masquerading as register).
       const unit = String(unitRaw || 'Wh').trim().toLowerCase();
+      if (!ENERGY_KWH_UNITS.has(unit) && !ENERGY_WH_UNITS.has(unit)) continue;
 
       let multiplier = 0;
       if (uom) {
@@ -115,10 +123,10 @@ function extractEnergyKwhFromMeterValues(meterValue) {
       }
       const scaled = raw * 10 ** multiplier;
 
-      if (unit === 'kwh' || unit === 'kw.h' || unit === 'kilowatthour') {
+      if (ENERGY_KWH_UNITS.has(unit)) {
         energyKwh = scaled;
       } else {
-        // Wh / W.h / watthour / unknown → Wh
+        // Wh / W.h / watthour (incl. defaulted empty unit)
         energyKwh = scaled / 1000;
       }
     }

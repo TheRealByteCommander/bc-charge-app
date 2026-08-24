@@ -6,13 +6,19 @@ import {
 } from './indexedDbCache';
 import { isPlainObject, safeParseJson } from './safeJson';
 import {
+  cachedStationsDomainEqual,
   isCachedConnector,
   isCachedStation,
   normalizeCachedStation,
   normalizeCachedStations,
 } from './stationCacheShape';
 
-export { isCachedConnector, isCachedStation, normalizeCachedStation };
+export {
+  cachedStationsDomainEqual,
+  isCachedConnector,
+  isCachedStation,
+  normalizeCachedStation,
+};
 
 const CACHE_KEY = 'bc_stations_offline_v1';
 
@@ -95,6 +101,16 @@ export function loadStationsOfflineCacheSync(): {
 
 function saveToLocalStorage(stations: Station[], source: string): void {
   try {
+    // Citrine sync / boot paths poll often: skip rewrite when domain payload + source match
+    // (ignore savedAt churn — same family as active-session / fav-availability equal-skip).
+    const existing = loadFromLocalStorage();
+    if (
+      existing &&
+      existing.source === source &&
+      cachedStationsDomainEqual(existing.stations, stations)
+    ) {
+      return;
+    }
     localStorage.setItem(
       CACHE_KEY,
       JSON.stringify({

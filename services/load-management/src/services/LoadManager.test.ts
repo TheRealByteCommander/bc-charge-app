@@ -100,11 +100,29 @@ describe('LoadManager', () => {
     expect(msg.payload.chargingProfile.chargingSchedule.chargingSchedulePeriod[0].limit).toBe(
       11000
     );
+    // OCPP 2.0.1 ChargingProfileType.id is integer — UUID strings are schema-invalid.
+    const profileId = (msg.payload.chargingProfile as { chargingProfileId?: unknown })
+      .chargingProfileId;
+    expect(typeof profileId).toBe('number');
+    expect(Number.isInteger(profileId)).toBe(true);
+    expect(profileId as number).toBeGreaterThan(0);
+    expect(profileId as number).toBeLessThanOrEqual(2_147_483_647);
     // Must not use OCPP 1.6 field names / purpose
     expect(msg.payload.csChargingProfiles).toBeUndefined();
     expect(msg.payload.chargingProfile.chargingProfilePurpose).not.toBe(
       'ChargePointMaxProfile'
     );
+  });
+
+  test('SetChargingProfile chargingProfileId is unique integer across sends', () => {
+    const sendSpy = jest.spyOn(loadManager as any, 'sendWsMessage').mockReturnValue(true);
+    (loadManager as any).sendSetChargingProfile('CS-001', 7);
+    (loadManager as any).sendSetChargingProfile('CS-001', 9);
+    const id1 = (sendSpy.mock.calls[0][0] as any).payload.chargingProfile.chargingProfileId;
+    const id2 = (sendSpy.mock.calls[1][0] as any).payload.chargingProfile.chargingProfileId;
+    expect(typeof id1).toBe('number');
+    expect(typeof id2).toBe('number');
+    expect(id1).not.toBe(id2);
   });
 
   test('OCPP 2.x TransactionEvent Started extracts nested transactionInfo/evse/idToken', () => {
@@ -218,6 +236,41 @@ describe('LoadManager', () => {
       stationId: 'CS-301',
       connectorId: 3,
       energyKwh: 4.25,
+    });
+  });
+
+  test('TransactionEvent snake_case event_type + corrupt samples still routes Started', () => {
+    const started: Array<Record<string, unknown>> = [];
+    loadManager.on('transactionStarted', (evt) => started.push(evt));
+
+    (loadManager as any).handleCitrineMessage({
+      action: 'TransactionEvent',
+      payload: {
+        event_type: 'STARTED',
+        station_id: 'CS-SNAKE',
+        connector_id: 1,
+        transaction_id: 'tx-snake-1',
+        id_tag: 'TAG-S',
+        meter_start: 2.5,
+        meterValue: [
+          null,
+          {
+            sampled_value: [
+              { measurand: 'Energy.Active.Import.Register', value: 'bad' },
+              'nope',
+            ],
+          },
+        ],
+      },
+    });
+
+    expect(started).toHaveLength(1);
+    expect(started[0]).toMatchObject({
+      stationId: 'CS-SNAKE',
+      connectorId: 1,
+      transactionId: 'tx-snake-1',
+      meterStart: 2.5,
+      idTag: 'TAG-S',
     });
   });
 
