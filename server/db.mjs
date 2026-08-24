@@ -683,11 +683,18 @@ export async function updateAdhocSession(session) {
     );
     return session;
   }
+  // SQLite parity with PG IS DISTINCT FROM: skip identical adhoc poll/webhook retries.
+  // payment_intent: only compare when next is non-null (matches COALESCE keep-on-null SET).
   sqliteDb
     .prepare(
       `UPDATE adhoc_sessions
        SET status = ?, payment_intent_id = COALESCE(?, payment_intent_id), data_json = ?, updated_at = ?
-       WHERE id = ? AND access_token = ?`
+       WHERE id = ? AND access_token = ?
+         AND (
+           data_json IS NOT ?
+           OR status IS NOT ?
+           OR (? IS NOT NULL AND payment_intent_id IS NOT ?)
+         )`
     )
     .run(
       session.status,
@@ -695,7 +702,11 @@ export async function updateAdhocSession(session) {
       dataJson,
       now,
       session.id,
-      session.accessToken
+      session.accessToken,
+      dataJson,
+      session.status,
+      session.paymentIntentId ?? null,
+      session.paymentIntentId ?? null
     );
   return session;
 }
