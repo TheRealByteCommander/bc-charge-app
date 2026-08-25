@@ -134,18 +134,42 @@ export function extractMeterValueArray(payload: unknown): unknown {
 
 function readSampleUnit(sample: Record<string, unknown>): string {
   const uom = readNestedObject(sample.unitOfMeasure) ?? readNestedObject(sample.unit_of_measure);
-  const raw = sample.unit ?? uom?.unit ?? '';
-  return String(raw ?? '').toLowerCase();
+  const raw = sample.unit ?? sample.Unit ?? uom?.unit ?? uom?.Unit ?? '';
+  return String(raw ?? '').trim().toLowerCase();
+}
+
+/**
+ * OCPP unitOfMeasure.multiplier: physical = value × 10^multiplier.
+ * Missing/invalid → 0 (identity). Parity with server webhook energy extract.
+ */
+function readSampleMultiplier(sample: Record<string, unknown>): number {
+  const uom = readNestedObject(sample.unitOfMeasure) ?? readNestedObject(sample.unit_of_measure);
+  if (!uom) return 0;
+  const m = uom.multiplier ?? uom.Multiplier;
+  if (m == null || m === '') return 0;
+  const n = Number(m);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function scaleSampleValue(raw: number, sample: Record<string, unknown>): number {
+  return raw * 10 ** readSampleMultiplier(sample);
 }
 
 function readSampleMeasurand(sample: Record<string, unknown>): string {
   const raw = sample.measurand ?? sample.Measurand ?? '';
-  return String(raw ?? '');
+  return String(raw ?? '').trim().toLowerCase();
 }
 
 function readSampleValue(sample: Record<string, unknown>): number | undefined {
   return readOptionalFiniteNumber(sample.value);
 }
+
+const POWER_IMPORT_MEASURANDS = new Set([
+  'power.active.import',
+  'power.active.import.l1',
+]);
+const POWER_W_UNITS = new Set(['w', 'watt']);
+const POWER_KW_UNITS = new Set(['kw', 'k.w', 'kilowatt']);
 
 function iterSampledValues(
   meterValue: unknown,
@@ -169,47 +193,57 @@ const ENERGY_WH_UNITS = new Set(['wh', 'w.h', 'watthour', '']);
 /**
  * Pull Energy.Active.Import.Register from meterValue arrays (Wh or kWh).
  * Last valid sample wins (monotonic register semantics at the edge).
- * Empty unit defaults to Wh (OCPP). Non-energy units (A/V/W/…) are skipped
- * (aligns with citrineos-core #871 skip-unknown-unit / do not invent kWh).
+ * Empty unit defaults to Wh (OCPP). Honors unitOfMeasure.multiplier (value × 10^m).
+ * Non-energy units (A/V/W/…) are skipped (aligns with citrineos-core #871 /
+ * server webhook extract — do not invent kWh).
  */
 export function extractEnergyKwhFromMeterValue(meterValue: unknown): number | undefined {
   let energyKwh: number | undefined;
   iterSampledValues(meterValue, (sample) => {
-    const measurand = readSampleMeasurand(sample).trim().toLowerCase();
+    const measurand = readSampleMeasurand(sample);
     if (measurand !== 'energy.active.import.register') return;
     const raw = readSampleValue(sample);
     if (raw === undefined) return;
     const eUnit = readSampleUnit(sample);
     if (!ENERGY_KWH_UNITS.has(eUnit) && !ENERGY_WH_UNITS.has(eUnit)) return;
-    energyKwh = ENERGY_WH_UNITS.has(eUnit) ? raw / 1000 : raw;
+    const scaled = scaleSampleValue(raw, sample);
+    energyKwh = ENERGY_WH_UNITS.has(eUnit) ? scaled / 1000 : scaled;
   });
   return energyKwh;
 }
 
 /**
  * Pull Power.Active.Import (or .L1) and normalize to kW.
- * Heuristic: unit W, or missing unit with value > 100 → treat as W.
+ * Measurand match is case-insensitive (some stacks emit power.active.import).
+ * Honors unitOfMeasure.multiplier before unit conversion.
+ * Heuristic: unit W/watt, or missing unit with scaled value > 100 → treat as W.
  */
 export function extractPowerKwFromMeterValue(meterValue: unknown): number {
   let powerValue = 0;
-  let unit: string | undefined;
+  let unit = '';
   let found = false;
   iterSampledValues(meterValue, (sample) => {
     if (found) return;
     const measurand = readSampleMeasurand(sample);
-    if (measurand !== 'Power.Active.Import' && measurand !== 'Power.Active.Import.L1') return;
+    if (!POWER_IMPORT_MEASURANDS.has(measurand)) return;
     const raw = readSampleValue(sample);
     if (raw === undefined) return;
-    powerValue = raw;
-    unit = readSampleUnit(sample) || undefined;
+    powerValue = scaleSampleValue(raw, sample);
+    unit = readSampleUnit(sample);
     found = true;
   });
 
-  const unitLower = String(unit || '').toLowerCase();
-  if (unitLower === 'w' || (!unitLower && powerValue > 100)) {
-    powerValue = powerValue / 1000;
+  if (!found) return 0;
+
+  if (POWER_W_UNITS.has(unit) || (!unit && powerValue > 100)) {
+    return powerValue / 1000;
   }
-  return powerValue;
+  // Explicit kW (and default small values without unit) stay as kW.
+  if (!unit || POWER_KW_UNITS.has(unit)) {
+    return powerValue;
+  }
+  // Unknown power unit — do not invent kW from amps/volts.
+  return 0;
 }
 
 /**

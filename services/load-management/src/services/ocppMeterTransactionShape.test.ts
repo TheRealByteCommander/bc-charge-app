@@ -149,9 +149,24 @@ describe('ocppMeterTransactionShape', () => {
         },
       ])
     ).toBeUndefined();
+
+    // unitOfMeasure.multiplier: 25 × 10^2 = 2500 Wh → 2.5 kWh (webhook parity)
+    expect(
+      extractEnergyKwhFromMeterValue([
+        {
+          sampledValue: [
+            {
+              measurand: 'Energy.Active.Import.Register',
+              value: '25',
+              unitOfMeasure: { unit: 'Wh', multiplier: 2 },
+            },
+          ],
+        },
+      ])
+    ).toBe(2.5);
   });
 
-  test('extractPowerKwFromMeterValue normalizes W and heuristic', () => {
+  test('extractPowerKwFromMeterValue normalizes W, case, multiplier, drops bad units', () => {
     expect(
       extractPowerKwFromMeterValue([
         {
@@ -179,6 +194,43 @@ describe('ocppMeterTransactionShape', () => {
         },
       ])
     ).toBe(7.5);
+
+    // Case-insensitive measurand (some stacks emit lower-case)
+    expect(
+      extractPowerKwFromMeterValue([
+        {
+          sampledValue: [
+            { Measurand: 'power.active.import', value: '15000', unit: 'w' },
+          ],
+        },
+      ])
+    ).toBe(15);
+
+    // multiplier before unit conversion: 110 × 10^2 = 11000 W → 11 kW
+    expect(
+      extractPowerKwFromMeterValue([
+        {
+          sampledValue: [
+            {
+              measurand: 'Power.Active.Import',
+              value: '110',
+              unitOfMeasure: { unit: 'W', multiplier: 2 },
+            },
+          ],
+        },
+      ])
+    ).toBe(11);
+
+    // Unknown power unit (A) must not invent kW
+    expect(
+      extractPowerKwFromMeterValue([
+        {
+          sampledValue: [
+            { measurand: 'Power.Active.Import', value: '32', unit: 'A' },
+          ],
+        },
+      ])
+    ).toBe(0);
 
     expect(extractPowerKwFromMeterValue([])).toBe(0);
     expect(
