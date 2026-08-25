@@ -1,5 +1,5 @@
 /** Integrationsvertrag CitrineOS ↔ bc-charge-app (v1.8.4)
- * Upstream watch (2026-08-24): citrineos-core latest pre-release tag still **v2.0.0-beta3**
+ * Upstream watch (2026-08-25): citrineos-core latest pre-release tag still **v2.0.0-beta3**
  * (tag 2026-08-12; no newer tag on releases). Still NOT a prod pin — stay on 1.8.4 until staging
  * CANARY_FORCE=1 soak + pinBump.ready + hardware smoke (Elinta/go-e).
  * beta3 highlights for BC: OCPP message correlation (#832), tenant-scoped repo deletes (#842),
@@ -16,7 +16,7 @@
  *     samples as Energy.Active.Import.Register — aligns with BC webhook strict energy extract.
  *   - **#859** EVSE-scoped connector status (merged 2026-08-20 → next): OCPP 2.0.1 multi-EVSE
  *     connectorId collision fixed upstream; BC ids already `evse-{n}-conn-{m}`.
- * Open drift risks (still open 2026-08-24):
+ * Open drift risks (still open 2026-08-25):
  *   - **#851 tenant path mapping** (open): config → tenant DB + cache + path sanitization.
  *   - **#867** OCPPMessages weekly partition (open): ops/migration risk; entrypoint must provision
  *     partitions or inserts fail (less fatal once #846 is deployed, still lossy/noisy).
@@ -36,6 +36,9 @@
  *   - **#871** (closed unmerged 2026-08-21): MeterValueUtils.normalizeToKwh throws on non-energy units
  *     (e.g. energy measurand default + unit A) → whole MeterValues/TransactionEvent CallError. BC
  *     energy extract allowlists Wh/kWh only (skip A/V/W) on webhook + LM paths.
+ *   - **#950** (open, 2026-08-24): Boot table PK leaves ocppConnectionName → auto-inc + stationId FK;
+ *     PUT /bootConfig + VariableAttributes migration. BC dual-path bootConfig is low-traffic; re-verify
+ *     response shape/keys after staging carries #950 (pairs with #849 commands bootConfig).
  * Webhooks: TransactionEvent seqNo + triggerReason (ChargingRateChanged/ChargingStateChanged → LM
  * reopt) + chargingState persist + meterValue energy (citrineosWebhooks.mjs / loadManagementReopt.mjs).
  * Hasura: station-status live queries only via BFF WS proxy; meter/LM stays on webhooks (live-query
@@ -170,6 +173,13 @@ export const CITRINEOS_UPSTREAM_OPEN = [
     url: 'https://github.com/citrineos/citrineos-core/pull/871',
     risk:
       'Closed unmerged (2026-08-21): normalizeToKwh throws on unknown/non-energy units reached from getTotalKwh/getMeterStart → entire MeterValues/TransactionEvent aborts with CallError. Distinct from #852 (measurand map) and #868 (0 wipe). BC webhook+LM energy extract allowlist Wh/kWh only and skip A/V/W on energy measurand; still do not bill off Citrine REST totalKwh while this class is unpatched upstream.',
+  },
+  {
+    id: 950,
+    title: 'Feature: Update OCPP Boot PK',
+    url: 'https://github.com/citrineos/citrineos-core/pull/950',
+    risk:
+      'Open (updated 2026-08-24): Boot PK becomes auto-increment integer + stationId FK (fixes tenant leak via ocppConnectionName PK); migrates Boot + VariableAttributes; updates PUT /bootConfig. BC dual-path getBootConfig is low hot-path but response identity/keys can drift after next-deploy — parse-do-not-cast any bootConfig body; re-canary when staging tracks next+#950 alongside #849 commands surface.',
   },
 ];
 

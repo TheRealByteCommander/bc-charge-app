@@ -118,7 +118,8 @@ const ROUTES = [
     targetHint: '/commands/bootConfig (PR #849 merge-spec)',
     status: 'dual_path',
     blocksPinBump: false,
-    notes: 'Still prefer resolveClientDataApiPaths for any new boot reads.',
+    notes:
+      'Still prefer resolveClientDataApiPaths for any new boot reads. Upstream #950 (open) changes Boot PK + PUT /bootConfig / VariableAttributes — re-verify response shape when staging carries next+#950; path dual-map itself unchanged.',
   },
 ];
 

@@ -44,3 +44,21 @@ export function liveSessionMetricsEqual(
     (a.pointsEarned ?? null) === (b.pointsEarned ?? null)
   );
 }
+
+/**
+ * True when a full session-list refresh can skip Zustand `set` for the active slice:
+ * live metrics unchanged and the list still has the same id/status spine (order-sensitive).
+ * Used by `refreshActiveSession` after REST re-fetch so history row inserts still apply.
+ */
+export function sessionListSpineEqual(
+  a: readonly Pick<ChargingSession, 'id' | 'status'>[] | null | undefined,
+  b: readonly Pick<ChargingSession, 'id' | 'status'>[] | null | undefined
+): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i]?.id !== b[i]?.id || a[i]?.status !== b[i]?.status) return false;
+  }
+  return true;
+}

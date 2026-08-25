@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ChargingSession } from '../types';
-import { liveSessionMetricsEqual } from './sessionLiveEqual';
+import { liveSessionMetricsEqual, sessionListSpineEqual } from './sessionLiveEqual';
 
 function base(over: Partial<ChargingSession> = {}): ChargingSession {
   return {
@@ -48,5 +48,25 @@ describe('liveSessionMetricsEqual', () => {
     expect(liveSessionMetricsEqual(null, null)).toBe(true);
     expect(liveSessionMetricsEqual(base(), null)).toBe(false);
     expect(liveSessionMetricsEqual(undefined, undefined)).toBe(true);
+  });
+});
+
+describe('sessionListSpineEqual', () => {
+  it('matches same id/status order', () => {
+    const a = [base(), base({ id: 'sess_2', status: 'completed' })];
+    const b = [base({ energyKwh: 99 }), base({ id: 'sess_2', status: 'completed', costEur: 1 })];
+    expect(sessionListSpineEqual(a, b)).toBe(true);
+  });
+
+  it('fails on length, id, or status drift', () => {
+    const a = [base()];
+    expect(sessionListSpineEqual(a, [])).toBe(false);
+    expect(sessionListSpineEqual(a, [base({ id: 'other' })])).toBe(false);
+    expect(sessionListSpineEqual(a, [base({ status: 'completed' })])).toBe(false);
+  });
+
+  it('handles nullish pair edges', () => {
+    expect(sessionListSpineEqual(null, null)).toBe(true);
+    expect(sessionListSpineEqual([], null)).toBe(false);
   });
 });

@@ -102,7 +102,7 @@ import {
 } from '../services/rewardFulfillment';
 import { findRewardById } from '../data/rewards';
 import { estimateSessionEnergyKwh } from '../utils/chargeEstimate';
-import { liveSessionMetricsEqual } from '../utils/sessionLiveEqual';
+import { liveSessionMetricsEqual, sessionListSpineEqual } from '../utils/sessionLiveEqual';
 
 interface AppState {
   initialized: boolean;
@@ -606,6 +606,13 @@ export const useAppStore = create<AppState>((set, get) => ({
         };
         const fulfillment = findFulfillmentById(rewardFulfillments, withEnergy.appliedFulfillmentId);
         const updated = applyLiveSessionPricing(withEnergy, user, fulfillment, rewardFulfillments);
+        // Same family as tickSession: identical live metrics must not mint new
+        // activeSession/sessions identities (cache save already equal-skips).
+        const current = get().activeSession;
+        if (current && liveSessionMetricsEqual(current, updated)) {
+          saveActiveSessionCache(user.id, updated);
+          return;
+        }
         saveActiveSessionCache(user.id, updated);
         const sessions = get().sessions;
         const nextSessions = sessions.some((s) => s.id === updated.id)
@@ -617,12 +624,27 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       const sessions = await fetchSessions();
       const active = sessions.find((s) => s.status === 'active') ?? null;
+      const prevSessions = get().sessions;
+      const current = get().activeSession;
+      // Resume/list path: skip Zustand set only when active live slice + id/status spine match
+      // (history inserts/status flips must still rewrite).
+      if (
+        sessionListSpineEqual(prevSessions, sessions) &&
+        ((active && current && liveSessionMetricsEqual(current, active)) ||
+          (!active && !current))
+      ) {
+        if (active) saveActiveSessionCache(user.id, active);
+        else clearActiveSessionCache();
+        return;
+      }
       if (active) saveActiveSessionCache(user.id, active);
       else clearActiveSessionCache();
       set({ sessions, activeSession: active });
     } catch {
       const cached = loadActiveSessionCache(user.id);
       if (!cached) return;
+      const current = get().activeSession;
+      if (current && liveSessionMetricsEqual(current, cached)) return;
       const sessions = get().sessions;
       const nextSessions = sessions.some((s) => s.id === cached.id)
         ? sessions.map((s) => (s.id === cached.id ? cached : s))

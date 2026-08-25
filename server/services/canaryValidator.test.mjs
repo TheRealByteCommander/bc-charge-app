@@ -208,6 +208,7 @@ describe('pinBump readiness gate', () => {
     assert.ok(stats.upstreamOpen.some((x) => x.id === 894), 'watch #894 TxProfile duration unit');
     assert.ok(stats.upstreamOpen.some((x) => x.id === 934), 'watch #934 charging-needs EVSE id mixup');
     assert.ok(stats.upstreamOpen.some((x) => x.id === 871), 'watch #871 non-energy meter unit throw');
+    assert.ok(stats.upstreamOpen.some((x) => x.id === 950), 'watch #950 Boot PK / bootConfig migration');
     assert.ok(!stats.upstreamOpen.some((x) => x.id === 849), '#849 no longer open');
     assert.ok(!stats.upstreamOpen.some((x) => x.id === 846), '#846 no longer open');
     assert.ok(!stats.upstreamOpen.some((x) => x.id === 852), '#852 no longer open');

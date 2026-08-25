@@ -20,6 +20,8 @@ function readAuthCache(token: string): boolean {
 
 function writeAuthCache(token: string): void {
   try {
+    // Skip rewrite while the same token is still within TTL (interval/start churn).
+    if (readAuthCache(token)) return;
     sessionStorage.setItem(
       AUTH_CACHE_KEY,
       JSON.stringify({ token, until: Date.now() + AUTH_CACHE_MS })
