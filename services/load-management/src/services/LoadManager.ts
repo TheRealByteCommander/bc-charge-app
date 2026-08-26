@@ -15,6 +15,7 @@ import {
 import {
   extractConnectorId as extractConnectorIdShape,
   extractEnergyKwhFromMeterValue as extractEnergyKwhFromMeterValueShape,
+  extractEvseId as extractEvseIdShape,
   extractIdTag as extractIdTagShape,
   extractMeterStartKwh,
   extractMeterStopKwh,
@@ -671,9 +672,14 @@ export class LoadManager extends EventEmitter {
     return extractStationIdShape(message, payload);
   }
 
-  /** OCPP 2.0.1 evse nest + 1.6 connectorId — shared shape helper. */
+  /** OCPP 2.0.1 evse nest + 1.6 connectorId — shared shape helper (#954 null-safe). */
   private extractConnectorId(payload: unknown): number {
     return extractConnectorIdShape(payload);
+  }
+
+  /** OCPP 2.0.1 EVSE id — never confused with connectorId (#934/#954). */
+  private extractEvseId(payload: unknown): number {
+    return extractEvseIdShape(payload);
   }
 
   /** OCPP 2.0.1 transactionInfo + 1.6 flat id — shared shape helper. */
@@ -828,9 +834,8 @@ export class LoadManager extends EventEmitter {
     const isGridCritical = Boolean(
       chargingLimit.isGridCritical ?? chargingLimit.is_grid_critical ?? false
     );
-    const evseId = Number(
-      payload.evseId ?? payload.evse_id ?? this.extractConnectorId(payload) ?? 0
-    );
+    // Prefer real EVSE id; do not fall back to connectorId (#934/#954 mixup).
+    const evseId = this.extractEvseId(payload);
     const schedule =
       extractChargingScheduleFromPayload(payload) ??
       extractChargingScheduleFromPayload(chargingLimit);
@@ -838,7 +843,7 @@ export class LoadManager extends EventEmitter {
 
     const entry: ExternalChargingLimit = {
       stationId,
-      evseId: Number.isFinite(evseId) ? evseId : 0,
+      evseId,
       source,
       isGridCritical,
       limitKw,

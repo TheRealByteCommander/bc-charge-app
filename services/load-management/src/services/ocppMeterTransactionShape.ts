@@ -36,8 +36,21 @@ export function extractStationId(message: unknown, payload: unknown): string | n
 }
 
 /**
+ * Coerce a connector/evse numeric id. Null/empty/NaN → missing (undefined).
+ * Finite 0 is valid (station-wide / connector 0).
+ */
+function readOptionalIdNumber(raw: unknown): number | undefined {
+  if (raw == null || raw === '') return undefined;
+  // Explicit JSON null already handled; reject objects/arrays/bools.
+  if (typeof raw === 'boolean' || typeof raw === 'object') return undefined;
+  const n = typeof raw === 'number' ? raw : Number(String(raw).trim());
+  return Number.isFinite(n) ? n : undefined;
+}
+
+/**
  * OCPP 2.0.1: connector under payload.evse; 1.6: payload.connectorId.
- * Falls back to 0 when missing/corrupt (matches prior LoadManager behaviour).
+ * Upstream #954: connectorId may be null/omitted (EVSE-only). Never treat
+ * `evse.id` as connectorId (#934 EvseTypes vs connector mixup) — missing → 0.
  */
 export function extractConnectorId(payload: unknown): number {
   const p = isPlainObject(payload) ? payload : null;
@@ -47,11 +60,27 @@ export function extractConnectorId(payload: unknown): number {
     p.connectorId ??
     p.connector_id ??
     evse?.connectorId ??
-    evse?.connector_id ??
-    evse?.id ??
-    0;
-  const n = Number(raw);
-  return Number.isFinite(n) ? n : 0;
+    evse?.connector_id;
+  const n = readOptionalIdNumber(raw);
+  return n !== undefined ? n : 0;
+}
+
+/**
+ * OCPP 2.0.1 EVSE id — top-level evseId or nested evse.id / evse.evseId.
+ * Distinct from connectorId (#934/#954). Missing/corrupt → 0 (station-wide).
+ */
+export function extractEvseId(payload: unknown): number {
+  const p = isPlainObject(payload) ? payload : null;
+  if (!p) return 0;
+  const evse = readNestedObject(p.evse);
+  const raw =
+    p.evseId ??
+    p.evse_id ??
+    evse?.evseId ??
+    evse?.evse_id ??
+    evse?.id;
+  const n = readOptionalIdNumber(raw);
+  return n !== undefined ? n : 0;
 }
 
 /**

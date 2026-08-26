@@ -1,6 +1,7 @@
 import {
   extractConnectorId,
   extractEnergyKwhFromMeterValue,
+  extractEvseId,
   extractIdTag,
   extractMeterStartKwh,
   extractMeterStopKwh,
@@ -26,12 +27,31 @@ describe('ocppMeterTransactionShape', () => {
   test('extractConnectorId supports 1.6 flat and 2.x evse nest', () => {
     expect(extractConnectorId({ connectorId: 2 })).toBe(2);
     expect(extractConnectorId({ connector_id: 3 })).toBe(3);
+    expect(extractConnectorId({ connectorId: 0 })).toBe(0);
     expect(extractConnectorId({ evse: { id: 1, connectorId: 4 } })).toBe(4);
     expect(extractConnectorId({ evse: { connector_id: 5 } })).toBe(5);
-    expect(extractConnectorId({ evse: { id: 7 } })).toBe(7);
+    // #954/#934: EVSE-only payload must NOT treat evse.id as connectorId
+    expect(extractConnectorId({ evse: { id: 7 } })).toBe(0);
+    expect(extractConnectorId({ connectorId: null, evse: { id: 9 } })).toBe(0);
+    expect(extractConnectorId({ connectorId: null })).toBe(0);
+    expect(extractConnectorId({ connector_id: '' })).toBe(0);
     expect(extractConnectorId({})).toBe(0);
     expect(extractConnectorId({ connectorId: 'nope' })).toBe(0);
     expect(extractConnectorId(null)).toBe(0);
+  });
+
+  test('extractEvseId reads top-level and nested EVSE ids without connector mixup', () => {
+    expect(extractEvseId({ evseId: 3 })).toBe(3);
+    expect(extractEvseId({ evse_id: 4 })).toBe(4);
+    expect(extractEvseId({ evse: { id: 7 } })).toBe(7);
+    expect(extractEvseId({ evse: { evseId: 8 } })).toBe(8);
+    expect(extractEvseId({ evse: { evse_id: 9 } })).toBe(9);
+    // connectorId alone is not an EVSE id
+    expect(extractEvseId({ connectorId: 2 })).toBe(0);
+    expect(extractEvseId({ evseId: null, connectorId: 2 })).toBe(0);
+    expect(extractEvseId({ evse: { id: 'x', connectorId: 1 } })).toBe(0);
+    expect(extractEvseId({})).toBe(0);
+    expect(extractEvseId(null)).toBe(0);
   });
 
   test('extractTransactionId supports flat + transactionInfo + rejects objects', () => {
