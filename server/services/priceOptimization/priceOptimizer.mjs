@@ -71,7 +71,7 @@ async function citrineosMessage(path, stationId, body, timeoutMs = 12_000) {
  * Fetch day-ahead electricity prices
  * @returns {Promise<Array<{timestamp: string, price: number}>} Array of price data points
  */
-async function fetchElectricityPrices() {
+export async function fetchElectricityPrices() {
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10000);
@@ -293,5 +293,6 @@ export function updatePriceOptimizationConfig(newConfig) {
 export default {
   optimizeChargingForConnector,
   getPriceOptimizationConfig,
-  updatePriceOptimizationConfig
+  updatePriceOptimizationConfig,
+  fetchElectricityPrices,
 };

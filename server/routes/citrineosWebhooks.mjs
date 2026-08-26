@@ -8,6 +8,7 @@ import {
   shouldTriggerLmReopt,
   triggerLmReoptFromWebhook,
 } from '../services/loadManagementReopt.mjs';
+import { normalizeOcppChargingState } from '../utils/ocppChargingState.mjs';
 
 const router = Router();
 
@@ -170,28 +171,6 @@ function pickMeterValueArray(body, transactionInfo) {
     if (Array.isArray(c) && c.length > 0) return c;
   }
   return null;
-}
-
-/** OCPP 2.0.1 Transaction.ChargingStateEnumType (+ common casing variants). */
-const OCPP_CHARGING_STATE_BY_KEY = Object.freeze(
-  Object.fromEntries(
-    ['Idle', 'EVConnected', 'Charging', 'SuspendedEV', 'SuspendedEVSE'].map((s) => [
-      s.toLowerCase(),
-      s,
-    ])
-  )
-);
-
-/**
- * Accept only real OCPP charging states; drop session lifecycle strings / garbage.
- * @param {unknown} raw
- * @returns {string | null}
- */
-function normalizeOcppChargingState(raw) {
-  if (typeof raw !== 'string') return null;
-  const t = raw.trim();
-  if (!t) return null;
-  return OCPP_CHARGING_STATE_BY_KEY[t.toLowerCase()] ?? null;
 }
 
 /**

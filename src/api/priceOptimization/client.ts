@@ -1,5 +1,6 @@
 /**
- * Frontend client for price-based charging optimization
+ * Frontend client for price-based charging optimization.
+ * Hits `/api/price-optimization/*` (server/routes/priceOptimization.mjs).
  */
 
 export interface ElectricityPricePoint {
@@ -21,16 +22,18 @@ export interface ChargingOptimizationResult {
   targetPowerWatts: number | null;
 }
 
+const BASE = '/api/price-optimization';
+
 /**
  * Fetch day-ahead electricity prices
  * @returns Promise<ElectricityPricePoint[]> Array of price data points
  */
 export async function fetchElectricityPrices(): Promise<ElectricityPricePoint[]> {
   try {
-    const response = await fetch('/api/citrineos/price-data', {
+    const response = await fetch(`${BASE}/price-data`, {
       method: 'GET',
       headers: {
-        'Accept': 'application/json',
+        Accept: 'application/json',
       },
     });
 
@@ -52,11 +55,12 @@ export async function fetchElectricityPrices(): Promise<ElectricityPricePoint[]>
  */
 export async function getPriceOptimizationConfig(): Promise<PriceOptimizationConfig> {
   try {
-    const response = await fetch('/api/citrineos/price-config', {
+    const response = await fetch(`${BASE}/config`, {
       method: 'GET',
       headers: {
-        'Accept': 'application/json',
+        Accept: 'application/json',
       },
+      credentials: 'include',
     });
 
     if (!response.ok) {
@@ -82,13 +86,16 @@ export async function getPriceOptimizationConfig(): Promise<PriceOptimizationCon
  * @param config Partial<PriceOptimizationConfig> New configuration values
  * @returns Promise<boolean> True if successful
  */
-export async function updatePriceOptimizationConfig(config: Partial<PriceOptimizationConfig>): Promise<boolean> {
+export async function updatePriceOptimizationConfig(
+  config: Partial<PriceOptimizationConfig>
+): Promise<boolean> {
   try {
-    const response = await fetch('/api/citrineos/price-config', {
+    const response = await fetch(`${BASE}/config`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
+      credentials: 'include',
       body: JSON.stringify(config),
     });
 
@@ -106,7 +113,7 @@ export async function updatePriceOptimizationConfig(config: Partial<PriceOptimiz
 /**
  * Get charging optimization recommendation for a connector
  * @param stationId string Station identifier
- * @param connectorId string Connector identifier
+ * @param connectorId string Connector identifier (`evse-N-conn-M` or bare int)
  * @returns Promise<ChargingOptimizationResult> Optimization recommendation
  */
 export async function getChargingOptimizationRecommendation(
@@ -114,10 +121,14 @@ export async function getChargingOptimizationRecommendation(
   connectorId: string
 ): Promise<ChargingOptimizationResult> {
   try {
-    const response = await fetch(`/api/citrineos/charging-recommendation?stationId=${encodeURIComponent(stationId)}&connectorId=${encodeURIComponent(connectorId)}`, {
+    const qs = new URLSearchParams({
+      stationId,
+      connectorId,
+    });
+    const response = await fetch(`${BASE}/charging-recommendation?${qs.toString()}`, {
       method: 'GET',
       headers: {
-        'Accept': 'application/json',
+        Accept: 'application/json',
       },
     });
 

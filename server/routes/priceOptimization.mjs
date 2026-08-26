@@ -1,58 +1,86 @@
 /**
  * Price-based charging optimization routes for CitrineOS
+ * Mount: /api/price-optimization
+ *
+ * Also re-exported under /api/citrineos/* aliases so the frontend client
+ * (`src/api/priceOptimization/client.ts`) hits live handlers.
  */
 
 import { Router } from 'express';
 import { optionalAuth, requireAuth } from '../middleware/auth.mjs';
-import { optimizeChargingForConnector, getPriceOptimizationConfig, updatePriceOptimizationConfig } from '../services/priceOptimization/priceOptimizer.mjs';
+import {
+  optimizeChargingForConnector,
+  getPriceOptimizationConfig,
+  updatePriceOptimizationConfig,
+  fetchElectricityPrices as fetchOptimizerPrices,
+} from '../services/priceOptimization/priceOptimizer.mjs';
+import { parseConnectorRef } from '../utils/connectorRef.mjs';
 
 const router = Router();
 
-// Mock function to fetch electricity prices - in a real implementation,
-// this would connect to an actual electricity price API
-async function fetchElectricityPrices() {
-  // This is a mock implementation - in production, connect to a real API
-  // like Entsoe-E or a local energy provider API
-  
-  const now = new Date();
-  const prices = [];
-  
-  // Generate 24 hours of mock price data
-  for (let i = 0; i < 24; i++) {
-    const hour = new Date(now);
-    hour.setHours(now.getHours() + i);
-    
-    // Simple pricing model: higher prices during day, lower at night
-    let price;
-    const hourOfDay = hour.getHours();
-    if (hourOfDay >= 7 && hourOfDay <= 20) {
-      // Daytime prices (higher)
-      price = 0.30 + Math.random() * 0.20; // 0.30 - 0.50 EUR/kWh
-    } else {
-      // Nighttime prices (lower)
-      price = 0.20 + Math.random() * 0.15; // 0.20 - 0.35 EUR/kWh
-    }
-    
-    prices.push({
-      timestamp: hour.toISOString(),
-      price: parseFloat(price.toFixed(4))
-    });
+/**
+ * Resolve stationId + connectorAppId → { stationId, evseId, connectorId }.
+ * @param {unknown} stationIdRaw
+ * @param {unknown} connectorIdRaw
+ * @returns {{ ok: true, stationId: string, evseId: number, connectorId: number } | { ok: false, status: number, error: string }}
+ */
+function resolveStationConnector(stationIdRaw, connectorIdRaw) {
+  const stationId =
+    stationIdRaw == null ? '' : String(stationIdRaw).trim();
+  if (!stationId) {
+    return { ok: false, status: 400, error: 'stationId and connectorId are required' };
   }
-  
-  return prices;
+  const ref = parseConnectorRef(connectorIdRaw);
+  if (!ref) {
+    return {
+      ok: false,
+      status: 400,
+      error:
+        'Invalid connectorId (expected evse-{n}-conn-{m} or non-negative integer)',
+    };
+  }
+  return {
+    ok: true,
+    stationId,
+    evseId: ref.evseId,
+    connectorId: ref.connectorId,
+  };
 }
 
 /**
  * GET /api/price-optimization/price-data
- * Fetch day-ahead electricity prices
+ * Fetch day-ahead electricity prices (optimizer source; falls back internally).
  */
+/** Local synthetic day-ahead series when external price API is down. */
+function buildFallbackPriceSeries() {
+  const now = new Date();
+  const prices = [];
+  for (let i = 0; i < 24; i += 1) {
+    const hour = new Date(now);
+    hour.setHours(now.getHours() + i, 0, 0, 0);
+    const hourOfDay = hour.getHours();
+    const price =
+      hourOfDay >= 7 && hourOfDay <= 20
+        ? 0.3 + (i % 5) * 0.02
+        : 0.2 + (i % 4) * 0.015;
+    prices.push({
+      timestamp: hour.toISOString(),
+      price: Number(price.toFixed(4)),
+    });
+  }
+  return prices;
+}
+
 router.get('/price-data', optionalAuth, async (_req, res) => {
   try {
-    const prices = await fetchElectricityPrices();
-    res.json({ prices });
+    const prices = await fetchOptimizerPrices();
+    res.json({ prices, source: 'api' });
   } catch (error) {
-    console.error('Error fetching electricity prices:', error);
-    res.status(502).json({ error: 'Failed to fetch electricity prices' });
+    console.warn(
+      'Price API unavailable — serving synthetic fallback series',
+      error instanceof Error ? error.message : error
+    );
+    res.json({ prices: buildFallbackPriceSeries(), source: 'fallback' });
   }
 });
 
@@ -62,11 +90,10 @@ router.get('/price-data', optionalAuth, async (_req, res) => {
  */
 router.get('/config', requireAuth, (req, res) => {
   try {
-    // Only admins should be able to get the full config
     if (req.user?.role !== 'admin') {
       return res.status(403).json({ error: 'Admin access required' });
     }
-    
+
     const config = getPriceOptimizationConfig();
     res.json(config);
   } catch (error) {
@@ -81,14 +108,13 @@ router.get('/config', requireAuth, (req, res) => {
  */
 router.post('/config', requireAuth, async (req, res) => {
   try {
-    // Only admins should be able to update the config
     if (req.user?.role !== 'admin') {
       return res.status(403).json({ error: 'Admin access required' });
     }
-    
+
     const newConfig = req.body;
     updatePriceOptimizationConfig(newConfig);
-    
+
     res.json({ message: 'Configuration updated successfully' });
   } catch (error) {
     console.error('Error updating price optimization config:', error);
@@ -101,28 +127,24 @@ router.post('/config', requireAuth, async (req, res) => {
  * Get charging optimization recommendation for a connector
  */
 router.get('/charging-recommendation', optionalAuth, async (req, res) => {
-  const { stationId, connectorId } = req.query;
-  
-  if (!stationId || !connectorId) {
-    return res.status(400).json({ error: 'stationId and connectorId are required' });
+  const resolved = resolveStationConnector(req.query.stationId, req.query.connectorId);
+  if (!resolved.ok) {
+    return res.status(resolved.status).json({ error: resolved.error });
   }
-  
+
   try {
-    // For this example, we'll use mock values
-    // In a real implementation, you would fetch the actual station data
-    const evseId = 1;
-    const maxPowerWatts = 22000; // Default to 22kW
+    // Defaults until station catalog maxPower is wired through; keep response shape stable.
+    const maxPowerWatts = 22000;
     const isCurrentlyPaused = false;
-    
-    // Get the optimization recommendation
+
     const result = await optimizeChargingForConnector(
-      stationId,
-      evseId,
-      parseInt(connectorId.split('-')[3]), // Extract connector ID from "evse-X-conn-Y"
+      resolved.stationId,
+      resolved.evseId,
+      resolved.connectorId,
       maxPowerWatts,
       isCurrentlyPaused
     );
-    
+
     res.json(result);
   } catch (error) {
     console.error('Error getting charging optimization recommendation:', error);
@@ -135,27 +157,23 @@ router.get('/charging-recommendation', optionalAuth, async (req, res) => {
  * Optimize charging for a specific connector
  */
 router.post('/optimize-charging', requireAuth, async (req, res) => {
-  const { stationId, connectorId, isCurrentlyPaused } = req.body;
-  
-  if (!stationId || !connectorId) {
-    return res.status(400).json({ error: 'stationId and connectorId are required' });
+  const body = req.body ?? {};
+  const resolved = resolveStationConnector(body.stationId, body.connectorId);
+  if (!resolved.ok) {
+    return res.status(resolved.status).json({ error: resolved.error });
   }
-  
+
   try {
-    // For this example, we'll use mock values
-    // In a real implementation, you would fetch the actual station data
-    const evseId = 1;
-    const maxPowerWatts = 22000; // Default to 22kW
-    
-    // Get the optimization result
+    const maxPowerWatts = 22000;
+
     const result = await optimizeChargingForConnector(
-      stationId,
-      evseId,
-      parseInt(connectorId.split('-')[3]), // Extract connector ID from "evse-X-conn-Y"
+      resolved.stationId,
+      resolved.evseId,
+      resolved.connectorId,
       maxPowerWatts,
-      Boolean(isCurrentlyPaused)
+      Boolean(body.isCurrentlyPaused)
     );
-    
+
     res.json(result);
   } catch (error) {
     console.error('Error optimizing charging:', error);
@@ -164,3 +182,4 @@ router.post('/optimize-charging', requireAuth, async (req, res) => {
 });
 
 export default router;
+export { resolveStationConnector };

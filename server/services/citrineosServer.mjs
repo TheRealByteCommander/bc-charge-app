@@ -7,6 +7,8 @@ import {
   citrineosDualGet,
   resolveDataApiPathCandidates,
 } from '../utils/citrineosDataApiPaths.mjs';
+import { parseConnectorRef } from '../utils/connectorRef.mjs';
+import { readOcppChargingStateFromRow } from '../utils/ocppChargingState.mjs';
 import { ensureCitrineosAuthorization } from './citrineosAuth.mjs';
 import { canaryValidate } from './canaryValidator.mjs';
 import {
@@ -232,12 +234,6 @@ async function hasuraRequest(query, variables) {
   return data;
 }
 
-function parseConnectorRef(connectorAppId) {
-  const m = /^evse-(\d+)-conn-(\d+)$/.exec(connectorAppId ?? '');
-  if (!m) return null;
-  return { evseId: Number(m[1]), connectorId: Number(m[2]) };
-}
-
 function parseStationDbId(stationId) {
   const parsed = Number(stationId);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
@@ -369,7 +365,8 @@ function normalizeTransactionRow(tx) {
     isActive: tx.isActive ?? tx.active ?? null,
     totalKwh: tx.totalKwh ?? tx.totalEnergyKwh ?? tx.energyKwh ?? null,
     totalCost: tx.totalCost ?? tx.cost ?? null,
-    chargingState: tx.chargingState ?? tx.state ?? null,
+    // Never fall back to tx.state — lifecycle strings poison idle-fee/LM (webhook parity).
+    chargingState: readOcppChargingStateFromRow(tx),
   };
 }
 
