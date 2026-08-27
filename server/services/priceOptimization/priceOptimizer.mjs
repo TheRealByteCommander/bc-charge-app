@@ -342,27 +342,39 @@ export async function setChargingProfile(stationId, evseId, _connectorId, target
 }
 
 /**
- * Optimize charging for a specific station and connector
- * @param {string} stationId - OCPP station identifier
- * @param {number} evseId - EVSE identifier
- * @param {number} connectorId - Connector identifier
- * @param {number} maxPowerWatts - Maximum power in watts for this connector
- * @param {boolean} isCurrentlyPaused - Whether charging is currently paused
+ * @typedef {{ shouldPause: boolean, currentPrice: number|null, targetPowerWatts: number|null, profileApplied?: boolean }}
+ * ChargingOptimizationResult
+ */
+
+/**
+ * Safe max power watts for a connector recommendation.
+ * @param {unknown} maxPowerWatts
+ * @returns {number}
+ */
+export function normalizeMaxPowerWatts(maxPowerWatts) {
+  const maxW = Number(maxPowerWatts);
+  return Number.isFinite(maxW) && maxW > 0 ? maxW : 0;
+}
+
+/**
+ * Read-only charging recommendation from prices (no OCPP side effects).
+ * Use for GET /charging-recommendation so UI polls never SetChargingProfile.
+ *
+ * @param {number} maxPowerWatts
+ * @param {boolean} isCurrentlyPaused
+ * @param {Date} [at]
  * @returns {Promise<{shouldPause: boolean, currentPrice: number|null, targetPowerWatts: number|null}>}
  */
-export async function optimizeChargingForConnector(
-  stationId,
-  evseId,
-  connectorId,
+export async function computeChargingRecommendation(
   maxPowerWatts,
-  isCurrentlyPaused
+  isCurrentlyPaused,
+  at = new Date()
 ) {
-  const maxW = Number(maxPowerWatts);
-  const safeMaxW = Number.isFinite(maxW) && maxW > 0 ? maxW : 0;
+  const safeMaxW = normalizeMaxPowerWatts(maxPowerWatts);
 
   try {
     const prices = await fetchElectricityPrices();
-    const currentPrice = getCurrentPrice(prices, new Date());
+    const currentPrice = getCurrentPrice(prices, at instanceof Date ? at : new Date());
     const shouldPause = shouldPauseCharging(currentPrice, Boolean(isCurrentlyPaused));
 
     let targetPowerWatts;
@@ -373,21 +385,13 @@ export async function optimizeChargingForConnector(
       targetPowerWatts = safeMaxW;
     }
 
-    // Only send profile if it would change the current state
-    if (
-      (shouldPause && !isCurrentlyPaused) ||
-      (!shouldPause && isCurrentlyPaused)
-    ) {
-      await setChargingProfile(stationId, evseId, connectorId, targetPowerWatts);
-    }
-
     return {
       shouldPause,
       currentPrice,
       targetPowerWatts,
     };
   } catch (error) {
-    console.error(`Failed to optimize charging for station ${stationId}:`, error);
+    console.error('Failed to compute charging recommendation:', error);
 
     // In case of error, continue normal charging
     return {
@@ -399,6 +403,52 @@ export async function optimizeChargingForConnector(
 }
 
 /**
+ * Optimize charging for a specific station and connector (may SetChargingProfile).
+ * @param {string} stationId - OCPP station identifier
+ * @param {number} evseId - EVSE identifier
+ * @param {number} connectorId - Connector identifier
+ * @param {number} maxPowerWatts - Maximum power in watts for this connector
+ * @param {boolean} isCurrentlyPaused - Whether charging is currently paused
+ * @param {{ applyProfile?: boolean }} [opts] - applyProfile defaults true; false = compute only
+ * @returns {Promise<{shouldPause: boolean, currentPrice: number|null, targetPowerWatts: number|null, profileApplied: boolean}>}
+ */
+export async function optimizeChargingForConnector(
+  stationId,
+  evseId,
+  connectorId,
+  maxPowerWatts,
+  isCurrentlyPaused,
+  opts = {}
+) {
+  const applyProfile = opts?.applyProfile !== false;
+  const recommendation = await computeChargingRecommendation(
+    maxPowerWatts,
+    isCurrentlyPaused
+  );
+
+  let profileApplied = false;
+  if (applyProfile) {
+    const shouldApply =
+      (recommendation.shouldPause && !isCurrentlyPaused) ||
+      (!recommendation.shouldPause && isCurrentlyPaused);
+
+    if (shouldApply) {
+      profileApplied = await setChargingProfile(
+        stationId,
+        evseId,
+        connectorId,
+        recommendation.targetPowerWatts
+      );
+    }
+  }
+
+  return {
+    ...recommendation,
+    profileApplied,
+  };
+}
+
+/**
  * Get price optimization configuration
  * @returns {Object} Current configuration
  */
@@ -407,18 +457,58 @@ export function getPriceOptimizationConfig() {
 }
 
 /**
- * Update price optimization configuration
- * @param {Object} newConfig - New configuration values
+ * Sanitize partial config updates — only known keys, typed + finite.
+ * @param {unknown} newConfig
+ * @returns {Partial<typeof PRICE_OPTIMIZATION_CONFIG>}
+ */
+export function sanitizePriceOptimizationConfigUpdate(newConfig) {
+  if (!isPlainObject(newConfig)) return {};
+
+  /** @type {Partial<typeof PRICE_OPTIMIZATION_CONFIG>} */
+  const next = {};
+
+  if ('priceThreshold' in newConfig) {
+    const v = Number(newConfig.priceThreshold);
+    if (Number.isFinite(v) && v >= 0 && v <= 10) next.priceThreshold = v;
+  }
+  if ('hysteresis' in newConfig) {
+    const v = Number(newConfig.hysteresis);
+    if (Number.isFinite(v) && v >= 0 && v <= 1) next.hysteresis = v;
+  }
+  if ('minChargingPowerPercent' in newConfig) {
+    const v = parseInt(String(newConfig.minChargingPowerPercent), 10);
+    if (Number.isFinite(v) && v >= 0 && v <= 100) next.minChargingPowerPercent = v;
+  }
+  if ('priceApiUrl' in newConfig && typeof newConfig.priceApiUrl === 'string') {
+    const url = newConfig.priceApiUrl.trim();
+    if (/^https?:\/\//i.test(url) && url.length <= 2048) next.priceApiUrl = url;
+  }
+  if ('priceCheckIntervalMinutes' in newConfig) {
+    const v = parseInt(String(newConfig.priceCheckIntervalMinutes), 10);
+    if (Number.isFinite(v) && v >= 1 && v <= 24 * 60) next.priceCheckIntervalMinutes = v;
+  }
+
+  return next;
+}
+
+/**
+ * Update price optimization configuration (validated known keys only).
+ * @param {unknown} newConfig - New configuration values
+ * @returns {typeof PRICE_OPTIMIZATION_CONFIG} Snapshot after update
  */
 export function updatePriceOptimizationConfig(newConfig) {
-  if (!isPlainObject(newConfig)) return;
-  Object.assign(PRICE_OPTIMIZATION_CONFIG, newConfig);
+  const sanitized = sanitizePriceOptimizationConfigUpdate(newConfig);
+  Object.assign(PRICE_OPTIMIZATION_CONFIG, sanitized);
+  return getPriceOptimizationConfig();
 }
 
 export default {
   optimizeChargingForConnector,
+  computeChargingRecommendation,
+  normalizeMaxPowerWatts,
   getPriceOptimizationConfig,
   updatePriceOptimizationConfig,
+  sanitizePriceOptimizationConfigUpdate,
   fetchElectricityPrices,
   normalizeElectricityPriceData,
   buildPriceChargingProfile,

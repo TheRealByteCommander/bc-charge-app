@@ -10,13 +10,19 @@ import { Router } from 'express';
 import { optionalAuth, requireAuth } from '../middleware/auth.mjs';
 import {
   optimizeChargingForConnector,
+  computeChargingRecommendation,
+  normalizeMaxPowerWatts,
   getPriceOptimizationConfig,
   updatePriceOptimizationConfig,
+  sanitizePriceOptimizationConfigUpdate,
   fetchElectricityPrices as fetchOptimizerPrices,
 } from '../services/priceOptimization/priceOptimizer.mjs';
 import { parseConnectorRef } from '../utils/connectorRef.mjs';
 
 const router = Router();
+
+/** Default catalog max until station power is wired through. */
+const DEFAULT_MAX_POWER_WATTS = 22000;
 
 /**
  * Resolve stationId + connectorAppId → { stationId, evseId, connectorId }.
@@ -45,6 +51,35 @@ function resolveStationConnector(stationIdRaw, connectorIdRaw) {
     evseId: ref.evseId,
     connectorId: ref.connectorId,
   };
+}
+
+/**
+ * Parse optional maxPowerWatts (query/body). Invalid/missing → default catalog max.
+ * @param {unknown} raw
+ * @returns {number}
+ */
+function resolveMaxPowerWatts(raw) {
+  if (raw == null || raw === '') return DEFAULT_MAX_POWER_WATTS;
+  const n = normalizeMaxPowerWatts(raw);
+  // Cap absurd values (MW-class) so bad clients cannot request runaway limits.
+  if (n <= 0) return DEFAULT_MAX_POWER_WATTS;
+  return Math.min(n, 500_000);
+}
+
+/**
+ * Parse paused flag from query/body (boolean or common string forms).
+ * @param {unknown} raw
+ * @returns {boolean}
+ */
+function resolvePausedFlag(raw) {
+  if (raw === true || raw === 1) return true;
+  if (raw === false || raw === 0 || raw == null || raw === '') return false;
+  if (typeof raw === 'string') {
+    const s = raw.trim().toLowerCase();
+    if (s === '1' || s === 'true' || s === 'yes' || s === 'on') return true;
+    if (s === '0' || s === 'false' || s === 'no' || s === 'off') return false;
+  }
+  return Boolean(raw);
 }
 
 /**
@@ -112,10 +147,16 @@ router.post('/config', requireAuth, async (req, res) => {
       return res.status(403).json({ error: 'Admin access required' });
     }
 
-    const newConfig = req.body;
-    updatePriceOptimizationConfig(newConfig);
+    const sanitized = sanitizePriceOptimizationConfigUpdate(req.body);
+    if (Object.keys(sanitized).length === 0) {
+      return res.status(400).json({
+        error:
+          'No valid config fields (priceThreshold, hysteresis, minChargingPowerPercent, priceApiUrl, priceCheckIntervalMinutes)',
+      });
+    }
 
-    res.json({ message: 'Configuration updated successfully' });
+    const config = updatePriceOptimizationConfig(sanitized);
+    res.json({ message: 'Configuration updated successfully', config });
   } catch (error) {
     console.error('Error updating price optimization config:', error);
     res.status(500).json({ error: 'Failed to update configuration' });
@@ -124,7 +165,7 @@ router.post('/config', requireAuth, async (req, res) => {
 
 /**
  * GET /api/price-optimization/charging-recommendation
- * Get charging optimization recommendation for a connector
+ * Read-only recommendation for a connector (never SetChargingProfile).
  */
 router.get('/charging-recommendation', optionalAuth, async (req, res) => {
   const resolved = resolveStationConnector(req.query.stationId, req.query.connectorId);
@@ -133,19 +174,22 @@ router.get('/charging-recommendation', optionalAuth, async (req, res) => {
   }
 
   try {
-    // Defaults until station catalog maxPower is wired through; keep response shape stable.
-    const maxPowerWatts = 22000;
-    const isCurrentlyPaused = false;
+    const maxPowerWatts = resolveMaxPowerWatts(req.query.maxPowerWatts);
+    const isCurrentlyPaused = resolvePausedFlag(req.query.isCurrentlyPaused);
 
-    const result = await optimizeChargingForConnector(
-      resolved.stationId,
-      resolved.evseId,
-      resolved.connectorId,
+    // Read-only: UI polls must not mutate charger state via SetChargingProfile.
+    const result = await computeChargingRecommendation(
       maxPowerWatts,
       isCurrentlyPaused
     );
 
-    res.json(result);
+    res.json({
+      ...result,
+      stationId: resolved.stationId,
+      evseId: resolved.evseId,
+      connectorId: resolved.connectorId,
+      profileApplied: false,
+    });
   } catch (error) {
     console.error('Error getting charging optimization recommendation:', error);
     res.status(502).json({ error: 'Failed to get charging recommendation' });
@@ -154,7 +198,7 @@ router.get('/charging-recommendation', optionalAuth, async (req, res) => {
 
 /**
  * POST /api/price-optimization/optimize-charging
- * Optimize charging for a specific connector
+ * Optimize charging for a specific connector (may SetChargingProfile).
  */
 router.post('/optimize-charging', requireAuth, async (req, res) => {
   const body = req.body ?? {};
@@ -164,17 +208,24 @@ router.post('/optimize-charging', requireAuth, async (req, res) => {
   }
 
   try {
-    const maxPowerWatts = 22000;
+    const maxPowerWatts = resolveMaxPowerWatts(body.maxPowerWatts);
+    const isCurrentlyPaused = resolvePausedFlag(body.isCurrentlyPaused);
 
     const result = await optimizeChargingForConnector(
       resolved.stationId,
       resolved.evseId,
       resolved.connectorId,
       maxPowerWatts,
-      Boolean(body.isCurrentlyPaused)
+      isCurrentlyPaused,
+      { applyProfile: true }
     );
 
-    res.json(result);
+    res.json({
+      ...result,
+      stationId: resolved.stationId,
+      evseId: resolved.evseId,
+      connectorId: resolved.connectorId,
+    });
   } catch (error) {
     console.error('Error optimizing charging:', error);
     res.status(502).json({ error: 'Failed to optimize charging' });
@@ -182,4 +233,9 @@ router.post('/optimize-charging', requireAuth, async (req, res) => {
 });
 
 export default router;
-export { resolveStationConnector };
+export {
+  resolveStationConnector,
+  resolveMaxPowerWatts,
+  resolvePausedFlag,
+  DEFAULT_MAX_POWER_WATTS,
+};

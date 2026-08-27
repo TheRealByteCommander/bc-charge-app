@@ -2,11 +2,13 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   getPriceOptimizationConfig,
   updatePriceOptimizationConfig,
+  sanitizePriceOptimizationConfigUpdate,
   normalizeElectricityPriceData,
   buildPriceChargingProfile,
   getCurrentPrice,
   shouldPauseCharging,
   setChargingProfile,
+  computeChargingRecommendation,
   optimizeChargingForConnector,
   setPriceOptimizerTestDeps,
 } from './priceOptimizer.mjs';
@@ -34,9 +36,22 @@ describe('priceOptimizer', () => {
     expect(config.minChargingPowerPercent).toBe(20);
   });
 
-  it('aktualisiert Konfigurationswerte', () => {
-    updatePriceOptimizationConfig({ priceThreshold: 0.4 });
+  it('aktualisiert Konfigurationswerte (nur bekannte Keys, validiert)', () => {
+    updatePriceOptimizationConfig({ priceThreshold: 0.4, __proto__: { x: 1 }, evil: 'nope' });
     expect(getPriceOptimizationConfig().priceThreshold).toBe(0.4);
+    expect(getPriceOptimizationConfig()).not.toHaveProperty('evil');
+
+    // Out-of-range / non-http rejected
+    expect(sanitizePriceOptimizationConfigUpdate({ priceThreshold: -1 })).toEqual({});
+    expect(sanitizePriceOptimizationConfigUpdate({ priceApiUrl: 'javascript:alert(1)' })).toEqual(
+      {}
+    );
+    expect(
+      sanitizePriceOptimizationConfigUpdate({
+        minChargingPowerPercent: 150,
+        priceCheckIntervalMinutes: 0,
+      })
+    ).toEqual({});
   });
 
   describe('normalizeElectricityPriceData', () => {
@@ -165,6 +180,28 @@ describe('priceOptimizer', () => {
     });
   });
 
+  describe('computeChargingRecommendation (read-only)', () => {
+    it('throttles on high price without posting SetChargingProfile', async () => {
+      const posts = [];
+      setPriceOptimizerTestDeps({
+        fetchPrices: async () => [
+          { timestamp: '2026-08-27T00:00:00.000Z', price: 0.5 },
+          { timestamp: '2026-08-28T00:00:00.000Z', price: 0.5 },
+        ],
+        citrineosPost: async (_p, _s, body) => {
+          posts.push(body);
+          return { status: 'Accepted' };
+        },
+      });
+
+      const result = await computeChargingRecommendation(22000, false);
+      expect(result.shouldPause).toBe(true);
+      expect(result.currentPrice).toBe(0.5);
+      expect(result.targetPowerWatts).toBe(4400);
+      expect(posts).toHaveLength(0);
+    });
+  });
+
   describe('optimizeChargingForConnector', () => {
     it('throttles on high price and sends profile only on state change', async () => {
       const posts = [];
@@ -183,6 +220,7 @@ describe('priceOptimizer', () => {
       expect(result.shouldPause).toBe(true);
       expect(result.currentPrice).toBe(0.5);
       expect(result.targetPowerWatts).toBe(4400); // 20% of 22 kW
+      expect(result.profileApplied).toBe(true);
       expect(posts).toHaveLength(1);
       expect(
         posts[0].chargingProfile.chargingSchedule.chargingSchedulePeriod[0].limit
@@ -192,6 +230,16 @@ describe('priceOptimizer', () => {
       posts.length = 0;
       const again = await optimizeChargingForConnector('CS-X', 1, 1, 22000, true);
       expect(again.shouldPause).toBe(true);
+      expect(again.profileApplied).toBe(false);
+      expect(posts).toHaveLength(0);
+
+      // applyProfile:false never posts even on state change
+      posts.length = 0;
+      const dry = await optimizeChargingForConnector('CS-X', 1, 1, 22000, false, {
+        applyProfile: false,
+      });
+      expect(dry.shouldPause).toBe(true);
+      expect(dry.profileApplied).toBe(false);
       expect(posts).toHaveLength(0);
     });
 
@@ -211,6 +259,7 @@ describe('priceOptimizer', () => {
         shouldPause: false,
         currentPrice: null,
         targetPowerWatts: 22000,
+        profileApplied: false,
       });
     });
   });

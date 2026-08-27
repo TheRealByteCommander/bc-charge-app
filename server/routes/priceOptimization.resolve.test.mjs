@@ -3,7 +3,12 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { resolveStationConnector } from './priceOptimization.mjs';
+import {
+  resolveStationConnector,
+  resolveMaxPowerWatts,
+  resolvePausedFlag,
+  DEFAULT_MAX_POWER_WATTS,
+} from './priceOptimization.mjs';
 
 describe('resolveStationConnector', () => {
   it('parses canonical app connector ids', () => {
@@ -37,5 +42,21 @@ describe('resolveStationConnector', () => {
       assert.equal(multi.evseId, 10);
       assert.equal(multi.connectorId, 12);
     }
+  });
+});
+
+describe('resolveMaxPowerWatts / resolvePausedFlag', () => {
+  it('defaults and caps max power', () => {
+    assert.equal(resolveMaxPowerWatts(undefined), DEFAULT_MAX_POWER_WATTS);
+    assert.equal(resolveMaxPowerWatts('11000'), 11000);
+    assert.equal(resolveMaxPowerWatts(-1), DEFAULT_MAX_POWER_WATTS);
+    assert.equal(resolveMaxPowerWatts(1_000_000), 500_000);
+  });
+
+  it('parses paused query/body flags', () => {
+    assert.equal(resolvePausedFlag(undefined), false);
+    assert.equal(resolvePausedFlag('true'), true);
+    assert.equal(resolvePausedFlag('0'), false);
+    assert.equal(resolvePausedFlag(true), true);
   });
 });
