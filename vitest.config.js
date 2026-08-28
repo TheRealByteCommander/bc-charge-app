@@ -25,6 +25,8 @@ export default defineConfig({
       'src/api/backend/pricing.test.ts',
       'src/services/stationCheckIn.test.ts',
       'src/services/favoriteAvailability.test.ts',
+      'src/i18n/LocaleContext.test.ts',
+      'src/utils/profilePatchEqual.test.ts',
     ],
     environment: 'node',
   },

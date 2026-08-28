@@ -1014,20 +1014,38 @@ export async function getFulfillmentById(userId, fulfillmentId) {
 
 export async function markFulfillmentUsed(userId, fulfillmentId, sessionId) {
   const usedAt = new Date().toISOString();
+  const nextSessionId = sessionId ?? null;
   if (isPostgres()) {
+    // Session-end / billing retries: skip no-op when already used with same session_id.
+    // Preserve first used_at; only stamp session_id when a non-null id is provided.
     await pgPool.query(
       `UPDATE reward_fulfillments
-       SET status = 'used', used_at = $3, session_id = $4
-       WHERE user_id = $1 AND id = $2`,
-      [userId, fulfillmentId, usedAt, sessionId ?? null]
+       SET status = 'used',
+           used_at = COALESCE(used_at, $3),
+           session_id = COALESCE($4, session_id)
+       WHERE user_id = $1 AND id = $2
+         AND (
+           status IS DISTINCT FROM 'used'
+           OR ($4::text IS NOT NULL AND session_id IS DISTINCT FROM $4)
+         )`,
+      [userId, fulfillmentId, usedAt, nextSessionId]
     );
     return getFulfillmentById(userId, fulfillmentId);
   }
+  // SQLite parity with PG IS DISTINCT FROM: identical used+session retries stay no-op.
   sqliteDb
     .prepare(
-      `UPDATE reward_fulfillments SET status = 'used', used_at = ?, session_id = ? WHERE user_id = ? AND id = ?`
+      `UPDATE reward_fulfillments
+       SET status = 'used',
+           used_at = COALESCE(used_at, ?),
+           session_id = COALESCE(?, session_id)
+       WHERE user_id = ? AND id = ?
+         AND (
+           status IS NOT 'used'
+           OR (? IS NOT NULL AND session_id IS NOT ?)
+         )`
     )
-    .run(usedAt, sessionId ?? null, userId, fulfillmentId);
+    .run(usedAt, nextSessionId, userId, fulfillmentId, nextSessionId, nextSessionId);
   return getFulfillmentById(userId, fulfillmentId);
 }
 

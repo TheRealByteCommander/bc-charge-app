@@ -119,7 +119,7 @@ const ROUTES = [
     status: 'dual_path',
     blocksPinBump: false,
     notes:
-      'Still prefer resolveClientDataApiPaths for any new boot reads. Upstream #950 (open) changes Boot PK + PUT /bootConfig / VariableAttributes — re-verify response shape when staging carries next+#950; path dual-map itself unchanged.',
+      'Still prefer resolveClientDataApiPaths for any new boot reads. Upstream #950 (open, active 2026-08-26): Boot PK becomes auto-inc + stationId FK, PUT /bootConfig, boot.dto/VariableAttribute + BootNotification handlers — re-verify response identity (not ocppConnectionName-as-PK) when staging carries next+#950; path dual-map itself unchanged.',
   },
 ];
 

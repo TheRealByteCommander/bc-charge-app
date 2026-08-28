@@ -48,6 +48,7 @@ import type {
 } from '../types';
 import { hashPassword, upgradePasswordHashIfLegacy, verifyPassword } from '../utils/password';
 import { generateId, generateMembershipId } from '../utils/format';
+import { isProfilePatchNoop } from '../utils/profilePatchEqual';
 import { getGeoConsent } from '../utils/geoConsent';
 import { downloadUserDataExport, purgeUserLocalData } from '../utils/privacy';
 import {
@@ -879,6 +880,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   updateProfile: (patch) => {
     const { user } = get();
     if (!user) return;
+    // Client no-op family (a11y/locale parity): identical notifications/chargingPlan/
+    // stripeCustomerId retries must not mint new user identity, demo saveUsers, or backend PATCH.
+    if (isProfilePatchNoop(user, patch)) return;
     if (isBackendMode()) {
       void patchProfile(patch).then((updated) => set({ user: enrichUser(updated) }));
       return;

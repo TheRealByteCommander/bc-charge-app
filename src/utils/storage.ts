@@ -10,6 +10,58 @@ import {
 import { asRecordOfArrays, isPlainObject, safeParseJson } from './safeJson';
 import { liveSessionMetricsEqual } from './sessionLiveEqual';
 
+/** Stable JSON compare for local demo blobs (key order from same constructors). */
+function jsonEqual(a: unknown, b: unknown): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+/**
+ * Order-sensitive domain equality for local demo session lists.
+ * Extends live meter/pricing equality with lifecycle/billing identity fields so
+ * `saveSessions` can skip localStorage rewrites on identical demo ticks/retries.
+ */
+export function storedSessionsDomainEqual(
+  a: readonly ChargingSession[] | null | undefined,
+  b: readonly ChargingSession[] | null | undefined
+): boolean {
+  if (a === b) return true;
+  if (!a || !b || a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    const x = a[i];
+    const y = b[i];
+    if (!x || !y) return false;
+    if (!liveSessionMetricsEqual(x, y)) return false;
+    if (
+      x.startedAt !== y.startedAt ||
+      x.endedAt !== y.endedAt ||
+      x.vehicleId !== y.vehicleId ||
+      x.paymentMethodId !== y.paymentMethodId ||
+      x.stationName !== y.stationName ||
+      x.connectorType !== y.connectorType ||
+      x.invoiceNumber !== y.invoiceNumber ||
+      x.citrineosTransactionId !== y.citrineosTransactionId ||
+      x.billingStatus !== y.billingStatus ||
+      x.paymentStatus !== y.paymentStatus
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/** Order-sensitive string-id list equality (redeemed rewards). */
+export function storedStringIdsEqual(
+  a: readonly string[] | null | undefined,
+  b: readonly string[] | null | undefined
+): boolean {
+  if (a === b) return true;
+  if (!a || !b || a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
 const KEYS = {
   users: 'bc_users',
   currentUserId: 'bc_current_user',
@@ -86,7 +138,19 @@ export function loadUsers(): UserProfile[] {
 }
 
 export function saveUsers(users: UserProfile[]): void {
-  localStorage.setItem(KEYS.users, JSON.stringify(users));
+  try {
+    // Demo/local profile path: skip rewrite when domain snapshot unchanged
+    // (same family as active-session / offline-station equal-skip).
+    const existing = loadUsers();
+    if (jsonEqual(existing, users)) return;
+    localStorage.setItem(KEYS.users, JSON.stringify(users));
+  } catch {
+    try {
+      localStorage.setItem(KEYS.users, JSON.stringify(users));
+    } catch {
+      /* quota / private mode */
+    }
+  }
 }
 
 export function getCurrentUserId(): string | null {
@@ -112,11 +176,25 @@ export function loadSessions(userId: string): ChargingSession[] {
 
 export function saveSessions(userId: string, sessions: ChargingSession[]): void {
   if (!userId) return;
-  const all = asRecordOfArrays<unknown>(
-    safeParseJson(localStorage.getItem(KEYS.sessions), {})
-  );
-  all[userId] = sessions;
-  localStorage.setItem(KEYS.sessions, JSON.stringify(all));
+  try {
+    const raw = localStorage.getItem(KEYS.sessions);
+    const all = asRecordOfArrays<unknown>(safeParseJson(raw, {}));
+    const prev = parseStoredSessions(all[userId] ?? []);
+    // Local demo tick/retry: identical domain list must not touch localStorage.
+    if (storedSessionsDomainEqual(prev, sessions)) return;
+    all[userId] = sessions;
+    localStorage.setItem(KEYS.sessions, JSON.stringify(all));
+  } catch {
+    try {
+      const all = asRecordOfArrays<unknown>(
+        safeParseJson(localStorage.getItem(KEYS.sessions), {})
+      );
+      all[userId] = sessions;
+      localStorage.setItem(KEYS.sessions, JSON.stringify(all));
+    } catch {
+      /* quota / private mode */
+    }
+  }
 }
 
 const ACTIVE_SESSION_CACHE = 'bc_active_session_cache';
@@ -210,11 +288,25 @@ export function loadRedeemed(userId: string): string[] {
 
 export function saveRedeemed(userId: string, ids: string[]): void {
   if (!userId) return;
-  const all = asRecordOfArrays<unknown>(
-    safeParseJson(localStorage.getItem(KEYS.redeemedRewards), {})
-  );
-  all[userId] = ids;
-  localStorage.setItem(KEYS.redeemedRewards, JSON.stringify(all));
+  try {
+    const all = asRecordOfArrays<unknown>(
+      safeParseJson(localStorage.getItem(KEYS.redeemedRewards), {})
+    );
+    const prev = parseStoredRedeemedIds(all[userId] ?? []);
+    if (storedStringIdsEqual(prev, ids)) return;
+    all[userId] = ids;
+    localStorage.setItem(KEYS.redeemedRewards, JSON.stringify(all));
+  } catch {
+    try {
+      const all = asRecordOfArrays<unknown>(
+        safeParseJson(localStorage.getItem(KEYS.redeemedRewards), {})
+      );
+      all[userId] = ids;
+      localStorage.setItem(KEYS.redeemedRewards, JSON.stringify(all));
+    } catch {
+      /* quota / private mode */
+    }
+  }
 }
 
 export function loadFulfillments(userId: string): RewardFulfillment[] {
@@ -231,9 +323,23 @@ export function loadFulfillments(userId: string): RewardFulfillment[] {
 
 export function saveFulfillments(userId: string, fulfillments: RewardFulfillment[]): void {
   if (!userId) return;
-  const all = asRecordOfArrays<unknown>(
-    safeParseJson(localStorage.getItem(KEYS.rewardFulfillments), {})
-  );
-  all[userId] = fulfillments;
-  localStorage.setItem(KEYS.rewardFulfillments, JSON.stringify(all));
+  try {
+    const all = asRecordOfArrays<unknown>(
+      safeParseJson(localStorage.getItem(KEYS.rewardFulfillments), {})
+    );
+    const prev = parseStoredFulfillments(all[userId] ?? []);
+    if (jsonEqual(prev, fulfillments)) return;
+    all[userId] = fulfillments;
+    localStorage.setItem(KEYS.rewardFulfillments, JSON.stringify(all));
+  } catch {
+    try {
+      const all = asRecordOfArrays<unknown>(
+        safeParseJson(localStorage.getItem(KEYS.rewardFulfillments), {})
+      );
+      all[userId] = fulfillments;
+      localStorage.setItem(KEYS.rewardFulfillments, JSON.stringify(all));
+    } catch {
+      /* quota / private mode */
+    }
+  }
 }

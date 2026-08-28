@@ -1,10 +1,21 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  loadFulfillments,
+  loadRedeemed,
+  loadSessions,
+  loadUsers,
   parseStoredFulfillments,
   parseStoredRedeemedIds,
   parseStoredSessions,
   parseStoredUsers,
+  saveFulfillments,
+  saveRedeemed,
+  saveSessions,
+  saveUsers,
+  storedSessionsDomainEqual,
+  storedStringIdsEqual,
 } from './storage';
+import type { ChargingSession, RewardFulfillment, UserProfile } from '../types';
 
 const validUser = {
   id: 'user_1',
@@ -144,5 +155,94 @@ describe('parseStoredFulfillments + redeemed ids', () => {
 
     expect(parseStoredRedeemedIds(['a', '', 12, null, {}, 'b'])).toEqual(['a', '12', 'b']);
     expect(parseStoredRedeemedIds(null)).toEqual([]);
+  });
+});
+
+describe('storedSessionsDomainEqual / storedStringIdsEqual', () => {
+  it('compares session lists by domain fields (order-sensitive)', () => {
+    const a = parseStoredSessions([validSession]);
+    const b = parseStoredSessions([validSession]);
+    expect(storedSessionsDomainEqual(a, b)).toBe(true);
+    expect(
+      storedSessionsDomainEqual(a, parseStoredSessions([{ ...validSession, energyKwh: '4' }]))
+    ).toBe(false);
+    expect(
+      storedSessionsDomainEqual(a, parseStoredSessions([{ ...validSession, startedAt: 'x' }]))
+    ).toBe(false);
+  });
+
+  it('compares redeemed id lists order-sensitively', () => {
+    expect(storedStringIdsEqual(['a', 'b'], ['a', 'b'])).toBe(true);
+    expect(storedStringIdsEqual(['a', 'b'], ['b', 'a'])).toBe(false);
+    expect(storedStringIdsEqual(['a'], ['a', 'b'])).toBe(false);
+  });
+});
+
+describe('local demo save* equal-skip', () => {
+  let store: Map<string, string>;
+  let setItem: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    store = new Map();
+    setItem = vi.fn((key: string, value: string) => {
+      store.set(key, value);
+    });
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem,
+      removeItem: (key: string) => {
+        store.delete(key);
+      },
+      clear: () => store.clear(),
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('saveUsers skips rewrite when profile snapshot is unchanged', () => {
+    const users = parseStoredUsers(JSON.stringify([validUser])) as UserProfile[];
+    saveUsers(users);
+    expect(setItem).toHaveBeenCalledTimes(1);
+    saveUsers(users.map((u) => ({ ...u })));
+    expect(setItem).toHaveBeenCalledTimes(1);
+    expect(loadUsers()).toHaveLength(1);
+
+    saveUsers([{ ...users[0], loyaltyPoints: users[0].loyaltyPoints + 1 }]);
+    expect(setItem).toHaveBeenCalledTimes(2);
+  });
+
+  it('saveSessions skips rewrite when domain list is unchanged', () => {
+    const sessions = parseStoredSessions([validSession]) as ChargingSession[];
+    saveSessions('user_1', sessions);
+    expect(setItem).toHaveBeenCalledTimes(1);
+    saveSessions('user_1', sessions.map((s) => ({ ...s })));
+    expect(setItem).toHaveBeenCalledTimes(1);
+    expect(loadSessions('user_1')).toHaveLength(1);
+
+    saveSessions('user_1', [{ ...sessions[0], energyKwh: sessions[0].energyKwh + 0.1 }]);
+    expect(setItem).toHaveBeenCalledTimes(2);
+  });
+
+  it('saveRedeemed / saveFulfillments skip identical payloads', () => {
+    saveRedeemed('user_1', ['rw_1', 'rw_2']);
+    expect(setItem).toHaveBeenCalledTimes(1);
+    saveRedeemed('user_1', ['rw_1', 'rw_2']);
+    expect(setItem).toHaveBeenCalledTimes(1);
+    expect(loadRedeemed('user_1')).toEqual(['rw_1', 'rw_2']);
+
+    const ffs = parseStoredFulfillments([validFulfillment]) as RewardFulfillment[];
+    saveFulfillments('user_1', ffs);
+    expect(setItem).toHaveBeenCalledTimes(2);
+    saveFulfillments(
+      'user_1',
+      ffs.map((f) => ({ ...f, payload: { ...f.payload } }))
+    );
+    expect(setItem).toHaveBeenCalledTimes(2);
+    expect(loadFulfillments('user_1')).toHaveLength(1);
+
+    saveFulfillments('user_1', [{ ...ffs[0], status: 'used' }]);
+    expect(setItem).toHaveBeenCalledTimes(3);
   });
 });

@@ -1,7 +1,8 @@
 /** Integrationsvertrag CitrineOS ↔ bc-charge-app (v1.8.4)
- * Upstream watch (2026-08-25): citrineos-core latest pre-release tag still **v2.0.0-beta3**
- * (tag 2026-08-12; no newer tag on releases). Still NOT a prod pin — stay on 1.8.4 until staging
- * CANARY_FORCE=1 soak + pinBump.ready + hardware smoke (Elinta/go-e).
+ * Upstream watch (2026-08-27): citrineos-core latest pre-release tag still **v2.0.0-beta3**
+ * (tag 2026-08-12; no newer tag on releases; open #952 "beta4" still not tagged; 0 merges into
+ * watch set since 2026-08-25). Still NOT a prod pin — stay on 1.8.4 until staging CANARY_FORCE=1
+ * soak + pinBump.ready + hardware smoke (Elinta/go-e).
  * beta3 highlights for BC: OCPP message correlation (#832), tenant-scoped repo deletes (#842),
  * OCPI tenant decorator (#841), OCPP messages state/message columns (#855), null VariableAttribute
  * guard (#847). beta1 also: SalesTariffId on ChargingSchedules (#782), smart-charging Absolute
@@ -16,8 +17,10 @@
  *     samples as Energy.Active.Import.Register — aligns with BC webhook strict energy extract.
  *   - **#859** EVSE-scoped connector status (merged 2026-08-20 → next): OCPP 2.0.1 multi-EVSE
  *     connectorId collision fixed upstream; BC ids already `evse-{n}-conn-{m}`.
- * Open drift risks (still open 2026-08-25):
- *   - **#851 tenant path mapping** (open): config → tenant DB + cache + path sanitization.
+ *   - **#851 tenant path mapping** (merged 2026-08-25 → next): system-config → tenant DB/cache +
+ *     path sanitization. Re-verify CITRINEOS_API_URL/tenant routing + deploy scripts when staging
+ *     tracks next (pairs with #849 commands surface).
+ * Open drift risks (still open 2026-08-27; no state change vs 2026-08-26):
  *   - **#867** OCPPMessages weekly partition (open): ops/migration risk; entrypoint must provision
  *     partitions or inserts fail (less fatal once #846 is deployed, still lossy/noisy).
  *   - **#881/#893** (open): OCPP2 handlers hard-code protocol OCPP2.1 on follow-up SetChargingProfile
@@ -36,13 +39,19 @@
  *   - **#871** (closed unmerged 2026-08-21): MeterValueUtils.normalizeToKwh throws on non-energy units
  *     (e.g. energy measurand default + unit A) → whole MeterValues/TransactionEvent CallError. BC
  *     energy extract allowlists Wh/kWh only (skip A/V/W) on webhook + LM paths.
- *   - **#950** (open, 2026-08-24): Boot table PK leaves ocppConnectionName → auto-inc + stationId FK;
- *     PUT /bootConfig + VariableAttributes migration. BC dual-path bootConfig is low-traffic; re-verify
- *     response shape/keys after staging carries #950 (pairs with #849 commands bootConfig).
+ *   - **#950** (open, last push 2026-08-26): Boot PK leaves ocppConnectionName → auto-inc + stationId
+ *     FK; Boot + VariableAttributes migration; PUT /bootConfig + boot.dto/VariableAttribute DTO;
+ *     BootNotification 1.6/2 handlers. BC dual-path bootConfig is low-traffic — parse-do-not-cast any
+ *     boot body; do not key identity solely on ocppConnectionName once staging carries #950 (pairs
+ *     with #849 commands /bootConfig).
+ *   - **#954** (open, 2026-08-25): allow null connectorId for OCPP 2.0.1 connectors — Hasura/status
+ *     mapping and BC `evse-{n}-conn-{m}` builders must tolerate missing connectorId (EVSE-only).
+ *     BC mapper + LM extractConnectorId already skip null/omit (no evse.id fallback).
  * Webhooks: TransactionEvent seqNo + triggerReason (ChargingRateChanged/ChargingStateChanged → LM
  * reopt) + chargingState persist + meterValue energy (citrineosWebhooks.mjs / loadManagementReopt.mjs).
  * Hasura: station-status live queries only via BFF WS proxy; meter/LM stays on webhooks (live-query
- * multiplex ~1s is wrong for high-freq telemetry).
+ * multiplex ~1s is wrong for high-freq telemetry). Event-trigger fan-out still wrong for OCPP meter
+ * cadence (timeouts/duplicates) — keep BFF + webhooks SoT.
  * Load-Management: /api/load-management proxy + composite/external limits (PR #46 merged);
  * inbound Citrine WS frames parse-don't-cast via citrineWsEnvelope.ts.
  */
@@ -94,16 +103,19 @@ export const CITRINEOS_UPSTREAM_MERGED_NEXT = [
     risk:
       'Fixes multi-EVSE connectorId collision in OCPP 2.0.1 status resolution. BC connector ids already evse-{evseId}-conn-{connectorId}; re-verify Hasura/status mapping when staging Citrine carries #859.',
   },
-];
-
-/** Open upstream PRs/issues that can break BC routing, REST, or tenancy (informational). */
-export const CITRINEOS_UPSTREAM_OPEN = [
   {
     id: 851,
     title: 'Feature/refactor tenant path mapping',
     url: 'https://github.com/citrineos/citrineos-core/pull/851',
-    risk: 'Dynamic tenant pathing moves system-config → tenant DB/cache; base URL/scripts may break',
+    mergedAt: '2026-08-25T17:01:34Z',
+    base: 'next',
+    risk:
+      'Tenant pathing moves system-config → tenant DB/cache + path sanitization. BC uses env CITRINEOS_API_URL + tenantId query/Hasura vars (no URL-substring tenancy) — still re-verify REST base paths, deploy scripts, and multi-tenant routing when staging tracks next+#851 (with #849 commands).',
   },
+];
+
+/** Open upstream PRs/issues that can break BC routing, REST, or tenancy (informational). */
+export const CITRINEOS_UPSTREAM_OPEN = [
   {
     id: 867,
     title: 'Feature: OCPPMessages Partition',
@@ -179,7 +191,14 @@ export const CITRINEOS_UPSTREAM_OPEN = [
     title: 'Feature: Update OCPP Boot PK',
     url: 'https://github.com/citrineos/citrineos-core/pull/950',
     risk:
-      'Open (updated 2026-08-24): Boot PK becomes auto-increment integer + stationId FK (fixes tenant leak via ocppConnectionName PK); migrates Boot + VariableAttributes; updates PUT /bootConfig. BC dual-path getBootConfig is low hot-path but response identity/keys can drift after next-deploy — parse-do-not-cast any bootConfig body; re-canary when staging tracks next+#950 alongside #849 commands surface.',
+      'Open (last activity 2026-08-26, 5 commits / 17 files): Boot PK → auto-inc + stationId FK (tenant-leak fix via ocppConnectionName PK); Boot + VariableAttributes migration; PUT /bootConfig; boot.dto + BootNotification 1.6/2 handlers. BC dual-path getBootConfig is low hot-path but identity/keys can drift after next-deploy — parse-do-not-cast any bootConfig body; never assume ocppConnectionName remains PK; re-canary when staging tracks next+#950 alongside #849 commands surface.',
+  },
+  {
+    id: 954,
+    title: 'fix(core): allow null connectorId for OCPP 2.0.1 connectors',
+    url: 'https://github.com/citrineos/citrineos-core/pull/954',
+    risk:
+      'Open (2026-08-25): OCPP 2.0.1 connectors may omit connectorId (EVSE-level only). BC `evse-{evseId}-conn-{connectorId}` + Hasura station mappers must not stringify null into conn-null / crash — guard missing connectorId when staging carries #954 (pairs with #859 EVSE-scoped status).',
   },
 ];
 

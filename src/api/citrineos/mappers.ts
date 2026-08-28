@@ -130,19 +130,25 @@ export function mapHasuraStationToApp(
 
   const connectors: Connector[] = [];
   for (const evse of row.Evses ?? []) {
+    const evseNum = Number(evse.evseId);
+    if (!Number.isFinite(evseNum)) continue;
     for (const conn of evse.Connectors ?? []) {
+      // Upstream #954: OCPP 2.0.1 connectors may omit connectorId (EVSE-only).
+      // Never mint `evse-N-conn-null` / NaN ids — drop until a numeric connectorId exists.
+      const connNum = Number(conn.connectorId);
+      if (!Number.isFinite(connNum)) continue;
       const tariff = conn.Tariff ?? (conn.tariffId ? tariffCatalog?.get(conn.tariffId) : undefined) ?? null;
       const pricing = mapTariffToConnectorPricing(tariff, tariffCatalog);
       const powerKw = conn.maximumPowerWatts ? Math.round(conn.maximumPowerWatts / 1000) : 22;
       connectors.push({
-        id: connectorId(evse.evseId, conn.connectorId),
+        id: connectorId(evseNum, connNum),
         type: mapConnectorType(conn.type),
         powerKw: powerKw > 0 ? powerKw : 22,
         status: mapConnectorStatus(conn.status, row.isOnline ?? false),
         ocppRawStatus: conn.status ?? undefined,
-        evseId: `DE*BCC*${stationId}*${evse.evseId}*${conn.connectorId}`,
-        evseNumber: evse.evseId,
-        connectorNumber: conn.connectorId,
+        evseId: `DE*BCC*${stationId}*${evseNum}*${connNum}`,
+        evseNumber: evseNum,
+        connectorNumber: connNum,
         ...pricing,
       });
     }

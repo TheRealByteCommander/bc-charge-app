@@ -18,8 +18,16 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
   });
 
   const setLocale = useCallback((l: Locale) => {
-    localStorage.setItem(STORAGE_KEY, l);
-    setLocaleState(l);
+    // Client no-op family: skip localStorage + state churn when language already active.
+    setLocaleState((prev) => {
+      if (prev === l) return prev;
+      try {
+        localStorage.setItem(STORAGE_KEY, l);
+      } catch {
+        /* quota / private mode */
+      }
+      return l;
+    });
   }, []);
 
   const value = useMemo(

@@ -223,6 +223,26 @@ describe('normalizeHasuraChargingStationRow', () => {
     expect(row?.ocppConnectionName).toBe('9');
   });
 
+  it('drops OCPP 2.0.1 connectors with null/missing connectorId (#954)', () => {
+    const row = normalizeHasuraChargingStationRow({
+      id: 12,
+      isOnline: true,
+      ocppConnectionName: 'cp-null-conn',
+      Evses: [
+        {
+          id: 1,
+          evseId: 1,
+          Connectors: [
+            { id: 10, connectorId: null, status: 'Available' },
+            { id: 11, connectorId: 2, status: 'Charging' },
+            { id: 12, status: 'Unavailable' },
+          ],
+        },
+      ],
+    });
+    expect(row?.Evses?.[0]?.Connectors?.map((c) => c.connectorId)).toEqual([2]);
+  });
+
   it('drops rows without usable id and garbage roots', () => {
     expect(normalizeHasuraChargingStationRow(null)).toBeUndefined();
     expect(normalizeHasuraChargingStationRow('x')).toBeUndefined();

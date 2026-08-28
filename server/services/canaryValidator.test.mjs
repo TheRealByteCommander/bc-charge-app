@@ -197,7 +197,7 @@ describe('pinBump readiness gate', () => {
     assert.ok(stats.upstreamMergedNext.some((x) => x.id === 846), 'merged-next #846 audit-insert crash');
     assert.ok(stats.upstreamMergedNext.some((x) => x.id === 852), 'merged-next #852 measurand drop');
     assert.ok(stats.upstreamMergedNext.some((x) => x.id === 859), 'merged-next #859 EVSE-scoped connector status');
-    assert.ok(stats.upstreamOpen.some((x) => x.id === 851), 'watch #851 tenant path');
+    assert.ok(stats.upstreamMergedNext.some((x) => x.id === 851), 'merged-next #851 tenant path mapping');
     assert.ok(stats.upstreamOpen.some((x) => x.id === 867), 'watch #867 OCPPMessages partition');
     assert.ok(stats.upstreamOpen.some((x) => x.id === 881), 'watch #881 protocol hard-code follow-up');
     assert.ok(stats.upstreamOpen.some((x) => x.id === 893), 'watch #893 tx SetChargingProfile protocol');
@@ -209,10 +209,12 @@ describe('pinBump readiness gate', () => {
     assert.ok(stats.upstreamOpen.some((x) => x.id === 934), 'watch #934 charging-needs EVSE id mixup');
     assert.ok(stats.upstreamOpen.some((x) => x.id === 871), 'watch #871 non-energy meter unit throw');
     assert.ok(stats.upstreamOpen.some((x) => x.id === 950), 'watch #950 Boot PK / bootConfig migration');
+    assert.ok(stats.upstreamOpen.some((x) => x.id === 954), 'watch #954 null connectorId OCPP 2.0.1');
     assert.ok(!stats.upstreamOpen.some((x) => x.id === 849), '#849 no longer open');
     assert.ok(!stats.upstreamOpen.some((x) => x.id === 846), '#846 no longer open');
     assert.ok(!stats.upstreamOpen.some((x) => x.id === 852), '#852 no longer open');
     assert.ok(!stats.upstreamOpen.some((x) => x.id === 859), '#859 no longer open');
+    assert.ok(!stats.upstreamOpen.some((x) => x.id === 851), '#851 no longer open');
     assert.ok(stats.dataApiMigration);
     assert.equal(stats.dataApiMigration.upstreamPr, 849);
     assert.equal(stats.dataApiMigration.blocking, 0);
