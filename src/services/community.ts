@@ -44,8 +44,39 @@ function loadReports(): StationReport[] {
   return asArrayOf(parsed, isStationReport);
 }
 
-function saveReports(reports: StationReport[]): void {
+/** Order-sensitive domain equality for local community report lists. */
+export function stationReportsDomainEqual(
+  a: readonly StationReport[] | null | undefined,
+  b: readonly StationReport[] | null | undefined
+): boolean {
+  if (a === b) return true;
+  if (!a || !b || a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    const x = a[i];
+    const y = b[i];
+    if (!x || !y) return false;
+    if (
+      x.id !== y.id ||
+      x.stationId !== y.stationId ||
+      x.category !== y.category ||
+      x.message !== y.message ||
+      x.createdAt !== y.createdAt ||
+      x.helpfulVotes !== y.helpfulVotes ||
+      x.photoBase64 !== y.photoBase64
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/** Persist community reports (equal-skip when domain snapshot unchanged). */
+export function saveStationReports(reports: StationReport[]): void {
   try {
+    // Client no-op family: skip rewrite when domain snapshot unchanged
+    // (same family as fav-availability / offline-station equal-skip).
+    const existing = loadReports();
+    if (stationReportsDomainEqual(existing, reports)) return;
     localStorage.setItem(REPORTS_KEY, JSON.stringify(reports));
   } catch {
     /* quota / private mode */
@@ -75,7 +106,7 @@ export function addStationReport(params: {
   };
   const all = loadReports();
   all.push(report);
-  saveReports(all.slice(-500));
+  saveStationReports(all.slice(-500));
   return report;
 }
 

@@ -34,9 +34,39 @@ function loadAll(): StationCheckIn[] {
   return asArrayOf(parsed, isStationCheckIn);
 }
 
-function saveAll(rows: StationCheckIn[]): void {
+/** Order-sensitive domain equality for local station check-in lists. */
+export function stationCheckInsDomainEqual(
+  a: readonly StationCheckIn[] | null | undefined,
+  b: readonly StationCheckIn[] | null | undefined
+): boolean {
+  if (a === b) return true;
+  if (!a || !b || a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    const x = a[i];
+    const y = b[i];
+    if (!x || !y) return false;
+    if (
+      x.id !== y.id ||
+      x.stationId !== y.stationId ||
+      x.status !== y.status ||
+      x.createdAt !== y.createdAt ||
+      x.note !== y.note
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/** Persist station check-ins (equal-skip when domain snapshot unchanged). */
+export function saveStationCheckIns(rows: StationCheckIn[]): void {
   try {
-    localStorage.setItem(CHECKINS_KEY, JSON.stringify(rows.slice(-MAX_STORED)));
+    const next = rows.slice(-MAX_STORED);
+    // Client no-op family: skip rewrite when domain snapshot unchanged
+    // (same family as community reports / fav-availability equal-skip).
+    const existing = loadAll();
+    if (stationCheckInsDomainEqual(existing, next)) return;
+    localStorage.setItem(CHECKINS_KEY, JSON.stringify(next));
   } catch {
     /* quota / private mode */
   }
@@ -77,7 +107,7 @@ export function addStationCheckIn(params: {
   };
   const all = loadAll();
   all.push(row);
-  saveAll(all);
+  saveStationCheckIns(all);
   return row;
 }
 

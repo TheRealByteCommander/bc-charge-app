@@ -35,9 +35,31 @@ function loadSuccessLog(): SuccessEntry[] {
   return asArrayOf(parsed, isSuccessEntry);
 }
 
-function saveSuccessLog(entries: SuccessEntry[]): void {
+/** Order-sensitive domain equality for local station success-log entries. */
+export function stationSuccessLogDomainEqual(
+  a: readonly SuccessEntry[] | null | undefined,
+  b: readonly SuccessEntry[] | null | undefined
+): boolean {
+  if (a === b) return true;
+  if (!a || !b || a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    const x = a[i];
+    const y = b[i];
+    if (!x || !y) return false;
+    if (x.stationId !== y.stationId || x.at !== y.at) return false;
+  }
+  return true;
+}
+
+/** Persist station success log (equal-skip when domain snapshot unchanged). */
+export function saveStationSuccessLog(entries: SuccessEntry[]): void {
   try {
-    localStorage.setItem(SUCCESS_LOG_KEY, JSON.stringify(entries.slice(-MAX_ENTRIES)));
+    const next = entries.slice(-MAX_ENTRIES);
+    // Client no-op family: skip rewrite when domain snapshot unchanged
+    // (same family as community reports / check-in equal-skip).
+    const existing = loadSuccessLog();
+    if (stationSuccessLogDomainEqual(existing, next)) return;
+    localStorage.setItem(SUCCESS_LOG_KEY, JSON.stringify(next));
   } catch {
     /* quota */
   }
@@ -45,7 +67,7 @@ function saveSuccessLog(entries: SuccessEntry[]): void {
 
 export function recordStationSuccess(stationId: string): void {
   const entry: SuccessEntry = { stationId, at: new Date().toISOString() };
-  saveSuccessLog([...loadSuccessLog(), entry]);
+  saveStationSuccessLog([...loadSuccessLog(), entry]);
 }
 
 export function getLastStationSuccess(stationId: string): string | null {
